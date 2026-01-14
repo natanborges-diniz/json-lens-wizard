@@ -78,12 +78,12 @@ const SellerFlow = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   const { 
-    families, 
-    addons,
-    prices,
-    macros,
-    supplierPriorities,
-    selectedAddons,
+    families = [], 
+    addons = [],
+    prices = [],
+    macros = [],
+    supplierPriorities = [],
+    selectedAddons = [],
     toggleAddon,
     clearSelectedAddons,
     isDataLoaded,
