@@ -8,18 +8,12 @@ import {
   Glasses,
   Sparkles,
   Check,
-  Plus,
-  Minus,
-  Info,
-  Star,
-  Zap,
-  Shield,
-  Crown,
   Loader2,
-  ThumbsUp
+  ThumbsUp,
+  Info
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +38,7 @@ import { VisualComplaintsStep } from '@/components/anamnesis/VisualComplaintsSte
 import { LifestyleStep } from '@/components/anamnesis/LifestyleStep';
 import { PrescriptionStep } from '@/components/anamnesis/PrescriptionStep';
 import { FrameStep } from '@/components/anamnesis/FrameStep';
+import { RecommendationsGrid } from '@/components/recommendations/RecommendationsGrid';
 
 type Step = 'profile' | 'complaints' | 'lifestyle' | 'prescription' | 'frame' | 'recommendations';
 
@@ -106,6 +101,7 @@ const SellerFlow = () => {
     macros = [],
     supplierPriorities = [],
     selectedAddons = [],
+    attributeDefs = [],
     toggleAddon,
     clearSelectedAddons,
     isDataLoaded,
@@ -294,52 +290,10 @@ const SellerFlow = () => {
 
   const mostRecommended = getMostRecommended();
 
-  const getTierConfig = (tier: Tier) => {
-    const macro = macros.find(m => macroToTier[m.id] === tier && m.category === lensCategory);
-    
-    switch (tier) {
-      case 'essential':
-        return { 
-          label: macro?.name_client || 'Essencial', 
-          icon: <Shield className="w-5 h-5" />,
-          color: 'text-muted-foreground',
-          bg: 'bg-muted',
-          border: 'border-muted-foreground/20',
-          description: macro?.description_client || 'Solução básica com correção visual eficiente'
-        };
-      case 'comfort':
-        return { 
-          label: macro?.name_client || 'Conforto', 
-          icon: <Star className="w-5 h-5" />,
-          color: 'text-primary',
-          bg: 'bg-primary/10',
-          border: 'border-primary/30',
-          description: macro?.description_client || 'Equilíbrio entre qualidade e custo-benefício'
-        };
-      case 'advanced':
-        return { 
-          label: macro?.name_client || 'Avançada', 
-          icon: <Zap className="w-5 h-5" />,
-          color: 'text-info',
-          bg: 'bg-info/10',
-          border: 'border-info/30',
-          description: macro?.description_client || 'Tecnologia de ponta para alta performance visual'
-        };
-      case 'top':
-        return { 
-          label: macro?.name_client || 'Top de Mercado', 
-          icon: <Crown className="w-5 h-5" />,
-          color: 'text-secondary',
-          bg: 'bg-secondary/10',
-          border: 'border-secondary/30',
-          description: macro?.description_client || 'O melhor disponível para máxima satisfação'
-        };
-    }
-  };
-
-  // Get addon name for a specific supplier
-  const getAddonName = (addon: Addon, supplier: string) => {
-    return addon.name_commercial[supplier] || addon.name_common;
+  // Handle lens selection
+  const handleSelectLens = (family: Family, price: Price | null) => {
+    toast.success(`Lente selecionada: ${family.name_original}`);
+    // TODO: Add to cart / order
   };
 
   // Update anamnesis data helper
@@ -473,185 +427,25 @@ const SellerFlow = () => {
 
         {/* Step 6: Recommendations */}
         {currentStep === 'recommendations' && (
-          <div className="space-y-6 animate-slide-up">
-            <div className="text-center mb-8">
+          <div className="space-y-6 animate-slide-up max-w-7xl mx-auto">
+            <div className="text-center mb-6">
               <h2 className="text-2xl font-bold text-foreground mb-2">Soluções Recomendadas</h2>
               <p className="text-muted-foreground">
-                {customerName ? `Para ${customerName}` : 'Escolha o nível de solução ideal'}
-                {' • '}
-                <Badge variant="outline">{lensCategory === 'PROGRESSIVA' ? 'Progressiva' : 'Monofocal'}</Badge>
+                {customerName ? `Para ${customerName} • ` : ''}
+                Escolha a melhor opção para o seu cliente
               </p>
             </div>
 
-            {/* Addons Selection */}
-            {activeAddons.length > 0 && (
-              <Card className="mb-6">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Complementos Disponíveis</CardTitle>
-                  <CardDescription>Adicione tratamentos para personalizar a solução</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {activeAddons.map((addon) => (
-                      <button
-                        key={addon.id}
-                        onClick={() => toggleAddon(addon.id)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
-                          selectedAddons.includes(addon.id)
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border bg-card hover:border-primary/50'
-                        }`}
-                      >
-                        {selectedAddons.includes(addon.id) ? (
-                          <Minus className="w-4 h-4" />
-                        ) : (
-                          <Plus className="w-4 h-4" />
-                        )}
-                        <span>{addon.name_common}</span>
-                      </button>
-                    ))}
-                  </div>
-                  {selectedAddons.length > 0 && (
-                    <div className="mt-3 pt-3 border-t">
-                      <p className="text-sm text-muted-foreground">
-                        Selecionados: {selectedAddons.map(id => addons.find(a => a.id === id)?.name_common).join(', ')}
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Tier Recommendations */}
-            <div className="space-y-4">
-              {(['essential', 'comfort', 'advanced', 'top'] as Tier[]).map((tier) => {
-                const config = getTierConfig(tier);
-                const tierFamilies = recommendations[tier];
-                
-                if (tierFamilies.length === 0) return null;
-
-                // Check if this tier has the most recommended
-                const hasMostRecommended = mostRecommended && 
-                  tierFamilies.some(f => f.family.id === mostRecommended.family.id);
-
-                return (
-                  <Card key={tier} className={`border-2 ${config.border} ${hasMostRecommended ? 'ring-2 ring-primary ring-offset-2' : ''}`}>
-                    <CardHeader className={`${config.bg} rounded-t-lg`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={config.color}>{config.icon}</div>
-                          <div>
-                            <CardTitle className={`text-lg ${config.color}`}>
-                              {config.label}
-                              {hasMostRecommended && (
-                                <Badge className="ml-2 bg-primary text-primary-foreground">
-                                  Mais Recomendada
-                                </Badge>
-                              )}
-                            </CardTitle>
-                            <CardDescription>{config.description}</CardDescription>
-                          </div>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                      <div className="space-y-3">
-                        {tierFamilies.slice(0, 2).map(({ family, bestPrice, score }) => {
-                          const isRecommended = mostRecommended?.family.id === family.id;
-                          
-                          return (
-                            <div 
-                              key={family.id}
-                              className={`flex items-center justify-between p-4 rounded-lg transition-colors ${
-                                isRecommended
-                                  ? 'bg-primary/5 border-2 border-primary/30'
-                                  : bestPrice 
-                                    ? 'bg-muted/30 hover:bg-muted/50' 
-                                    : 'bg-destructive/5 opacity-60'
-                              }`}
-                            >
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="font-medium text-foreground">{family.name_original}</span>
-                                  <Badge variant="outline" className="text-xs">
-                                    {family.supplier}
-                                  </Badge>
-                                  {isRecommended && (
-                                    <ThumbsUp className="w-4 h-4 text-primary" />
-                                  )}
-                                </div>
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                  {family.attributes_display_base.slice(0, 3).map((attr, i) => (
-                                    <span 
-                                      key={i}
-                                      className="text-xs px-2 py-0.5 bg-background rounded-full text-muted-foreground"
-                                    >
-                                      ✓ {attr}
-                                    </span>
-                                  ))}
-                                  {family.attributes_display_base.length > 3 && (
-                                    <span className="text-xs px-2 py-0.5 bg-background rounded-full text-muted-foreground">
-                                      +{family.attributes_display_base.length - 3} mais
-                                    </span>
-                                  )}
-                                </div>
-                                {bestPrice && bestPrice.addons_detected && bestPrice.addons_detected.length > 0 && (
-                                  <div className="mt-2 flex gap-1">
-                                    {bestPrice.addons_detected.map(addonId => {
-                                      const addon = addons.find(a => a.id === addonId);
-                                      if (!addon) return null;
-                                      return (
-                                        <Badge key={addonId} className="text-xs bg-secondary/20 text-secondary-foreground">
-                                          {getAddonName(addon, family.supplier)}
-                                        </Badge>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="text-right ml-4">
-                                {bestPrice ? (
-                                  <>
-                                    <div className="text-2xl font-bold text-foreground">
-                                      R$ {(bestPrice.price_sale_half_pair * 2).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">
-                                      par completo
-                                    </div>
-                                    <div className="text-xs text-muted-foreground mt-1">
-                                      ERP: {bestPrice.erp_code}
-                                    </div>
-                                    <Button size="sm" className={`mt-2 ${isRecommended ? 'gradient-primary text-primary-foreground' : ''}`}>
-                                      Selecionar
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <div className="text-sm text-destructive">
-                                    Indisponível para esta prescrição
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-
-            {/* Comparison hint */}
-            <div className="p-4 bg-muted/50 rounded-lg flex items-start gap-3">
-              <Info className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
-              <div className="text-sm text-muted-foreground">
-                <p className="font-medium text-foreground mb-1">O que muda entre os níveis?</p>
-                <p>
-                  À medida que você sobe de nível, ganha mais conforto visual, campos de visão mais amplos e tecnologias que reduzem a fadiga ocular. 
-                  A opção "Mais Recomendada" é baseada no seu perfil de uso.
-                </p>
-              </div>
-            </div>
+            <RecommendationsGrid
+              recommendations={recommendations}
+              addons={activeAddons}
+              selectedAddons={selectedAddons}
+              onToggleAddon={toggleAddon}
+              onSelectLens={handleSelectLens}
+              mostRecommendedId={mostRecommended?.family.id}
+              lensCategory={lensCategory}
+              attributeDefs={attributeDefs}
+            />
           </div>
         )}
 
