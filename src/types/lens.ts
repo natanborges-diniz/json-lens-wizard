@@ -51,6 +51,8 @@ export interface PriceSpec {
   sphere_max: number;
   cyl_min: number;
   cyl_max: number;
+  add_min?: number;
+  add_max?: number;
 }
 
 export interface Price {
