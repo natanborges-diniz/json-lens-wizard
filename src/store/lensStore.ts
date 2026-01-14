@@ -206,7 +206,7 @@ export const useLensStore = create<LensState>()(
       },
     }),
     {
-      name: 'lens-store',
+      name: 'lens-store-v2', // Changed name to reset persisted state
     }
   )
 );
