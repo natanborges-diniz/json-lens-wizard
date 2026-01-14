@@ -1,58 +1,101 @@
-// Core types for the lens system
+// Core types for the lens system - based on unified JSON schema v1.1
 
-export type Tier = 'essential' | 'comfort' | 'advanced' | 'top';
+export interface Scale {
+  [key: string]: string;
+}
+
+export interface AttributeDef {
+  id: string;
+  group: string;
+  name_common: string;
+  scale: string;
+}
 
 export interface Macro {
   id: string;
-  name: string;
-  description: string;
+  category: 'PROGRESSIVA' | 'MONOFOCAL';
+  name_client: string;
+  description_client: string;
 }
 
 export interface Family {
   id: string;
-  macroId: string;
-  name: string;
   supplier: string;
-  tier: Tier;
-  basePrice: number;
-  benefits: string[];
-  commercialName: string;
+  name_original: string;
+  category: 'PROGRESSIVA' | 'MONOFOCAL';
+  macro: string;
+  attributes_base: Record<string, number | boolean>;
+  attributes_display_base: string[];
   active: boolean;
 }
 
-export interface Module {
+export interface Addon {
   id: string;
-  name: string;
+  name_common: string;
+  description_client: string;
+  impact: Record<string, number>;
+  name_commercial: Record<string, string>;
+  rules: {
+    categories: string[];
+    only_if?: string;
+  };
+  active: boolean;
+}
+
+export interface PriceSpec {
+  diameter_min_mm: number;
+  diameter_max_mm: number;
+  altura_min_mm: number;
+  altura_max_mm: number;
+  sphere_min: number;
+  sphere_max: number;
+  cyl_min: number;
+  cyl_max: number;
+}
+
+export interface Price {
+  family_id: string;
+  erp_code: string;
   description: string;
-  price: number;
-  benefits: string[];
-  commercialName: string;
-  compatibleMacros: string[];
+  supplier: string;
+  lens_category_raw: string;
+  manufacturing_type: string;
+  index: string;
+  price_purchase_half_pair: number;
+  price_sale_half_pair: number;
   active: boolean;
+  blocked: boolean;
+  specs: PriceSpec;
+  treatments_raw?: Record<string, string>;
+  addons_detected?: string[];
+  attribute_overrides?: Record<string, number>;
+  flags?: Record<string, boolean>;
 }
 
-export interface StandaloneProduct {
-  id: string;
-  macroId: string;
-  name: string;
-  supplier: string;
-  tier: Tier;
-  price: number;
-  benefits: string[];
-  commercialName: string;
-  active: boolean;
+export interface LensData {
+  meta: {
+    schema_version: string;
+    dataset_name: string;
+    generated_at: string;
+    counts: {
+      families: number;
+      addons: number;
+      skus_prices: number;
+    };
+    notes: string[];
+  };
+  scales: Record<string, Scale>;
+  attribute_defs: AttributeDef[];
+  macros: Macro[];
+  families: Family[];
+  addons: Addon[];
+  products_avulsos: any[];
+  prices: Price[];
 }
 
 export interface SupplierPriority {
   macroId: string;
   suppliers: string[];
-}
-
-export interface PriceTable {
-  familyId: string;
-  sphereRange: [number, number];
-  cylinderRange: [number, number];
-  price: number;
 }
 
 export interface Prescription {
@@ -71,6 +114,7 @@ export interface FrameMeasurements {
   verticalSize: number;
   bridge: number;
   dp: number;
+  altura?: number;
 }
 
 export interface CustomerProfile {
@@ -85,21 +129,29 @@ export interface CustomerProfile {
   previousLensType?: string;
 }
 
-export interface LensRecommendation {
-  family: Family;
-  modules: Module[];
-  totalPrice: number;
-  tier: Tier;
-  benefits: string[];
-}
+// Tier mapping based on macro IDs
+export type MacroTier = 'BASICO' | 'ENTRADA' | 'CONFORTO' | 'INTER' | 'AVANCADO' | 'TOP';
 
-export interface ImportData {
-  macros?: Macro[];
-  families?: Family[];
-  modules?: Module[];
-  prices?: PriceTable[];
-  standaloneProducts?: StandaloneProduct[];
-  supplierPriorities?: SupplierPriority[];
-}
+export const MACRO_TO_TIER: Record<string, 'essential' | 'comfort' | 'advanced' | 'top'> = {
+  'PROG_BASICO': 'essential',
+  'PROG_CONFORTO': 'comfort',
+  'PROG_AVANCADO': 'advanced',
+  'PROG_TOP': 'top',
+  'MONO_BASICO': 'essential',
+  'MONO_ENTRADA': 'comfort',
+  'MONO_INTER': 'advanced',
+  'MONO_TOP': 'top',
+};
+
+export type Tier = 'essential' | 'comfort' | 'advanced' | 'top';
 
 export type ImportMode = 'increment' | 'replace';
+
+// Recommendation with selected SKU
+export interface LensRecommendation {
+  family: Family;
+  selectedPrice: Price;
+  addonsIncluded: Addon[];
+  totalPrice: number;
+  tier: Tier;
+}

@@ -1,261 +1,108 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { 
+  LensData,
   Macro, 
   Family, 
-  Module, 
-  StandaloneProduct, 
-  SupplierPriority, 
-  PriceTable,
+  Addon, 
+  Price,
+  SupplierPriority,
   CustomerProfile,
   Prescription,
-  FrameMeasurements
+  FrameMeasurements,
+  AttributeDef
 } from '@/types/lens';
 
 interface LensState {
-  // Data
+  // Data from JSON
+  schemaVersion: string;
+  attributeDefs: AttributeDef[];
   macros: Macro[];
   families: Family[];
-  modules: Module[];
-  standaloneProducts: StandaloneProduct[];
+  addons: Addon[];
+  prices: Price[];
+  
+  // Custom settings (not from JSON)
   supplierPriorities: SupplierPriority[];
-  priceTables: PriceTable[];
   
   // Current sale context
   currentCustomer: CustomerProfile | null;
   currentPrescription: Prescription | null;
   currentFrame: FrameMeasurements | null;
-  selectedModules: string[];
+  selectedAddons: string[];
+  
+  // Loading state
+  isDataLoaded: boolean;
   
   // Actions
-  setMacros: (macros: Macro[]) => void;
-  setFamilies: (families: Family[]) => void;
-  setModules: (modules: Module[]) => void;
-  setStandaloneProducts: (products: StandaloneProduct[]) => void;
-  setSupplierPriorities: (priorities: SupplierPriority[]) => void;
-  setPriceTables: (tables: PriceTable[]) => void;
-  
-  addMacros: (macros: Macro[]) => void;
-  addFamilies: (families: Family[]) => void;
-  addModules: (modules: Module[]) => void;
-  addStandaloneProducts: (products: StandaloneProduct[]) => void;
+  loadLensData: (data: LensData) => void;
+  clearAllData: () => void;
   
   toggleFamilyActive: (id: string) => void;
-  toggleModuleActive: (id: string) => void;
-  toggleProductActive: (id: string) => void;
+  toggleAddonActive: (id: string) => void;
+  togglePriceActive: (erpCode: string) => void;
   
   updateSupplierPriority: (macroId: string, suppliers: string[]) => void;
   
   setCurrentCustomer: (customer: CustomerProfile | null) => void;
   setCurrentPrescription: (prescription: Prescription | null) => void;
   setCurrentFrame: (frame: FrameMeasurements | null) => void;
-  toggleModule: (moduleId: string) => void;
-  clearSelectedModules: () => void;
+  toggleAddon: (addonId: string) => void;
+  clearSelectedAddons: () => void;
   
-  clearAllData: () => void;
+  // Helpers
+  getFamiliesByMacro: (macroId: string) => Family[];
+  getCompatiblePrices: (familyId: string, prescription: Prescription | null, frame: FrameMeasurements | null) => Price[];
+  getBestPriceForFamily: (familyId: string, prescription: Prescription | null, frame: FrameMeasurements | null) => Price | null;
 }
-
-// Sample data for demonstration
-const sampleMacros: Macro[] = [
-  { id: 'prog_top', name: 'Progressivo Premium', description: 'Lentes progressivas de alta tecnologia' },
-  { id: 'prog_inter', name: 'Progressivo Intermediário', description: 'Lentes progressivas com bom custo-benefício' },
-  { id: 'mono_simples', name: 'Monofocal Simples', description: 'Lentes monofocais para visão única' },
-  { id: 'mono_premium', name: 'Monofocal Premium', description: 'Lentes monofocais de alta qualidade' },
-];
-
-const sampleFamilies: Family[] = [
-  {
-    id: 'varilux_xr',
-    macroId: 'prog_top',
-    name: 'Varilux XR Series',
-    supplier: 'Essilor',
-    tier: 'top',
-    basePrice: 2890,
-    benefits: ['Visão nítida em todas as distâncias', 'Adaptação instantânea', 'Tecnologia de realidade estendida'],
-    commercialName: 'Varilux XR',
-    active: true,
-  },
-  {
-    id: 'zeiss_smartlife',
-    macroId: 'prog_top',
-    name: 'SmartLife Progressive',
-    supplier: 'Zeiss',
-    tier: 'top',
-    basePrice: 2650,
-    benefits: ['Design inteligente para vida digital', 'Campos visuais ampliados', 'Conforto visual prolongado'],
-    commercialName: 'SmartLife',
-    active: true,
-  },
-  {
-    id: 'hoya_luxe',
-    macroId: 'prog_top',
-    name: 'Hoyalux ID MySelf',
-    supplier: 'Hoya',
-    tier: 'top',
-    basePrice: 2450,
-    benefits: ['Personalização total', 'Tecnologia binocular', 'Design exclusivo'],
-    commercialName: 'Hoyalux ID',
-    active: true,
-  },
-  {
-    id: 'varilux_comfort',
-    macroId: 'prog_inter',
-    name: 'Varilux Comfort Max',
-    supplier: 'Essilor',
-    tier: 'advanced',
-    basePrice: 1890,
-    benefits: ['Conforto visual duradouro', 'Transições suaves', 'Boa adaptação'],
-    commercialName: 'Varilux Comfort',
-    active: true,
-  },
-  {
-    id: 'zeiss_precision',
-    macroId: 'prog_inter',
-    name: 'Precision Pure',
-    supplier: 'Zeiss',
-    tier: 'comfort',
-    basePrice: 1290,
-    benefits: ['Precisão visual', 'Design equilibrado', 'Durabilidade'],
-    commercialName: 'Precision Pure',
-    active: true,
-  },
-  {
-    id: 'essilor_eyezen',
-    macroId: 'mono_premium',
-    name: 'Eyezen Start',
-    supplier: 'Essilor',
-    tier: 'comfort',
-    basePrice: 590,
-    benefits: ['Proteção digital', 'Redução de fadiga', 'Conforto para telas'],
-    commercialName: 'Eyezen',
-    active: true,
-  },
-  {
-    id: 'basic_mono',
-    macroId: 'mono_simples',
-    name: 'Lente Monofocal Básica',
-    supplier: 'Nacional',
-    tier: 'essential',
-    basePrice: 190,
-    benefits: ['Correção visual básica', 'Custo acessível', 'Entrega rápida'],
-    commercialName: 'Monofocal Standard',
-    active: true,
-  },
-];
-
-const sampleModules: Module[] = [
-  {
-    id: 'crizal_sapphire',
-    name: 'Tratamento Premium Anti-Reflexo',
-    description: 'Máxima transparência e proteção',
-    price: 390,
-    benefits: ['99% menos reflexos', 'Proteção UV total', 'Fácil limpeza'],
-    commercialName: 'Crizal Sapphire',
-    compatibleMacros: ['prog_top', 'prog_inter', 'mono_premium', 'mono_simples'],
-    active: true,
-  },
-  {
-    id: 'transitions_gen8',
-    name: 'Lentes Fotossensíveis',
-    description: 'Escurecem automaticamente na luz',
-    price: 490,
-    benefits: ['Adaptação automática à luz', 'Proteção 100% UV', 'Conforto em ambientes variados'],
-    commercialName: 'Transitions Gen 8',
-    compatibleMacros: ['prog_top', 'prog_inter', 'mono_premium', 'mono_simples'],
-    active: true,
-  },
-  {
-    id: 'blue_protect',
-    name: 'Proteção Luz Azul',
-    description: 'Filtra luz azul nociva de telas',
-    price: 190,
-    benefits: ['Reduz fadiga digital', 'Melhora o sono', 'Proteção para uso de telas'],
-    commercialName: 'Blue UV Filter',
-    compatibleMacros: ['prog_top', 'prog_inter', 'mono_premium', 'mono_simples'],
-    active: true,
-  },
-  {
-    id: 'thin_lens',
-    name: 'Lentes Ultra-Finas',
-    description: 'Índice 1.74 para alta espessura',
-    price: 350,
-    benefits: ['Até 40% mais finas', 'Estética superior', 'Leveza extra'],
-    commercialName: 'Hi-Index 1.74',
-    compatibleMacros: ['prog_top', 'prog_inter', 'mono_premium'],
-    active: true,
-  },
-];
-
-const samplePriorities: SupplierPriority[] = [
-  { macroId: 'prog_top', suppliers: ['Essilor', 'Zeiss', 'Hoya'] },
-  { macroId: 'prog_inter', suppliers: ['Zeiss', 'Essilor', 'Hoya'] },
-  { macroId: 'mono_premium', suppliers: ['Essilor', 'Zeiss'] },
-  { macroId: 'mono_simples', suppliers: ['Nacional', 'Essilor'] },
-];
 
 export const useLensStore = create<LensState>()(
   persist(
-    (set) => ({
-      // Initial data
-      macros: sampleMacros,
-      families: sampleFamilies,
-      modules: sampleModules,
-      standaloneProducts: [],
-      supplierPriorities: samplePriorities,
-      priceTables: [],
+    (set, get) => ({
+      // Initial state
+      schemaVersion: '',
+      attributeDefs: [],
+      macros: [],
+      families: [],
+      addons: [],
+      prices: [],
+      supplierPriorities: [],
       
       currentCustomer: null,
       currentPrescription: null,
       currentFrame: null,
-      selectedModules: [],
+      selectedAddons: [],
+      isDataLoaded: false,
       
-      // Setters (replace)
-      setMacros: (macros) => set({ macros }),
-      setFamilies: (families) => set({ families }),
-      setModules: (modules) => set({ modules }),
-      setStandaloneProducts: (products) => set({ standaloneProducts: products }),
-      setSupplierPriorities: (priorities) => set({ supplierPriorities: priorities }),
-      setPriceTables: (tables) => set({ priceTables: tables }),
-      
-      // Adders (increment)
-      addMacros: (newMacros) => set((state) => {
-        const updated = [...state.macros];
-        newMacros.forEach((macro) => {
-          const idx = updated.findIndex((m) => m.id === macro.id);
-          if (idx >= 0) updated[idx] = macro;
-          else updated.push(macro);
-        });
-        return { macros: updated };
+      // Load complete lens data from JSON
+      loadLensData: (data: LensData) => set({
+        schemaVersion: data.meta.schema_version,
+        attributeDefs: data.attribute_defs,
+        macros: data.macros,
+        families: data.families,
+        addons: data.addons,
+        prices: data.prices,
+        isDataLoaded: true,
+        // Generate default supplier priorities from families
+        supplierPriorities: data.macros.map(macro => ({
+          macroId: macro.id,
+          suppliers: [...new Set(
+            data.families
+              .filter(f => f.macro === macro.id && f.active)
+              .map(f => f.supplier)
+          )]
+        }))
       }),
       
-      addFamilies: (newFamilies) => set((state) => {
-        const updated = [...state.families];
-        newFamilies.forEach((family) => {
-          const idx = updated.findIndex((f) => f.id === family.id);
-          if (idx >= 0) updated[idx] = family;
-          else updated.push(family);
-        });
-        return { families: updated };
-      }),
-      
-      addModules: (newModules) => set((state) => {
-        const updated = [...state.modules];
-        newModules.forEach((module) => {
-          const idx = updated.findIndex((m) => m.id === module.id);
-          if (idx >= 0) updated[idx] = module;
-          else updated.push(module);
-        });
-        return { modules: updated };
-      }),
-      
-      addStandaloneProducts: (newProducts) => set((state) => {
-        const updated = [...state.standaloneProducts];
-        newProducts.forEach((product) => {
-          const idx = updated.findIndex((p) => p.id === product.id);
-          if (idx >= 0) updated[idx] = product;
-          else updated.push(product);
-        });
-        return { standaloneProducts: updated };
+      clearAllData: () => set({
+        schemaVersion: '',
+        attributeDefs: [],
+        macros: [],
+        families: [],
+        addons: [],
+        prices: [],
+        supplierPriorities: [],
+        isDataLoaded: false,
       }),
       
       // Toggles
@@ -265,15 +112,15 @@ export const useLensStore = create<LensState>()(
         ),
       })),
       
-      toggleModuleActive: (id) => set((state) => ({
-        modules: state.modules.map((m) => 
-          m.id === id ? { ...m, active: !m.active } : m
+      toggleAddonActive: (id) => set((state) => ({
+        addons: state.addons.map((a) => 
+          a.id === id ? { ...a, active: !a.active } : a
         ),
       })),
       
-      toggleProductActive: (id) => set((state) => ({
-        standaloneProducts: state.standaloneProducts.map((p) => 
-          p.id === id ? { ...p, active: !p.active } : p
+      togglePriceActive: (erpCode) => set((state) => ({
+        prices: state.prices.map((p) => 
+          p.erp_code === erpCode ? { ...p, active: !p.active } : p
         ),
       })),
       
@@ -288,22 +135,75 @@ export const useLensStore = create<LensState>()(
       setCurrentPrescription: (prescription) => set({ currentPrescription: prescription }),
       setCurrentFrame: (frame) => set({ currentFrame: frame }),
       
-      toggleModule: (moduleId) => set((state) => ({
-        selectedModules: state.selectedModules.includes(moduleId)
-          ? state.selectedModules.filter((id) => id !== moduleId)
-          : [...state.selectedModules, moduleId],
+      toggleAddon: (addonId) => set((state) => ({
+        selectedAddons: state.selectedAddons.includes(addonId)
+          ? state.selectedAddons.filter((id) => id !== addonId)
+          : [...state.selectedAddons, addonId],
       })),
       
-      clearSelectedModules: () => set({ selectedModules: [] }),
+      clearSelectedAddons: () => set({ selectedAddons: [] }),
       
-      clearAllData: () => set({
-        macros: [],
-        families: [],
-        modules: [],
-        standaloneProducts: [],
-        supplierPriorities: [],
-        priceTables: [],
-      }),
+      // Helper functions
+      getFamiliesByMacro: (macroId) => {
+        const state = get();
+        return state.families.filter(f => f.macro === macroId && f.active);
+      },
+      
+      getCompatiblePrices: (familyId, prescription, frame) => {
+        const state = get();
+        const familyPrices = state.prices.filter(p => 
+          p.family_id === familyId && 
+          p.active && 
+          !p.blocked
+        );
+        
+        if (!prescription) return familyPrices;
+        
+        // Filter by prescription specs
+        const maxSphere = Math.max(
+          Math.abs(prescription.rightSphere),
+          Math.abs(prescription.leftSphere)
+        );
+        const maxCyl = Math.min(
+          prescription.rightCylinder,
+          prescription.leftCylinder
+        );
+        
+        return familyPrices.filter(p => {
+          const { specs } = p;
+          // Check sphere range
+          const sphereOk = prescription.rightSphere >= specs.sphere_min && 
+                          prescription.rightSphere <= specs.sphere_max &&
+                          prescription.leftSphere >= specs.sphere_min && 
+                          prescription.leftSphere <= specs.sphere_max;
+          
+          // Check cylinder range
+          const cylOk = prescription.rightCylinder >= specs.cyl_min && 
+                       prescription.rightCylinder <= specs.cyl_max &&
+                       prescription.leftCylinder >= specs.cyl_min && 
+                       prescription.leftCylinder <= specs.cyl_max;
+          
+          // Check frame dimensions if available
+          let frameOk = true;
+          if (frame && frame.altura) {
+            frameOk = frame.altura >= specs.altura_min_mm && 
+                     frame.altura <= specs.altura_max_mm;
+          }
+          
+          return sphereOk && cylOk && frameOk;
+        });
+      },
+      
+      getBestPriceForFamily: (familyId, prescription, frame) => {
+        const compatiblePrices = get().getCompatiblePrices(familyId, prescription, frame);
+        if (compatiblePrices.length === 0) return null;
+        
+        // Sort by price (cheapest first) and return the first one
+        const sorted = [...compatiblePrices].sort(
+          (a, b) => a.price_sale_half_pair - b.price_sale_half_pair
+        );
+        return sorted[0];
+      },
     }),
     {
       name: 'lens-store',
