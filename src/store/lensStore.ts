@@ -157,20 +157,21 @@ export const useLensStore = create<LensState>()(
           !p.blocked
         );
         
+        // If no prescription or prescription has default values, return all prices without filtering
         if (!prescription) return familyPrices;
         
-        // Filter by prescription specs
-        const maxSphere = Math.max(
-          Math.abs(prescription.rightSphere),
-          Math.abs(prescription.leftSphere)
-        );
-        const maxCyl = Math.min(
-          prescription.rightCylinder,
-          prescription.leftCylinder
-        );
+        // Check if prescription has real values (not just defaults)
+        const hasRealPrescription = 
+          prescription.rightSphere !== 0 || 
+          prescription.leftSphere !== 0 ||
+          prescription.rightCylinder !== 0 ||
+          prescription.leftCylinder !== 0;
+        
+        if (!hasRealPrescription) return familyPrices;
         
         return familyPrices.filter(p => {
           const { specs } = p;
+          
           // Check sphere range
           const sphereOk = prescription.rightSphere >= specs.sphere_min && 
                           prescription.rightSphere <= specs.sphere_max &&
@@ -183,14 +184,26 @@ export const useLensStore = create<LensState>()(
                        prescription.leftCylinder >= specs.cyl_min && 
                        prescription.leftCylinder <= specs.cyl_max;
           
+          // Check addition for progressive lenses (if specs have add range)
+          let addOk = true;
+          if (specs.add_min !== undefined && specs.add_max !== undefined) {
+            const rightAdd = prescription.rightAddition || 0;
+            const leftAdd = prescription.leftAddition || 0;
+            // Only check if there's an addition value
+            if (rightAdd > 0 || leftAdd > 0) {
+              addOk = rightAdd >= specs.add_min && rightAdd <= specs.add_max &&
+                      leftAdd >= specs.add_min && leftAdd <= specs.add_max;
+            }
+          }
+          
           // Check frame dimensions if available
           let frameOk = true;
-          if (frame && frame.altura) {
+          if (frame && frame.altura && specs.altura_min_mm && specs.altura_max_mm) {
             frameOk = frame.altura >= specs.altura_min_mm && 
                      frame.altura <= specs.altura_max_mm;
           }
           
-          return sphereOk && cylOk && frameOk;
+          return sphereOk && cylOk && addOk && frameOk;
         });
       },
       
