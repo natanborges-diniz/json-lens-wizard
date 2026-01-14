@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -15,22 +15,37 @@ import {
   Zap,
   Shield,
   Crown,
-  Loader2
+  Loader2,
+  ThumbsUp
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Slider } from '@/components/ui/slider';
-import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useLensStore } from '@/store/lensStore';
-import type { CustomerProfile, Prescription, Tier, Family, Addon, Price, LensData, MACRO_TO_TIER } from '@/types/lens';
+import type { 
+  CustomerProfile, 
+  Prescription, 
+  Tier, 
+  Family, 
+  Addon, 
+  Price, 
+  LensData, 
+  AnamnesisData,
+  FrameMeasurements
+} from '@/types/lens';
 import { toast } from 'sonner';
 
-type Step = 'anamnesis' | 'prescription' | 'frame' | 'recommendations';
+// Import anamnesis components
+import { UsageProfileStep } from '@/components/anamnesis/UsageProfileStep';
+import { VisualComplaintsStep } from '@/components/anamnesis/VisualComplaintsStep';
+import { LifestyleStep } from '@/components/anamnesis/LifestyleStep';
+import { PrescriptionStep } from '@/components/anamnesis/PrescriptionStep';
+import { FrameStep } from '@/components/anamnesis/FrameStep';
+
+type Step = 'profile' | 'complaints' | 'lifestyle' | 'prescription' | 'frame' | 'recommendations';
 
 // Tier mapping
 const macroToTier: Record<string, Tier> = {
@@ -48,17 +63,24 @@ interface FamilyWithPrice {
   family: Family;
   bestPrice: Price | null;
   tier: Tier;
+  score: number; // Recommendation score based on anamnesis
 }
 
+// Default anamnesis data
+const defaultAnamnesis: AnamnesisData = {
+  primaryUse: 'mixed',
+  screenHours: '3-5',
+  nightDriving: 'sometimes',
+  visualComplaints: [],
+  outdoorTime: 'no',
+  clearLensPreference: 'indifferent',
+  aestheticPriority: 'medium',
+};
+
 const SellerFlow = () => {
-  const [currentStep, setCurrentStep] = useState<Step>('anamnesis');
-  const [customerData, setCustomerData] = useState<Partial<CustomerProfile>>({
-    primaryUse: 'general',
-    digitalDeviceHours: 4,
-    outdoorActivities: false,
-    sensitiveToLight: false,
-    wearGlassesCurrently: false,
-  });
+  const [currentStep, setCurrentStep] = useState<Step>('profile');
+  const [customerName, setCustomerName] = useState('');
+  const [anamnesisData, setAnamnesisData] = useState<AnamnesisData>(defaultAnamnesis);
   const [prescriptionData, setPrescriptionData] = useState<Partial<Prescription>>({
     rightSphere: 0,
     rightCylinder: 0,
@@ -67,7 +89,7 @@ const SellerFlow = () => {
     leftCylinder: 0,
     leftAxis: 0,
   });
-  const [frameData, setFrameData] = useState({
+  const [frameData, setFrameData] = useState<Partial<FrameMeasurements>>({
     horizontalSize: 54,
     verticalSize: 40,
     bridge: 18,
@@ -119,10 +141,12 @@ const SellerFlow = () => {
   }, [prescriptionData.rightAddition, prescriptionData.leftAddition]);
 
   const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
-    { id: 'anamnesis', label: 'Anamnese', icon: <User className="w-4 h-4" /> },
+    { id: 'profile', label: 'Perfil', icon: <User className="w-4 h-4" /> },
+    { id: 'complaints', label: 'Queixas', icon: <Info className="w-4 h-4" /> },
+    { id: 'lifestyle', label: 'Estilo', icon: <Sparkles className="w-4 h-4" /> },
     { id: 'prescription', label: 'Receita', icon: <FileText className="w-4 h-4" /> },
     { id: 'frame', label: 'Armação', icon: <Glasses className="w-4 h-4" /> },
-    { id: 'recommendations', label: 'Soluções', icon: <Sparkles className="w-4 h-4" /> },
+    { id: 'recommendations', label: 'Soluções', icon: <ThumbsUp className="w-4 h-4" /> },
   ];
 
   const stepIndex = steps.findIndex(s => s.id === currentStep);
@@ -142,8 +166,57 @@ const SellerFlow = () => {
     }
   };
 
-  // Get recommendations organized by tier
-  const getRecommendationsByTier = (): Record<Tier, FamilyWithPrice[]> => {
+  // Calculate recommendation score based on anamnesis
+  const calculateScore = (family: Family, price: Price | null): number => {
+    let score = 100;
+
+    // High screen usage favors digital/blue filter
+    if (anamnesisData.screenHours === '6-8' || anamnesisData.screenHours === '8+') {
+      if (family.macro.includes('DIGITAL') || price?.addons_detected?.includes('BLUE')) {
+        score += 30;
+      }
+    }
+
+    // Light sensitivity favors photochromic or AR
+    if (anamnesisData.visualComplaints.includes('light_sensitivity')) {
+      if (price?.addons_detected?.includes('FOTOSSENSIVEL') || price?.addons_detected?.includes('AR')) {
+        score += 25;
+      }
+    }
+
+    // Eye fatigue favors comfort/advanced tiers
+    if (anamnesisData.visualComplaints.includes('eye_fatigue') || anamnesisData.visualComplaints.includes('end_day_fatigue')) {
+      if (family.macro.includes('CONFORTO') || family.macro.includes('AVANCADO') || family.macro.includes('TOP')) {
+        score += 20;
+      }
+    }
+
+    // Outdoor time favors photochromic
+    if (anamnesisData.outdoorTime === 'yes') {
+      if (price?.addons_detected?.includes('FOTOSSENSIVEL')) {
+        score += 25;
+      }
+    }
+
+    // Night driving favors quality AR
+    if (anamnesisData.nightDriving === 'frequent') {
+      if (price?.addons_detected?.includes('AR')) {
+        score += 20;
+      }
+    }
+
+    // Aesthetic priority favors higher index
+    if (anamnesisData.aestheticPriority === 'high') {
+      if (price?.index && (price.index === '1.74' || price.index === '1.67')) {
+        score += 15;
+      }
+    }
+
+    return score;
+  };
+
+  // Get recommendations organized by tier with scoring
+  const getRecommendationsByTier = useMemo((): Record<Tier, FamilyWithPrice[]> => {
     const result: Record<Tier, FamilyWithPrice[]> = {
       essential: [],
       comfort: [],
@@ -170,20 +243,25 @@ const SellerFlow = () => {
       if (!tier) return;
 
       const prescription = prescriptionData.rightSphere !== undefined ? prescriptionData as Prescription : null;
-      const frame = frameData.altura ? { ...frameData } : null;
+      const frame = frameData.altura ? frameData as FrameMeasurements : null;
       
       const bestPrice = getBestPriceForFamily(family.id, prescription, frame);
+      const score = calculateScore(family, bestPrice);
       
       result[tier].push({
         family,
         bestPrice,
         tier,
+        score,
       });
     });
 
-    // Sort each tier by supplier priority
+    // Sort each tier by score (highest first), then by supplier priority
     Object.keys(result).forEach(tier => {
       result[tier as Tier].sort((a, b) => {
+        // First by score (higher is better)
+        if (b.score !== a.score) return b.score - a.score;
+        // Then by supplier priority
         const priorityA = getPriority(a.family.macro, a.family.supplier);
         const priorityB = getPriority(b.family.macro, b.family.supplier);
         return priorityA - priorityB;
@@ -191,21 +269,30 @@ const SellerFlow = () => {
     });
 
     return result;
-  };
+  }, [families, lensCategory, prescriptionData, frameData, supplierPriorities, anamnesisData, getBestPriceForFamily]);
 
-  const recommendations = getRecommendationsByTier();
+  const recommendations = getRecommendationsByTier;
   const activeAddons = addons.filter(a => a.active && a.rules.categories.includes(lensCategory));
 
-  // Calculate total price for a family
-  const calculateTotal = (familyWithPrice: FamilyWithPrice) => {
-    if (!familyWithPrice.bestPrice) return 0;
-    // Price is per half pair, so multiply by 2 for full pair
-    const basePrice = familyWithPrice.bestPrice.price_sale_half_pair * 2;
+  // Find the most recommended option across all tiers
+  const getMostRecommended = (): FamilyWithPrice | null => {
+    let best: FamilyWithPrice | null = null;
+    let bestScore = 0;
     
-    // Add addon prices (simplified - in real world would need addon pricing)
-    // For now, addons are typically bundled or have complex pricing
-    return basePrice;
+    (['comfort', 'advanced'] as Tier[]).forEach(tier => {
+      const tierFamilies = recommendations[tier];
+      if (tierFamilies.length > 0 && tierFamilies[0].bestPrice) {
+        if (tierFamilies[0].score > bestScore) {
+          best = tierFamilies[0];
+          bestScore = tierFamilies[0].score;
+        }
+      }
+    });
+    
+    return best;
   };
+
+  const mostRecommended = getMostRecommended();
 
   const getTierConfig = (tier: Tier) => {
     const macro = macros.find(m => macroToTier[m.id] === tier && m.category === lensCategory);
@@ -255,6 +342,11 @@ const SellerFlow = () => {
     return addon.name_commercial[supplier] || addon.name_common;
   };
 
+  // Update anamnesis data helper
+  const updateAnamnesis = (data: Partial<AnamnesisData>) => {
+    setAnamnesisData(prev => ({ ...prev, ...data }));
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -286,12 +378,12 @@ const SellerFlow = () => {
               </div>
             </div>
             
-            <div className="hidden md:flex items-center gap-2">
+            <div className="hidden md:flex items-center gap-1">
               {steps.map((step, idx) => (
                 <div key={step.id} className="flex items-center">
                   <button
                     onClick={() => setCurrentStep(step.id)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs transition-all ${
                       step.id === currentStep
                         ? 'bg-primary text-primary-foreground'
                         : idx < stepIndex
@@ -299,11 +391,11 @@ const SellerFlow = () => {
                         : 'bg-muted text-muted-foreground'
                     }`}
                   >
-                    {idx < stepIndex ? <Check className="w-4 h-4" /> : step.icon}
+                    {idx < stepIndex ? <Check className="w-3 h-3" /> : step.icon}
                     <span className="hidden lg:inline">{step.label}</span>
                   </button>
                   {idx < steps.length - 1 && (
-                    <div className={`w-8 h-0.5 mx-1 ${
+                    <div className={`w-4 h-0.5 mx-0.5 ${
                       idx < stepIndex ? 'bg-success' : 'bg-border'
                     }`} />
                   )}
@@ -317,380 +409,75 @@ const SellerFlow = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-6 py-8 max-w-4xl">
-        {/* Anamnesis Step */}
-        {currentStep === 'anamnesis' && (
-          <div className="space-y-6 animate-slide-up">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-foreground mb-2">Conhecendo o Cliente</h2>
-              <p className="text-muted-foreground">Informações para recomendação personalizada</p>
+      <main className="container mx-auto px-6 py-8 max-w-3xl">
+        {/* Step 1: Usage Profile */}
+        {currentStep === 'profile' && (
+          <div className="animate-slide-up">
+            <div className="mb-6">
+              <Label htmlFor="customerName" className="text-sm">Nome do Cliente (opcional)</Label>
+              <Input 
+                id="customerName"
+                placeholder="Nome do cliente"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                className="mt-2"
+              />
             </div>
-
-            <Card>
-              <CardContent className="pt-6 space-y-6">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Nome do Cliente</Label>
-                    <Input 
-                      id="name" 
-                      placeholder="Nome completo"
-                      value={customerData.name || ''}
-                      onChange={(e) => setCustomerData(prev => ({ ...prev, name: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="age">Idade</Label>
-                    <Input 
-                      id="age" 
-                      type="number"
-                      placeholder="Anos"
-                      value={customerData.age || ''}
-                      onChange={(e) => setCustomerData(prev => ({ ...prev, age: parseInt(e.target.value) }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="occupation">Profissão / Ocupação</Label>
-                  <Input 
-                    id="occupation" 
-                    placeholder="Ex: Programador, Professor, Motorista..."
-                    value={customerData.occupation || ''}
-                    onChange={(e) => setCustomerData(prev => ({ ...prev, occupation: e.target.value }))}
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <Label>Uso Principal dos Óculos</Label>
-                  <RadioGroup 
-                    value={customerData.primaryUse || 'general'}
-                    onValueChange={(v) => setCustomerData(prev => ({ ...prev, primaryUse: v as CustomerProfile['primaryUse'] }))}
-                    className="grid grid-cols-2 gap-3"
-                  >
-                    {[
-                      { value: 'reading', label: 'Leitura', desc: 'Livros, documentos' },
-                      { value: 'computer', label: 'Computador', desc: 'Trabalho, telas' },
-                      { value: 'driving', label: 'Dirigir', desc: 'Veículos, estradas' },
-                      { value: 'general', label: 'Uso Geral', desc: 'Todas as situações' },
-                    ].map((opt) => (
-                      <Label
-                        key={opt.value}
-                        htmlFor={opt.value}
-                        className={`flex items-center gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
-                          customerData.primaryUse === opt.value
-                            ? 'border-primary bg-primary/5'
-                            : 'border-border hover:border-primary/50'
-                        }`}
-                      >
-                        <RadioGroupItem value={opt.value} id={opt.value} />
-                        <div>
-                          <div className="font-medium">{opt.label}</div>
-                          <div className="text-xs text-muted-foreground">{opt.desc}</div>
-                        </div>
-                      </Label>
-                    ))}
-                  </RadioGroup>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <Label>Horas diárias em dispositivos digitais</Label>
-                    <span className="text-sm font-medium text-primary">{customerData.digitalDeviceHours}h</span>
-                  </div>
-                  <Slider
-                    value={[customerData.digitalDeviceHours || 4]}
-                    onValueChange={([v]) => setCustomerData(prev => ({ ...prev, digitalDeviceHours: v }))}
-                    min={0}
-                    max={16}
-                    step={1}
-                    className="py-4"
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>0h</span>
-                    <span>8h</span>
-                    <span>16h</span>
-                  </div>
-                </div>
-
-                <div className="space-y-4 pt-2">
-                  <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                    <div>
-                      <Label>Pratica atividades ao ar livre?</Label>
-                      <p className="text-xs text-muted-foreground">Esportes, caminhadas, etc.</p>
-                    </div>
-                    <Switch
-                      checked={customerData.outdoorActivities}
-                      onCheckedChange={(v) => setCustomerData(prev => ({ ...prev, outdoorActivities: v }))}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                    <div>
-                      <Label>Sensibilidade à luz?</Label>
-                      <p className="text-xs text-muted-foreground">Desconforto com luz forte</p>
-                    </div>
-                    <Switch
-                      checked={customerData.sensitiveToLight}
-                      onCheckedChange={(v) => setCustomerData(prev => ({ ...prev, sensitiveToLight: v }))}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                    <div>
-                      <Label>Já usa óculos?</Label>
-                      <p className="text-xs text-muted-foreground">Possui experiência prévia</p>
-                    </div>
-                    <Switch
-                      checked={customerData.wearGlassesCurrently}
-                      onCheckedChange={(v) => setCustomerData(prev => ({ ...prev, wearGlassesCurrently: v }))}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <UsageProfileStep 
+              data={anamnesisData} 
+              onUpdate={updateAnamnesis} 
+            />
           </div>
         )}
 
-        {/* Prescription Step */}
+        {/* Step 2: Visual Complaints */}
+        {currentStep === 'complaints' && (
+          <div className="animate-slide-up">
+            <VisualComplaintsStep 
+              data={anamnesisData} 
+              onUpdate={updateAnamnesis} 
+            />
+          </div>
+        )}
+
+        {/* Step 3: Lifestyle */}
+        {currentStep === 'lifestyle' && (
+          <div className="animate-slide-up">
+            <LifestyleStep 
+              data={anamnesisData} 
+              onUpdate={updateAnamnesis} 
+            />
+          </div>
+        )}
+
+        {/* Step 4: Prescription */}
         {currentStep === 'prescription' && (
-          <div className="space-y-6 animate-slide-up">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-foreground mb-2">Receita Médica</h2>
-              <p className="text-muted-foreground">Insira os dados da receita oftalmológica</p>
-            </div>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="grid md:grid-cols-2 gap-8">
-                  {/* Right Eye */}
-                  <div className="space-y-4">
-                    <h3 className="font-semibold text-foreground flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">
-                        OD
-                      </div>
-                      Olho Direito
-                    </h3>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="space-y-2">
-                        <Label className="text-xs">Esférico</Label>
-                        <Input 
-                          type="number"
-                          step="0.25"
-                          placeholder="0.00"
-                          value={prescriptionData.rightSphere || ''}
-                          onChange={(e) => setPrescriptionData(prev => ({ 
-                            ...prev, 
-                            rightSphere: parseFloat(e.target.value) || 0
-                          }))}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs">Cilíndrico</Label>
-                        <Input 
-                          type="number"
-                          step="0.25"
-                          placeholder="0.00"
-                          value={prescriptionData.rightCylinder || ''}
-                          onChange={(e) => setPrescriptionData(prev => ({ 
-                            ...prev, 
-                            rightCylinder: parseFloat(e.target.value) || 0
-                          }))}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs">Eixo</Label>
-                        <Input 
-                          type="number"
-                          placeholder="0"
-                          value={prescriptionData.rightAxis || ''}
-                          onChange={(e) => setPrescriptionData(prev => ({ 
-                            ...prev, 
-                            rightAxis: parseInt(e.target.value) || 0
-                          }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs">Adição (para lentes progressivas)</Label>
-                      <Input 
-                        type="number"
-                        step="0.25"
-                        placeholder="0.00"
-                        value={prescriptionData.rightAddition || ''}
-                        onChange={(e) => setPrescriptionData(prev => ({ 
-                          ...prev, 
-                          rightAddition: parseFloat(e.target.value) || 0
-                        }))}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Left Eye */}
-                  <div className="space-y-4">
-                    <h3 className="font-semibold text-foreground flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">
-                        OE
-                      </div>
-                      Olho Esquerdo
-                    </h3>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="space-y-2">
-                        <Label className="text-xs">Esférico</Label>
-                        <Input 
-                          type="number"
-                          step="0.25"
-                          placeholder="0.00"
-                          value={prescriptionData.leftSphere || ''}
-                          onChange={(e) => setPrescriptionData(prev => ({ 
-                            ...prev, 
-                            leftSphere: parseFloat(e.target.value) || 0
-                          }))}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs">Cilíndrico</Label>
-                        <Input 
-                          type="number"
-                          step="0.25"
-                          placeholder="0.00"
-                          value={prescriptionData.leftCylinder || ''}
-                          onChange={(e) => setPrescriptionData(prev => ({ 
-                            ...prev, 
-                            leftCylinder: parseFloat(e.target.value) || 0
-                          }))}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs">Eixo</Label>
-                        <Input 
-                          type="number"
-                          placeholder="0"
-                          value={prescriptionData.leftAxis || ''}
-                          onChange={(e) => setPrescriptionData(prev => ({ 
-                            ...prev, 
-                            leftAxis: parseInt(e.target.value) || 0
-                          }))}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs">Adição (para lentes progressivas)</Label>
-                      <Input 
-                        type="number"
-                        step="0.25"
-                        placeholder="0.00"
-                        value={prescriptionData.leftAddition || ''}
-                        onChange={(e) => setPrescriptionData(prev => ({ 
-                          ...prev, 
-                          leftAddition: parseFloat(e.target.value) || 0
-                        }))}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Lens category indicator */}
-                <div className={`mt-6 p-4 rounded-lg flex items-start gap-3 ${
-                  lensCategory === 'PROGRESSIVA' 
-                    ? 'bg-primary/10 border border-primary/30' 
-                    : 'bg-muted'
-                }`}>
-                  <Info className={`w-5 h-5 shrink-0 mt-0.5 ${
-                    lensCategory === 'PROGRESSIVA' ? 'text-primary' : 'text-muted-foreground'
-                  }`} />
-                  <div className="text-sm">
-                    <p className="font-medium text-foreground mb-1">
-                      {lensCategory === 'PROGRESSIVA' ? 'Lente Progressiva' : 'Lente Monofocal'}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {lensCategory === 'PROGRESSIVA' 
-                        ? 'A adição indica necessidade de lentes progressivas (multifocais).'
-                        : 'Sem adição, indicamos lentes monofocais (visão simples).'}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <div className="animate-slide-up">
+            <PrescriptionStep 
+              data={prescriptionData}
+              onUpdate={(data) => setPrescriptionData(prev => ({ ...prev, ...data }))}
+              lensCategory={lensCategory}
+            />
           </div>
         )}
 
-        {/* Frame Step */}
+        {/* Step 5: Frame */}
         {currentStep === 'frame' && (
-          <div className="space-y-6 animate-slide-up">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-foreground mb-2">Medidas da Armação</h2>
-              <p className="text-muted-foreground">Dados técnicos da armação escolhida</p>
-            </div>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs">Horizontal (mm)</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="54"
-                      value={frameData.horizontalSize || ''}
-                      onChange={(e) => setFrameData(prev => ({ ...prev, horizontalSize: parseInt(e.target.value) || 0 }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Vertical (mm)</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="40"
-                      value={frameData.verticalSize || ''}
-                      onChange={(e) => setFrameData(prev => ({ ...prev, verticalSize: parseInt(e.target.value) || 0 }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Ponte (mm)</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="18"
-                      value={frameData.bridge || ''}
-                      onChange={(e) => setFrameData(prev => ({ ...prev, bridge: parseInt(e.target.value) || 0 }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">DP (mm)</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="64"
-                      value={frameData.dp || ''}
-                      onChange={(e) => setFrameData(prev => ({ ...prev, dp: parseInt(e.target.value) || 0 }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs">Altura (mm)</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="18"
-                      value={frameData.altura || ''}
-                      onChange={(e) => setFrameData(prev => ({ ...prev, altura: parseInt(e.target.value) || 0 }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-6 p-4 bg-info/10 rounded-lg flex items-start gap-3">
-                  <Info className="w-5 h-5 text-info shrink-0 mt-0.5" />
-                  <div className="text-sm text-muted-foreground">
-                    <p className="font-medium text-foreground mb-1">Dica</p>
-                    <p>As medidas da armação ajudam a filtrar SKUs compatíveis e recomendar o índice de refração mais adequado para melhor estética.</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <div className="animate-slide-up">
+            <FrameStep 
+              data={frameData}
+              onUpdate={(data) => setFrameData(prev => ({ ...prev, ...data }))}
+            />
           </div>
         )}
 
-        {/* Recommendations Step */}
+        {/* Step 6: Recommendations */}
         {currentStep === 'recommendations' && (
           <div className="space-y-6 animate-slide-up">
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-foreground mb-2">Soluções Recomendadas</h2>
               <p className="text-muted-foreground">
-                {customerData.name ? `Para ${customerData.name}` : 'Escolha o nível de solução ideal'}
+                {customerName ? `Para ${customerName}` : 'Escolha o nível de solução ideal'}
                 {' • '}
                 <Badge variant="outline">{lensCategory === 'PROGRESSIVA' ? 'Progressiva' : 'Monofocal'}</Badge>
               </p>
@@ -743,8 +530,12 @@ const SellerFlow = () => {
                 
                 if (tierFamilies.length === 0) return null;
 
+                // Check if this tier has the most recommended
+                const hasMostRecommended = mostRecommended && 
+                  tierFamilies.some(f => f.family.id === mostRecommended.family.id);
+
                 return (
-                  <Card key={tier} className={`border-2 ${config.border}`}>
+                  <Card key={tier} className={`border-2 ${config.border} ${hasMostRecommended ? 'ring-2 ring-primary ring-offset-2' : ''}`}>
                     <CardHeader className={`${config.bg} rounded-t-lg`}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -752,6 +543,11 @@ const SellerFlow = () => {
                           <div>
                             <CardTitle className={`text-lg ${config.color}`}>
                               {config.label}
+                              {hasMostRecommended && (
+                                <Badge className="ml-2 bg-primary text-primary-foreground">
+                                  Mais Recomendada
+                                </Badge>
+                              )}
                             </CardTitle>
                             <CardDescription>{config.description}</CardDescription>
                           </div>
@@ -760,75 +556,84 @@ const SellerFlow = () => {
                     </CardHeader>
                     <CardContent className="pt-4">
                       <div className="space-y-3">
-                        {tierFamilies.map(({ family, bestPrice }) => (
-                          <div 
-                            key={family.id}
-                            className={`flex items-center justify-between p-4 rounded-lg transition-colors ${
-                              bestPrice 
-                                ? 'bg-muted/30 hover:bg-muted/50' 
-                                : 'bg-destructive/5 opacity-60'
-                            }`}
-                          >
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium text-foreground">{family.name_original}</span>
-                                <Badge variant="outline" className="text-xs">
-                                  {family.supplier}
-                                </Badge>
-                              </div>
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {family.attributes_display_base.slice(0, 3).map((attr, i) => (
-                                  <span 
-                                    key={i}
-                                    className="text-xs px-2 py-0.5 bg-background rounded-full text-muted-foreground"
-                                  >
-                                    ✓ {attr}
-                                  </span>
-                                ))}
-                                {family.attributes_display_base.length > 3 && (
-                                  <span className="text-xs px-2 py-0.5 bg-background rounded-full text-muted-foreground">
-                                    +{family.attributes_display_base.length - 3} mais
-                                  </span>
+                        {tierFamilies.slice(0, 2).map(({ family, bestPrice, score }) => {
+                          const isRecommended = mostRecommended?.family.id === family.id;
+                          
+                          return (
+                            <div 
+                              key={family.id}
+                              className={`flex items-center justify-between p-4 rounded-lg transition-colors ${
+                                isRecommended
+                                  ? 'bg-primary/5 border-2 border-primary/30'
+                                  : bestPrice 
+                                    ? 'bg-muted/30 hover:bg-muted/50' 
+                                    : 'bg-destructive/5 opacity-60'
+                              }`}
+                            >
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-medium text-foreground">{family.name_original}</span>
+                                  <Badge variant="outline" className="text-xs">
+                                    {family.supplier}
+                                  </Badge>
+                                  {isRecommended && (
+                                    <ThumbsUp className="w-4 h-4 text-primary" />
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {family.attributes_display_base.slice(0, 3).map((attr, i) => (
+                                    <span 
+                                      key={i}
+                                      className="text-xs px-2 py-0.5 bg-background rounded-full text-muted-foreground"
+                                    >
+                                      ✓ {attr}
+                                    </span>
+                                  ))}
+                                  {family.attributes_display_base.length > 3 && (
+                                    <span className="text-xs px-2 py-0.5 bg-background rounded-full text-muted-foreground">
+                                      +{family.attributes_display_base.length - 3} mais
+                                    </span>
+                                  )}
+                                </div>
+                                {bestPrice && bestPrice.addons_detected && bestPrice.addons_detected.length > 0 && (
+                                  <div className="mt-2 flex gap-1">
+                                    {bestPrice.addons_detected.map(addonId => {
+                                      const addon = addons.find(a => a.id === addonId);
+                                      if (!addon) return null;
+                                      return (
+                                        <Badge key={addonId} className="text-xs bg-secondary/20 text-secondary-foreground">
+                                          {getAddonName(addon, family.supplier)}
+                                        </Badge>
+                                      );
+                                    })}
+                                  </div>
                                 )}
                               </div>
-                              {bestPrice && bestPrice.addons_detected && bestPrice.addons_detected.length > 0 && (
-                                <div className="mt-2 flex gap-1">
-                                  {bestPrice.addons_detected.map(addonId => {
-                                    const addon = addons.find(a => a.id === addonId);
-                                    if (!addon) return null;
-                                    return (
-                                      <Badge key={addonId} className="text-xs bg-secondary/20 text-secondary-foreground">
-                                        {getAddonName(addon, family.supplier)}
-                                      </Badge>
-                                    );
-                                  })}
-                                </div>
-                              )}
+                              <div className="text-right ml-4">
+                                {bestPrice ? (
+                                  <>
+                                    <div className="text-2xl font-bold text-foreground">
+                                      R$ {(bestPrice.price_sale_half_pair * 2).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      par completo
+                                    </div>
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      ERP: {bestPrice.erp_code}
+                                    </div>
+                                    <Button size="sm" className={`mt-2 ${isRecommended ? 'gradient-primary text-primary-foreground' : ''}`}>
+                                      Selecionar
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <div className="text-sm text-destructive">
+                                    Indisponível para esta prescrição
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                            <div className="text-right ml-4">
-                              {bestPrice ? (
-                                <>
-                                  <div className="text-2xl font-bold text-foreground">
-                                    R$ {(bestPrice.price_sale_half_pair * 2).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    par completo
-                                  </div>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    ERP: {bestPrice.erp_code}
-                                  </div>
-                                  <Button size="sm" className="mt-2 gradient-primary text-primary-foreground">
-                                    Selecionar
-                                  </Button>
-                                </>
-                              ) : (
-                                <div className="text-sm text-destructive">
-                                  Indisponível para esta receita
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </CardContent>
                   </Card>
@@ -836,25 +641,24 @@ const SellerFlow = () => {
               })}
             </div>
 
-            {/* Summary of no recommendations */}
-            {Object.values(recommendations).every(r => r.length === 0) && (
-              <Card className="border-dashed">
-                <CardContent className="py-12 text-center">
-                  <Info className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                  <h3 className="text-lg font-medium text-foreground mb-2">Nenhuma recomendação encontrada</h3>
-                  <p className="text-muted-foreground">
-                    Verifique se os dados da receita estão corretos ou se existem famílias ativas para esta categoria.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
+            {/* Comparison hint */}
+            <div className="p-4 bg-muted/50 rounded-lg flex items-start gap-3">
+              <Info className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
+              <div className="text-sm text-muted-foreground">
+                <p className="font-medium text-foreground mb-1">O que muda entre os níveis?</p>
+                <p>
+                  À medida que você sobe de nível, ganha mais conforto visual, campos de visão mais amplos e tecnologias que reduzem a fadiga ocular. 
+                  A opção "Mais Recomendada" é baseada no seu perfil de uso.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between mt-8 pt-6 border-t border-border">
-          <Button
-            variant="outline"
+        {/* Navigation Buttons */}
+        <div className="flex justify-between mt-8 pt-6 border-t">
+          <Button 
+            variant="outline" 
             onClick={goBack}
             disabled={stepIndex === 0}
             className="gap-2"
@@ -862,19 +666,16 @@ const SellerFlow = () => {
             <ArrowLeft className="w-4 h-4" />
             Voltar
           </Button>
-
-          {currentStep !== 'recommendations' ? (
+          
+          {stepIndex < steps.length - 1 ? (
             <Button onClick={goNext} className="gap-2 gradient-primary text-primary-foreground">
               Continuar
               <ArrowRight className="w-4 h-4" />
             </Button>
           ) : (
-            <Button 
-              className="gap-2 gradient-premium text-secondary-foreground"
-              onClick={() => toast.success('Orçamento finalizado!')}
-            >
-              Finalizar Orçamento
+            <Button className="gap-2 gradient-secondary text-secondary-foreground">
               <Check className="w-4 h-4" />
+              Finalizar Orçamento
             </Button>
           )}
         </div>

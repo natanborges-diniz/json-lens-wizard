@@ -117,16 +117,33 @@ export interface FrameMeasurements {
   altura?: number;
 }
 
+// Anamnesis Types - based on ophthalmologic anamnesis flow
+export type PrimaryUse = 'reading' | 'computer' | 'work' | 'driving' | 'outdoor' | 'mixed';
+export type ScreenHours = '0-2' | '3-5' | '6-8' | '8+';
+export type NightDriving = 'frequent' | 'sometimes' | 'no';
+export type VisualComplaint = 'eye_fatigue' | 'headache' | 'near_focus' | 'end_day_fatigue' | 'light_sensitivity' | 'none';
+export type OutdoorPreference = 'yes' | 'no';
+export type ClearLensPreference = 'yes' | 'no' | 'indifferent';
+export type AestheticPriority = 'high' | 'medium' | 'low';
+
+export interface AnamnesisData {
+  // Profile
+  primaryUse: PrimaryUse;
+  screenHours: ScreenHours;
+  nightDriving: NightDriving;
+  // Visual Complaints
+  visualComplaints: VisualComplaint[];
+  // Lifestyle
+  outdoorTime: OutdoorPreference;
+  clearLensPreference: ClearLensPreference;
+  aestheticPriority: AestheticPriority;
+}
+
 export interface CustomerProfile {
   name: string;
-  age: number;
-  occupation: string;
-  primaryUse: 'reading' | 'computer' | 'driving' | 'general';
-  digitalDeviceHours: number;
-  outdoorActivities: boolean;
-  sensitiveToLight: boolean;
-  wearGlassesCurrently: boolean;
-  previousLensType?: string;
+  age?: number;
+  occupation?: string;
+  anamnesis: AnamnesisData;
 }
 
 // Tier mapping based on macro IDs
