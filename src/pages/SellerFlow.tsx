@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -14,7 +14,8 @@ import {
   Star,
   Zap,
   Shield,
-  Crown
+  Crown,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,13 +25,30 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { useLensStore } from '@/store/lensStore';
-import type { CustomerProfile, Prescription, Tier, Family, Module } from '@/types/lens';
+import type { CustomerProfile, Prescription, Tier, Family, Addon, Price, LensData, MACRO_TO_TIER } from '@/types/lens';
 import { toast } from 'sonner';
 
 type Step = 'anamnesis' | 'prescription' | 'frame' | 'recommendations';
+
+// Tier mapping
+const macroToTier: Record<string, Tier> = {
+  'PROG_BASICO': 'essential',
+  'PROG_CONFORTO': 'comfort',
+  'PROG_AVANCADO': 'advanced',
+  'PROG_TOP': 'top',
+  'MONO_BASICO': 'essential',
+  'MONO_ENTRADA': 'comfort',
+  'MONO_INTER': 'advanced',
+  'MONO_TOP': 'top',
+};
+
+interface FamilyWithPrice {
+  family: Family;
+  bestPrice: Price | null;
+  tier: Tier;
+}
 
 const SellerFlow = () => {
   const [currentStep, setCurrentStep] = useState<Step>('anamnesis');
@@ -49,15 +67,56 @@ const SellerFlow = () => {
     leftCylinder: 0,
     leftAxis: 0,
   });
+  const [frameData, setFrameData] = useState({
+    horizontalSize: 54,
+    verticalSize: 40,
+    bridge: 18,
+    dp: 64,
+    altura: 18,
+  });
+  const [lensCategory, setLensCategory] = useState<'PROGRESSIVA' | 'MONOFOCAL'>('PROGRESSIVA');
+  const [isLoading, setIsLoading] = useState(false);
 
   const { 
     families, 
-    modules, 
+    addons,
+    prices,
+    macros,
     supplierPriorities,
-    selectedModules,
-    toggleModule,
-    clearSelectedModules
+    selectedAddons,
+    toggleAddon,
+    clearSelectedAddons,
+    isDataLoaded,
+    loadLensData,
+    getBestPriceForFamily,
   } = useLensStore();
+
+  // Load data on mount if not loaded
+  useEffect(() => {
+    const loadData = async () => {
+      if (!isDataLoaded) {
+        setIsLoading(true);
+        try {
+          const response = await fetch('/data/lenses.json');
+          const data: LensData = await response.json();
+          loadLensData(data);
+        } catch (error) {
+          console.error('Error loading lens data:', error);
+          toast.error('Erro ao carregar dados das lentes');
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+    loadData();
+  }, [isDataLoaded, loadLensData]);
+
+  // Determine if prescription requires progressive lenses
+  useEffect(() => {
+    const hasAddition = (prescriptionData.rightAddition && prescriptionData.rightAddition > 0) ||
+                       (prescriptionData.leftAddition && prescriptionData.leftAddition > 0);
+    setLensCategory(hasAddition ? 'PROGRESSIVA' : 'MONOFOCAL');
+  }, [prescriptionData.rightAddition, prescriptionData.leftAddition]);
 
   const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
     { id: 'anamnesis', label: 'Anamnese', icon: <User className="w-4 h-4" /> },
@@ -83,67 +142,129 @@ const SellerFlow = () => {
     }
   };
 
-  const getRecommendationsByTier = (): Record<Tier, Family[]> => {
-    const activeF = families.filter(f => f.active);
-    return {
-      essential: activeF.filter(f => f.tier === 'essential'),
-      comfort: activeF.filter(f => f.tier === 'comfort'),
-      advanced: activeF.filter(f => f.tier === 'advanced'),
-      top: activeF.filter(f => f.tier === 'top'),
+  // Get recommendations organized by tier
+  const getRecommendationsByTier = (): Record<Tier, FamilyWithPrice[]> => {
+    const result: Record<Tier, FamilyWithPrice[]> = {
+      essential: [],
+      comfort: [],
+      advanced: [],
+      top: [],
     };
+
+    // Filter families by category and active status
+    const categoryFamilies = families.filter(f => 
+      f.active && f.category === lensCategory
+    );
+
+    // Get priority for suppliers per macro
+    const getPriority = (macroId: string, supplier: string): number => {
+      const priority = supplierPriorities.find(p => p.macroId === macroId);
+      if (!priority) return 999;
+      const idx = priority.suppliers.indexOf(supplier);
+      return idx >= 0 ? idx : 999;
+    };
+
+    // Group by macro and find best price for each family
+    categoryFamilies.forEach(family => {
+      const tier = macroToTier[family.macro];
+      if (!tier) return;
+
+      const prescription = prescriptionData.rightSphere !== undefined ? prescriptionData as Prescription : null;
+      const frame = frameData.altura ? { ...frameData } : null;
+      
+      const bestPrice = getBestPriceForFamily(family.id, prescription, frame);
+      
+      result[tier].push({
+        family,
+        bestPrice,
+        tier,
+      });
+    });
+
+    // Sort each tier by supplier priority
+    Object.keys(result).forEach(tier => {
+      result[tier as Tier].sort((a, b) => {
+        const priorityA = getPriority(a.family.macro, a.family.supplier);
+        const priorityB = getPriority(b.family.macro, b.family.supplier);
+        return priorityA - priorityB;
+      });
+    });
+
+    return result;
   };
 
   const recommendations = getRecommendationsByTier();
-  const activeModules = modules.filter(m => m.active);
+  const activeAddons = addons.filter(a => a.active && a.rules.categories.includes(lensCategory));
 
-  const calculateTotal = (family: Family) => {
-    const modulesCost = selectedModules.reduce((sum, id) => {
-      const mod = modules.find(m => m.id === id);
-      return sum + (mod?.price || 0);
-    }, 0);
-    return family.basePrice + modulesCost;
+  // Calculate total price for a family
+  const calculateTotal = (familyWithPrice: FamilyWithPrice) => {
+    if (!familyWithPrice.bestPrice) return 0;
+    // Price is per half pair, so multiply by 2 for full pair
+    const basePrice = familyWithPrice.bestPrice.price_sale_half_pair * 2;
+    
+    // Add addon prices (simplified - in real world would need addon pricing)
+    // For now, addons are typically bundled or have complex pricing
+    return basePrice;
   };
 
   const getTierConfig = (tier: Tier) => {
+    const macro = macros.find(m => macroToTier[m.id] === tier && m.category === lensCategory);
+    
     switch (tier) {
       case 'essential':
         return { 
-          label: 'Essencial', 
+          label: macro?.name_client || 'Essencial', 
           icon: <Shield className="w-5 h-5" />,
           color: 'text-muted-foreground',
           bg: 'bg-muted',
           border: 'border-muted-foreground/20',
-          description: 'Solução básica com correção visual eficiente'
+          description: macro?.description_client || 'Solução básica com correção visual eficiente'
         };
       case 'comfort':
         return { 
-          label: 'Conforto', 
+          label: macro?.name_client || 'Conforto', 
           icon: <Star className="w-5 h-5" />,
           color: 'text-primary',
           bg: 'bg-primary/10',
           border: 'border-primary/30',
-          description: 'Equilíbrio entre qualidade e custo-benefício'
+          description: macro?.description_client || 'Equilíbrio entre qualidade e custo-benefício'
         };
       case 'advanced':
         return { 
-          label: 'Avançada', 
+          label: macro?.name_client || 'Avançada', 
           icon: <Zap className="w-5 h-5" />,
           color: 'text-info',
           bg: 'bg-info/10',
           border: 'border-info/30',
-          description: 'Tecnologia de ponta para alta performance visual'
+          description: macro?.description_client || 'Tecnologia de ponta para alta performance visual'
         };
       case 'top':
         return { 
-          label: 'Top de Mercado', 
+          label: macro?.name_client || 'Top de Mercado', 
           icon: <Crown className="w-5 h-5" />,
           color: 'text-secondary',
           bg: 'bg-secondary/10',
           border: 'border-secondary/30',
-          description: 'O melhor disponível para máxima satisfação'
+          description: macro?.description_client || 'O melhor disponível para máxima satisfação'
         };
     }
   };
+
+  // Get addon name for a specific supplier
+  const getAddonName = (addon: Addon, supplier: string) => {
+    return addon.name_commercial[supplier] || addon.name_common;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Carregando dados...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -359,7 +480,7 @@ const SellerFlow = () => {
                           value={prescriptionData.rightSphere || ''}
                           onChange={(e) => setPrescriptionData(prev => ({ 
                             ...prev, 
-                            rightSphere: parseFloat(e.target.value) 
+                            rightSphere: parseFloat(e.target.value) || 0
                           }))}
                         />
                       </div>
@@ -372,7 +493,7 @@ const SellerFlow = () => {
                           value={prescriptionData.rightCylinder || ''}
                           onChange={(e) => setPrescriptionData(prev => ({ 
                             ...prev, 
-                            rightCylinder: parseFloat(e.target.value) 
+                            rightCylinder: parseFloat(e.target.value) || 0
                           }))}
                         />
                       </div>
@@ -384,13 +505,13 @@ const SellerFlow = () => {
                           value={prescriptionData.rightAxis || ''}
                           onChange={(e) => setPrescriptionData(prev => ({ 
                             ...prev, 
-                            rightAxis: parseInt(e.target.value) 
+                            rightAxis: parseInt(e.target.value) || 0
                           }))}
                         />
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs">Adição (se progressivo)</Label>
+                      <Label className="text-xs">Adição (para lentes progressivas)</Label>
                       <Input 
                         type="number"
                         step="0.25"
@@ -398,7 +519,7 @@ const SellerFlow = () => {
                         value={prescriptionData.rightAddition || ''}
                         onChange={(e) => setPrescriptionData(prev => ({ 
                           ...prev, 
-                          rightAddition: parseFloat(e.target.value) 
+                          rightAddition: parseFloat(e.target.value) || 0
                         }))}
                       />
                     </div>
@@ -422,7 +543,7 @@ const SellerFlow = () => {
                           value={prescriptionData.leftSphere || ''}
                           onChange={(e) => setPrescriptionData(prev => ({ 
                             ...prev, 
-                            leftSphere: parseFloat(e.target.value) 
+                            leftSphere: parseFloat(e.target.value) || 0
                           }))}
                         />
                       </div>
@@ -435,7 +556,7 @@ const SellerFlow = () => {
                           value={prescriptionData.leftCylinder || ''}
                           onChange={(e) => setPrescriptionData(prev => ({ 
                             ...prev, 
-                            leftCylinder: parseFloat(e.target.value) 
+                            leftCylinder: parseFloat(e.target.value) || 0
                           }))}
                         />
                       </div>
@@ -447,13 +568,13 @@ const SellerFlow = () => {
                           value={prescriptionData.leftAxis || ''}
                           onChange={(e) => setPrescriptionData(prev => ({ 
                             ...prev, 
-                            leftAxis: parseInt(e.target.value) 
+                            leftAxis: parseInt(e.target.value) || 0
                           }))}
                         />
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs">Adição (se progressivo)</Label>
+                      <Label className="text-xs">Adição (para lentes progressivas)</Label>
                       <Input 
                         type="number"
                         step="0.25"
@@ -461,10 +582,31 @@ const SellerFlow = () => {
                         value={prescriptionData.leftAddition || ''}
                         onChange={(e) => setPrescriptionData(prev => ({ 
                           ...prev, 
-                          leftAddition: parseFloat(e.target.value) 
+                          leftAddition: parseFloat(e.target.value) || 0
                         }))}
                       />
                     </div>
+                  </div>
+                </div>
+
+                {/* Lens category indicator */}
+                <div className={`mt-6 p-4 rounded-lg flex items-start gap-3 ${
+                  lensCategory === 'PROGRESSIVA' 
+                    ? 'bg-primary/10 border border-primary/30' 
+                    : 'bg-muted'
+                }`}>
+                  <Info className={`w-5 h-5 shrink-0 mt-0.5 ${
+                    lensCategory === 'PROGRESSIVA' ? 'text-primary' : 'text-muted-foreground'
+                  }`} />
+                  <div className="text-sm">
+                    <p className="font-medium text-foreground mb-1">
+                      {lensCategory === 'PROGRESSIVA' ? 'Lente Progressiva' : 'Lente Monofocal'}
+                    </p>
+                    <p className="text-muted-foreground">
+                      {lensCategory === 'PROGRESSIVA' 
+                        ? 'A adição indica necessidade de lentes progressivas (multifocais).'
+                        : 'Sem adição, indicamos lentes monofocais (visão simples).'}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -482,22 +624,51 @@ const SellerFlow = () => {
 
             <Card>
               <CardContent className="pt-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <div className="space-y-2">
                     <Label className="text-xs">Horizontal (mm)</Label>
-                    <Input type="number" placeholder="54" />
+                    <Input 
+                      type="number" 
+                      placeholder="54"
+                      value={frameData.horizontalSize || ''}
+                      onChange={(e) => setFrameData(prev => ({ ...prev, horizontalSize: parseInt(e.target.value) || 0 }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs">Vertical (mm)</Label>
-                    <Input type="number" placeholder="40" />
+                    <Input 
+                      type="number" 
+                      placeholder="40"
+                      value={frameData.verticalSize || ''}
+                      onChange={(e) => setFrameData(prev => ({ ...prev, verticalSize: parseInt(e.target.value) || 0 }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs">Ponte (mm)</Label>
-                    <Input type="number" placeholder="18" />
+                    <Input 
+                      type="number" 
+                      placeholder="18"
+                      value={frameData.bridge || ''}
+                      onChange={(e) => setFrameData(prev => ({ ...prev, bridge: parseInt(e.target.value) || 0 }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs">DP (mm)</Label>
-                    <Input type="number" placeholder="64" />
+                    <Input 
+                      type="number" 
+                      placeholder="64"
+                      value={frameData.dp || ''}
+                      onChange={(e) => setFrameData(prev => ({ ...prev, dp: parseInt(e.target.value) || 0 }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Altura (mm)</Label>
+                    <Input 
+                      type="number" 
+                      placeholder="18"
+                      value={frameData.altura || ''}
+                      onChange={(e) => setFrameData(prev => ({ ...prev, altura: parseInt(e.target.value) || 0 }))}
+                    />
                   </div>
                 </div>
 
@@ -505,7 +676,7 @@ const SellerFlow = () => {
                   <Info className="w-5 h-5 text-info shrink-0 mt-0.5" />
                   <div className="text-sm text-muted-foreground">
                     <p className="font-medium text-foreground mb-1">Dica</p>
-                    <p>As medidas da armação ajudam a calcular a espessura ideal da lente e recomendar o índice de refração mais adequado.</p>
+                    <p>As medidas da armação ajudam a filtrar SKUs compatíveis e recomendar o índice de refração mais adequado para melhor estética.</p>
                   </div>
                 </div>
               </CardContent>
@@ -520,39 +691,49 @@ const SellerFlow = () => {
               <h2 className="text-2xl font-bold text-foreground mb-2">Soluções Recomendadas</h2>
               <p className="text-muted-foreground">
                 {customerData.name ? `Para ${customerData.name}` : 'Escolha o nível de solução ideal'}
+                {' • '}
+                <Badge variant="outline">{lensCategory === 'PROGRESSIVA' ? 'Progressiva' : 'Monofocal'}</Badge>
               </p>
             </div>
 
-            {/* Modules Selection */}
-            <Card className="mb-6">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Complementos Selecionados</CardTitle>
-                <CardDescription>Adicione tratamentos para personalizar a solução</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {activeModules.map((mod) => (
-                    <button
-                      key={mod.id}
-                      onClick={() => toggleModule(mod.id)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
-                        selectedModules.includes(mod.id)
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border bg-card hover:border-primary/50'
-                      }`}
-                    >
-                      {selectedModules.includes(mod.id) ? (
-                        <Minus className="w-4 h-4" />
-                      ) : (
-                        <Plus className="w-4 h-4" />
-                      )}
-                      <span>{mod.name}</span>
-                      <span className="text-xs opacity-70">+R${mod.price}</span>
-                    </button>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            {/* Addons Selection */}
+            {activeAddons.length > 0 && (
+              <Card className="mb-6">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Complementos Disponíveis</CardTitle>
+                  <CardDescription>Adicione tratamentos para personalizar a solução</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {activeAddons.map((addon) => (
+                      <button
+                        key={addon.id}
+                        onClick={() => toggleAddon(addon.id)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
+                          selectedAddons.includes(addon.id)
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border bg-card hover:border-primary/50'
+                        }`}
+                      >
+                        {selectedAddons.includes(addon.id) ? (
+                          <Minus className="w-4 h-4" />
+                        ) : (
+                          <Plus className="w-4 h-4" />
+                        )}
+                        <span>{addon.name_common}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {selectedAddons.length > 0 && (
+                    <div className="mt-3 pt-3 border-t">
+                      <p className="text-sm text-muted-foreground">
+                        Selecionados: {selectedAddons.map(id => addons.find(a => a.id === id)?.name_common).join(', ')}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Tier Recommendations */}
             <div className="space-y-4">
@@ -579,44 +760,72 @@ const SellerFlow = () => {
                     </CardHeader>
                     <CardContent className="pt-4">
                       <div className="space-y-3">
-                        {tierFamilies.map((family) => (
+                        {tierFamilies.map(({ family, bestPrice }) => (
                           <div 
                             key={family.id}
-                            className="flex items-center justify-between p-4 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors"
+                            className={`flex items-center justify-between p-4 rounded-lg transition-colors ${
+                              bestPrice 
+                                ? 'bg-muted/30 hover:bg-muted/50' 
+                                : 'bg-destructive/5 opacity-60'
+                            }`}
                           >
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium text-foreground">{family.name}</span>
+                                <span className="font-medium text-foreground">{family.name_original}</span>
                                 <Badge variant="outline" className="text-xs">
                                   {family.supplier}
                                 </Badge>
                               </div>
-                              <p className="text-sm text-muted-foreground mb-2">
-                                {family.commercialName}
-                              </p>
-                              <div className="flex flex-wrap gap-1">
-                                {family.benefits.slice(0, 3).map((benefit, i) => (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {family.attributes_display_base.slice(0, 3).map((attr, i) => (
                                   <span 
                                     key={i}
                                     className="text-xs px-2 py-0.5 bg-background rounded-full text-muted-foreground"
                                   >
-                                    ✓ {benefit}
+                                    ✓ {attr}
                                   </span>
                                 ))}
-                              </div>
-                            </div>
-                            <div className="text-right ml-4">
-                              <div className="text-2xl font-bold text-foreground">
-                                R$ {calculateTotal(family).toLocaleString('pt-BR')}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {selectedModules.length > 0 && (
-                                  <span>base + {selectedModules.length} complemento(s)</span>
+                                {family.attributes_display_base.length > 3 && (
+                                  <span className="text-xs px-2 py-0.5 bg-background rounded-full text-muted-foreground">
+                                    +{family.attributes_display_base.length - 3} mais
+                                  </span>
                                 )}
                               </div>
-                              <Button size="sm" className="mt-2 gradient-primary text-primary-foreground">
-                                Selecionar
-                              </Button>
+                              {bestPrice && bestPrice.addons_detected && bestPrice.addons_detected.length > 0 && (
+                                <div className="mt-2 flex gap-1">
+                                  {bestPrice.addons_detected.map(addonId => {
+                                    const addon = addons.find(a => a.id === addonId);
+                                    if (!addon) return null;
+                                    return (
+                                      <Badge key={addonId} className="text-xs bg-secondary/20 text-secondary-foreground">
+                                        {getAddonName(addon, family.supplier)}
+                                      </Badge>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-right ml-4">
+                              {bestPrice ? (
+                                <>
+                                  <div className="text-2xl font-bold text-foreground">
+                                    R$ {(bestPrice.price_sale_half_pair * 2).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    par completo
+                                  </div>
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    ERP: {bestPrice.erp_code}
+                                  </div>
+                                  <Button size="sm" className="mt-2 gradient-primary text-primary-foreground">
+                                    Selecionar
+                                  </Button>
+                                </>
+                              ) : (
+                                <div className="text-sm text-destructive">
+                                  Indisponível para esta receita
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -626,6 +835,19 @@ const SellerFlow = () => {
                 );
               })}
             </div>
+
+            {/* Summary of no recommendations */}
+            {Object.values(recommendations).every(r => r.length === 0) && (
+              <Card className="border-dashed">
+                <CardContent className="py-12 text-center">
+                  <Info className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">Nenhuma recomendação encontrada</h3>
+                  <p className="text-muted-foreground">
+                    Verifique se os dados da receita estão corretos ou se existem famílias ativas para esta categoria.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 

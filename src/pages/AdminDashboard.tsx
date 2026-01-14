@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
-  Eye, 
   ArrowLeft, 
   Upload, 
   FileJson, 
@@ -14,8 +13,8 @@ import {
   GripVertical,
   ToggleLeft,
   ToggleRight,
-  Trash2,
-  Plus
+  DollarSign,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,58 +34,102 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { useLensStore } from '@/store/lensStore';
-import type { ImportMode, ImportData } from '@/types/lens';
+import type { ImportMode, LensData } from '@/types/lens';
 import { toast } from 'sonner';
+
+// Tier mapping for display
+const macroToTier: Record<string, string> = {
+  'PROG_BASICO': 'Essencial',
+  'PROG_CONFORTO': 'Conforto',
+  'PROG_AVANCADO': 'Avançada',
+  'PROG_TOP': 'Top de Mercado',
+  'MONO_BASICO': 'Essencial',
+  'MONO_ENTRADA': 'Conforto',
+  'MONO_INTER': 'Avançada',
+  'MONO_TOP': 'Top de Mercado',
+};
+
+const macroToBadgeClass: Record<string, string> = {
+  'PROG_BASICO': 'bg-muted text-muted-foreground',
+  'PROG_CONFORTO': 'bg-primary/10 text-primary',
+  'PROG_AVANCADO': 'bg-info/10 text-info',
+  'PROG_TOP': 'bg-secondary/10 text-secondary',
+  'MONO_BASICO': 'bg-muted text-muted-foreground',
+  'MONO_ENTRADA': 'bg-primary/10 text-primary',
+  'MONO_INTER': 'bg-info/10 text-info',
+  'MONO_TOP': 'bg-secondary/10 text-secondary',
+};
 
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('import');
   const [jsonInput, setJsonInput] = useState('');
-  const [importMode, setImportMode] = useState<ImportMode>('increment');
+  const [importMode, setImportMode] = useState<ImportMode>('replace');
   const [validationResult, setValidationResult] = useState<{ valid: boolean; errors: string[]; summary: any } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
   const { 
     macros, 
     families, 
-    modules, 
+    addons,
+    prices,
     supplierPriorities,
     toggleFamilyActive,
-    toggleModuleActive,
-    addMacros,
-    addFamilies,
-    addModules,
-    setMacros,
-    setFamilies,
-    setModules,
-    updateSupplierPriority,
-    clearAllData
+    toggleAddonActive,
+    loadLensData,
+    clearAllData,
+    isDataLoaded
   } = useLensStore();
+
+  // Load data on mount if not loaded
+  useEffect(() => {
+    const loadData = async () => {
+      if (!isDataLoaded) {
+        setIsLoading(true);
+        try {
+          const response = await fetch('/data/lenses.json');
+          const data: LensData = await response.json();
+          loadLensData(data);
+        } catch (error) {
+          console.error('Error loading lens data:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+    loadData();
+  }, [isDataLoaded, loadLensData]);
 
   const validateJson = () => {
     try {
-      const data: ImportData = JSON.parse(jsonInput);
+      const data: LensData = JSON.parse(jsonInput);
       const errors: string[] = [];
       const summary = {
+        schema_version: data.meta?.schema_version || 'N/A',
         macros: data.macros?.length || 0,
         families: data.families?.length || 0,
-        modules: data.modules?.length || 0,
+        addons: data.addons?.length || 0,
         prices: data.prices?.length || 0,
-        standaloneProducts: data.standaloneProducts?.length || 0,
-        supplierPriorities: data.supplierPriorities?.length || 0,
       };
 
       // Validate structure
+      if (!data.meta) errors.push('Campo "meta" ausente');
+      if (!data.macros) errors.push('Campo "macros" ausente');
+      if (!data.families) errors.push('Campo "families" ausente');
+      if (!data.addons) errors.push('Campo "addons" ausente');
+      if (!data.prices) errors.push('Campo "prices" ausente');
+
       if (data.families) {
         data.families.forEach((f, i) => {
           if (!f.id) errors.push(`Família ${i + 1}: ID obrigatório`);
-          if (!f.macroId) errors.push(`Família ${i + 1}: macroId obrigatório`);
-          if (!f.tier) errors.push(`Família ${i + 1}: tier obrigatório`);
+          if (!f.macro) errors.push(`Família ${i + 1}: macro obrigatório`);
+          if (!f.supplier) errors.push(`Família ${i + 1}: supplier obrigatório`);
         });
       }
 
-      if (data.modules) {
-        data.modules.forEach((m, i) => {
-          if (!m.id) errors.push(`Módulo ${i + 1}: ID obrigatório`);
-          if (!m.compatibleMacros?.length) errors.push(`Módulo ${i + 1}: compatibleMacros obrigatório`);
+      if (data.prices) {
+        data.prices.forEach((p, i) => {
+          if (!p.erp_code) errors.push(`Price ${i + 1}: erp_code obrigatório`);
+          if (!p.family_id) errors.push(`Price ${i + 1}: family_id obrigatório`);
         });
       }
 
@@ -109,20 +152,15 @@ const AdminDashboard = () => {
     if (!validationResult?.valid) return;
     
     try {
-      const data: ImportData = JSON.parse(jsonInput);
+      const data: LensData = JSON.parse(jsonInput);
       
       if (importMode === 'replace') {
         clearAllData();
-        if (data.macros) setMacros(data.macros);
-        if (data.families) setFamilies(data.families);
-        if (data.modules) setModules(data.modules);
-      } else {
-        if (data.macros) addMacros(data.macros);
-        if (data.families) addFamilies(data.families);
-        if (data.modules) addModules(data.modules);
       }
       
-      toast.success('Importação realizada com sucesso!');
+      loadLensData(data);
+      
+      toast.success(`Importação realizada com sucesso! ${data.families.length} famílias e ${data.prices.length} SKUs carregados.`);
       setJsonInput('');
       setValidationResult(null);
     } catch (e) {
@@ -130,25 +168,25 @@ const AdminDashboard = () => {
     }
   };
 
-  const getTierBadgeClass = (tier: string) => {
-    switch (tier) {
-      case 'essential': return 'bg-muted text-muted-foreground';
-      case 'comfort': return 'bg-primary/10 text-primary';
-      case 'advanced': return 'bg-info/10 text-info';
-      case 'top': return 'bg-secondary/10 text-secondary';
-      default: return 'bg-muted text-muted-foreground';
-    }
+  // Group families by category
+  const progressiveFamilies = families.filter(f => f.category === 'PROGRESSIVA');
+  const monofocalFamilies = families.filter(f => f.category === 'MONOFOCAL');
+
+  // Get price count for a family
+  const getPriceCount = (familyId: string) => {
+    return prices.filter(p => p.family_id === familyId && p.active && !p.blocked).length;
   };
 
-  const getTierLabel = (tier: string) => {
-    switch (tier) {
-      case 'essential': return 'Essencial';
-      case 'comfort': return 'Conforto';
-      case 'advanced': return 'Avançada';
-      case 'top': return 'Top de Mercado';
-      default: return tier;
-    }
-  };
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Carregando dados...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -178,8 +216,12 @@ const AdminDashboard = () => {
               <span>{families.length} famílias</span>
             </div>
             <div className="flex items-center gap-2">
-              <ListOrdered className="w-4 h-4" />
-              <span>{modules.length} módulos</span>
+              <DollarSign className="w-4 h-4" />
+              <span>{prices.length} SKUs</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Settings2 className="w-4 h-4" />
+              <span>{addons.length} add-ons</span>
             </div>
           </div>
         </div>
@@ -201,9 +243,9 @@ const AdminDashboard = () => {
               <Package className="w-4 h-4" />
               Famílias
             </TabsTrigger>
-            <TabsTrigger value="modules" className="gap-2">
+            <TabsTrigger value="addons" className="gap-2">
               <Settings2 className="w-4 h-4" />
-              Módulos
+              Add-ons
             </TabsTrigger>
           </TabsList>
 
@@ -218,7 +260,7 @@ const AdminDashboard = () => {
                     Entrada JSON
                   </CardTitle>
                   <CardDescription>
-                    Cole o JSON com os dados a serem importados
+                    Cole o JSON unificado com famílias, addons e preços
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -241,11 +283,11 @@ const AdminDashboard = () => {
                     value={jsonInput}
                     onChange={(e) => setJsonInput(e.target.value)}
                     placeholder={`{
+  "meta": { "schema_version": "1.1", ... },
   "macros": [...],
   "families": [...],
-  "modules": [...],
-  "prices": [...],
-  "supplierPriorities": [...]
+  "addons": [...],
+  "prices": [...]
 }`}
                     className="min-h-[400px] font-mono text-sm"
                   />
@@ -290,12 +332,10 @@ const AdminDashboard = () => {
                           <h4 className="font-medium text-foreground">Resumo da Importação</h4>
                           <div className="grid grid-cols-2 gap-2 text-sm">
                             {Object.entries(validationResult.summary).map(([key, value]) => (
-                              (value as number) > 0 && (
-                                <div key={key} className="flex justify-between p-2 bg-muted/50 rounded">
-                                  <span className="text-muted-foreground">{key}</span>
-                                  <span className="font-medium">{value as number}</span>
-                                </div>
-                              )
+                              <div key={key} className="flex justify-between p-2 bg-muted/50 rounded">
+                                <span className="text-muted-foreground">{key}</span>
+                                <span className="font-medium">{String(value)}</span>
+                              </div>
                             ))}
                           </div>
                         </div>
@@ -305,7 +345,7 @@ const AdminDashboard = () => {
                       {validationResult.errors.length > 0 && (
                         <div className="space-y-2">
                           <h4 className="font-medium text-destructive">Erros</h4>
-                          <div className="space-y-1">
+                          <div className="space-y-1 max-h-40 overflow-y-auto">
                             {validationResult.errors.map((error, i) => (
                               <div key={i} className="text-sm text-destructive/80 p-2 bg-destructive/5 rounded">
                                 {error}
@@ -346,15 +386,17 @@ const AdminDashboard = () => {
                   {macros.map((macro) => {
                     const priority = supplierPriorities.find(p => p.macroId === macro.id);
                     const suppliers = priority?.suppliers || [];
-                    const allSuppliers = [...new Set(families.filter(f => f.macroId === macro.id).map(f => f.supplier))];
                     
                     return (
                       <Collapsible key={macro.id}>
                         <CollapsibleTrigger asChild>
                           <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors">
                             <div>
-                              <h4 className="font-medium text-foreground">{macro.name}</h4>
-                              <p className="text-sm text-muted-foreground">{macro.description}</p>
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-medium text-foreground">{macro.name_client}</h4>
+                                <Badge variant="outline" className="text-xs">{macro.category}</Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground">{macro.description_client}</p>
                             </div>
                             <div className="flex items-center gap-2">
                               <Badge variant="outline">{suppliers.length} fornecedores</Badge>
@@ -391,19 +433,20 @@ const AdminDashboard = () => {
 
           {/* Families Tab */}
           <TabsContent value="families" className="space-y-6 animate-fade-in">
+            {/* Progressive Families */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Package className="w-5 h-5 text-primary" />
-                  Famílias de Produtos
+                  Lentes Progressivas
                 </CardTitle>
                 <CardDescription>
-                  Gerencie as famílias de lentes disponíveis
+                  {progressiveFamilies.length} famílias disponíveis
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {families.map((family) => (
+                  {progressiveFamilies.map((family) => (
                     <div 
                       key={family.id} 
                       className={`flex items-center justify-between p-4 rounded-lg border transition-all ${
@@ -425,23 +468,94 @@ const AdminDashboard = () => {
                         </Button>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-medium text-foreground">{family.name}</span>
-                            <Badge className={getTierBadgeClass(family.tier)}>
-                              {getTierLabel(family.tier)}
+                            <span className="font-medium text-foreground">{family.name_original}</span>
+                            <Badge className={macroToBadgeClass[family.macro] || 'bg-muted'}>
+                              {macroToTier[family.macro] || family.macro}
                             </Badge>
                           </div>
                           <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                             <span>{family.supplier}</span>
                             <span>•</span>
-                            <span>{family.commercialName}</span>
+                            <span>{getPriceCount(family.id)} SKUs ativos</span>
                           </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-bold text-foreground">
-                          R$ {family.basePrice.toLocaleString('pt-BR')}
+                      <div className="flex flex-wrap gap-1 max-w-md">
+                        {family.attributes_display_base.slice(0, 2).map((attr, i) => (
+                          <Badge key={i} variant="outline" className="text-xs">
+                            {attr.length > 30 ? attr.slice(0, 30) + '...' : attr}
+                          </Badge>
+                        ))}
+                        {family.attributes_display_base.length > 2 && (
+                          <Badge variant="outline" className="text-xs">
+                            +{family.attributes_display_base.length - 2}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Monofocal Families */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="w-5 h-5 text-info" />
+                  Lentes Monofocais
+                </CardTitle>
+                <CardDescription>
+                  {monofocalFamilies.length} famílias disponíveis
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {monofocalFamilies.map((family) => (
+                    <div 
+                      key={family.id} 
+                      className={`flex items-center justify-between p-4 rounded-lg border transition-all ${
+                        family.active ? 'bg-card' : 'bg-muted/30 opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleFamilyActive(family.id)}
+                          className={family.active ? 'text-success' : 'text-muted-foreground'}
+                        >
+                          {family.active ? (
+                            <ToggleRight className="w-6 h-6" />
+                          ) : (
+                            <ToggleLeft className="w-6 h-6" />
+                          )}
+                        </Button>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-foreground">{family.name_original}</span>
+                            <Badge className={macroToBadgeClass[family.macro] || 'bg-muted'}>
+                              {macroToTier[family.macro] || family.macro}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                            <span>{family.supplier}</span>
+                            <span>•</span>
+                            <span>{getPriceCount(family.id)} SKUs ativos</span>
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground">preço base</div>
+                      </div>
+                      <div className="flex flex-wrap gap-1 max-w-md">
+                        {family.attributes_display_base.slice(0, 2).map((attr, i) => (
+                          <Badge key={i} variant="outline" className="text-xs">
+                            {attr.length > 30 ? attr.slice(0, 30) + '...' : attr}
+                          </Badge>
+                        ))}
+                        {family.attributes_display_base.length > 2 && (
+                          <Badge variant="outline" className="text-xs">
+                            +{family.attributes_display_base.length - 2}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -450,13 +564,13 @@ const AdminDashboard = () => {
             </Card>
           </TabsContent>
 
-          {/* Modules Tab */}
-          <TabsContent value="modules" className="space-y-6 animate-fade-in">
+          {/* Addons Tab */}
+          <TabsContent value="addons" className="space-y-6 animate-fade-in">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Settings2 className="w-5 h-5 text-primary" />
-                  Módulos Adicionais
+                  Add-ons Disponíveis
                 </CardTitle>
                 <CardDescription>
                   Tratamentos e complementos para as lentes
@@ -464,49 +578,62 @@ const AdminDashboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="grid md:grid-cols-2 gap-4">
-                  {modules.map((module) => (
+                  {addons.map((addon) => (
                     <div 
-                      key={module.id}
+                      key={addon.id}
                       className={`p-4 rounded-lg border transition-all ${
-                        module.active ? 'bg-card' : 'bg-muted/30 opacity-60'
+                        addon.active ? 'bg-card' : 'bg-muted/30 opacity-60'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div>
-                          <h4 className="font-medium text-foreground">{module.name}</h4>
-                          <p className="text-sm text-muted-foreground">{module.commercialName}</p>
+                          <h4 className="font-medium text-foreground">{addon.name_common}</h4>
+                          <div className="flex gap-1 mt-1">
+                            {addon.rules.categories.map(cat => (
+                              <Badge key={cat} variant="outline" className="text-xs">
+                                {cat}
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => toggleModuleActive(module.id)}
-                          className={module.active ? 'text-success' : 'text-muted-foreground'}
+                          onClick={() => toggleAddonActive(addon.id)}
+                          className={addon.active ? 'text-success' : 'text-muted-foreground'}
                         >
-                          {module.active ? (
+                          {addon.active ? (
                             <ToggleRight className="w-5 h-5" />
                           ) : (
                             <ToggleLeft className="w-5 h-5" />
                           )}
                         </Button>
                       </div>
-                      <p className="text-sm text-muted-foreground mb-3">{module.description}</p>
-                      <div className="flex items-center justify-between">
+                      <p className="text-sm text-muted-foreground mb-3">{addon.description_client}</p>
+                      
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">Nomes comerciais:</p>
                         <div className="flex flex-wrap gap-1">
-                          {module.compatibleMacros.slice(0, 2).map((m) => (
-                            <Badge key={m} variant="outline" className="text-xs">
-                              {macros.find(macro => macro.id === m)?.name || m}
+                          {Object.entries(addon.name_commercial).map(([supplier, name]) => (
+                            <Badge key={supplier} variant="secondary" className="text-xs">
+                              {supplier}: {name}
                             </Badge>
                           ))}
-                          {module.compatibleMacros.length > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{module.compatibleMacros.length - 2}
-                            </Badge>
-                          )}
                         </div>
-                        <span className="font-bold text-primary">
-                          +R$ {module.price}
-                        </span>
                       </div>
+                      
+                      {addon.impact && Object.keys(addon.impact).length > 0 && (
+                        <div className="mt-3 pt-3 border-t">
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Impacto nos atributos:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(addon.impact).map(([attr, value]) => (
+                              <Badge key={attr} className="text-xs bg-primary/10 text-primary">
+                                {attr}: +{value}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
