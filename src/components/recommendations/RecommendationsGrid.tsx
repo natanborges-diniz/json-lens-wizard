@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react';
-import { Search, SlidersHorizontal, X } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { useState, useMemo, useCallback } from 'react';
+import { SlidersHorizontal, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LensCard } from './LensCard';
-import type { Family, Price, Addon, Tier, AttributeDef } from '@/types/lens';
+import { SmartSearch } from '@/components/search/SmartSearch';
+import type { Family, Price, Addon, Tier, AttributeDef, AnamnesisData, LensData } from '@/types/lens';
 
 interface FamilyWithPrice {
   family: Family;
@@ -22,6 +22,8 @@ interface RecommendationsGridProps {
   mostRecommendedId?: string;
   lensCategory: 'PROGRESSIVA' | 'MONOFOCAL';
   attributeDefs: AttributeDef[];
+  anamnesisData?: AnamnesisData;
+  lensData?: LensData | null;
 }
 
 const suppliers = ['ZEISS', 'ESSILOR', 'HOYA'];
@@ -35,9 +37,13 @@ export const RecommendationsGrid = ({
   mostRecommendedId,
   lensCategory,
   attributeDefs,
+  anamnesisData,
+  lensData,
 }: RecommendationsGridProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
+  const [highlightedFamilies, setHighlightedFamilies] = useState<string[]>([]);
+  const [suggestedAddons, setSuggestedAddons] = useState<string[]>([]);
 
   // Get one option per tier (the best one) + alternatives
   const tierOptions = useMemo(() => {
@@ -60,12 +66,24 @@ export const RecommendationsGrid = ({
         );
       }
 
+      // Apply highlight filter from AI search
+      if (highlightedFamilies.length > 0) {
+        tierFamilies = tierFamilies.filter(f => highlightedFamilies.includes(f.family.id));
+      }
+
       if (tierFamilies.length === 0) return null;
 
-      // Primary option (first one, highest score)
-      const primary = tierFamilies[0];
+      // Primary option (first one, highest score, or first highlighted)
+      const primary = highlightedFamilies.length > 0
+        ? tierFamilies.sort((a, b) => {
+            const aIdx = highlightedFamilies.indexOf(a.family.id);
+            const bIdx = highlightedFamilies.indexOf(b.family.id);
+            return aIdx - bIdx;
+          })[0]
+        : tierFamilies[0];
+      
       // Alternative options
-      const alternatives = tierFamilies.slice(1);
+      const alternatives = tierFamilies.filter(f => f.family.id !== primary.family.id);
 
       return {
         tier,
@@ -73,7 +91,7 @@ export const RecommendationsGrid = ({
         alternatives,
       };
     }).filter(Boolean);
-  }, [recommendations, supplierFilter, searchQuery]);
+  }, [recommendations, supplierFilter, searchQuery, highlightedFamilies]);
 
   // Get all unique suppliers from available families
   const availableSuppliers = useMemo(() => {
@@ -84,56 +102,86 @@ export const RecommendationsGrid = ({
   const clearFilters = () => {
     setSearchQuery('');
     setSupplierFilter(null);
+    setHighlightedFamilies([]);
+    setSuggestedAddons([]);
   };
 
-  const hasFilters = searchQuery || supplierFilter;
+  const handleHighlightFamilies = useCallback((familyIds: string[]) => {
+    setHighlightedFamilies(familyIds);
+  }, []);
+
+  const handleSuggestAddons = useCallback((addonIds: string[]) => {
+    setSuggestedAddons(addonIds);
+    // Auto-select suggested addons
+    addonIds.forEach(addonId => {
+      if (!selectedAddons.includes(addonId)) {
+        onToggleAddon(addonId);
+      }
+    });
+  }, [selectedAddons, onToggleAddon]);
+
+  const hasFilters = searchQuery || supplierFilter || highlightedFamilies.length > 0;
+
+  // Default anamnesis data if not provided
+  const defaultAnamnesis: AnamnesisData = {
+    primaryUse: 'mixed',
+    screenHours: '3-5',
+    nightDriving: 'sometimes',
+    visualComplaints: [],
+    outdoorTime: 'no',
+    clearLensPreference: 'indifferent',
+    aestheticPriority: 'medium',
+  };
 
   return (
     <div className="space-y-6">
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nome ou fabricante..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+      {/* Smart Search */}
+      <SmartSearch
+        lensData={lensData || null}
+        anamnesisData={anamnesisData || defaultAnamnesis}
+        lensCategory={lensCategory}
+        onHighlightFamilies={handleHighlightFamilies}
+        onSuggestAddons={handleSuggestAddons}
+      />
+
+      {/* Supplier Filters */}
+      <div className="flex flex-wrap gap-2 items-center">
+        {availableSuppliers.map(supplier => (
+          <Button
+            key={supplier}
+            variant={supplierFilter === supplier ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setSupplierFilter(supplierFilter === supplier ? null : supplier)}
+            className="gap-1.5"
+          >
+            {supplier}
+          </Button>
+        ))}
         
-        <div className="flex gap-2 flex-wrap">
-          {availableSuppliers.map(supplier => (
-            <Button
-              key={supplier}
-              variant={supplierFilter === supplier ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setSupplierFilter(supplierFilter === supplier ? null : supplier)}
-              className="gap-1.5"
-            >
-              {supplier}
-            </Button>
-          ))}
-          
-          {hasFilters && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={clearFilters}
-              className="gap-1 text-muted-foreground"
-            >
-              <X className="w-3.5 h-3.5" />
-              Limpar
-            </Button>
-          )}
-        </div>
+        {hasFilters && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={clearFilters}
+            className="gap-1 text-muted-foreground"
+          >
+            <X className="w-3.5 h-3.5" />
+            Limpar filtros
+          </Button>
+        )}
       </div>
 
-      {/* Category badge */}
-      <div className="flex items-center gap-2">
+      {/* Category and Status badges */}
+      <div className="flex flex-wrap items-center gap-2">
         <Badge variant="secondary" className="text-sm">
           {lensCategory === 'PROGRESSIVA' ? 'Lentes Progressivas' : 'Lentes Monofocais'}
         </Badge>
+        
+        {highlightedFamilies.length > 0 && (
+          <Badge variant="default" className="text-sm gap-1">
+            ✨ {highlightedFamilies.length} recomendação(ões) IA
+          </Badge>
+        )}
         {selectedAddons.length > 0 && (
           <Badge variant="outline" className="text-sm">
             +{selectedAddons.length} complemento{selectedAddons.length > 1 ? 's' : ''}
