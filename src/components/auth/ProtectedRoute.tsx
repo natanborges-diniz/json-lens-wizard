@@ -10,9 +10,10 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) => {
-  const { user, roles, isLoading } = useAuth();
+  const { user, roles, isLoading, rolesLoaded } = useAuth();
 
-  if (isLoading) {
+  // Show loading while session or roles are being loaded
+  if (isLoading || !rolesLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
@@ -20,10 +21,12 @@ export const ProtectedRoute = ({ children, allowedRoles }: ProtectedRouteProps) 
     );
   }
 
+  // Not authenticated - redirect to login
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
+  // Check role-based access
   if (allowedRoles && allowedRoles.length > 0) {
     const hasPermission = allowedRoles.some(role => roles.includes(role));
     if (!hasPermission) {

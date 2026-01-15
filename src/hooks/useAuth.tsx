@@ -19,6 +19,7 @@ interface AuthContextType {
   profile: Profile | null;
   roles: AppRole[];
   isLoading: boolean;
+  rolesLoaded: boolean;
   isAdmin: boolean;
   isManager: boolean;
   isSeller: boolean;
@@ -35,6 +36,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [rolesLoaded, setRolesLoaded] = useState(false);
 
   const fetchUserData = async (userId: string) => {
     try {
@@ -60,37 +62,70 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
+    } finally {
+      setRolesLoaded(true);
     }
   };
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchUserData(session.user.id);
-      }
-      setIsLoading(false);
-    });
+    let isMounted = true;
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+    const initSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!isMounted) return;
+        
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
           await fetchUserData(session.user.id);
         } else {
+          setRolesLoaded(true);
+        }
+      } catch (error) {
+        console.error('Error initializing session:', error);
+        if (isMounted) {
+          setRolesLoaded(true);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    initSession();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!isMounted) return;
+        
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        if (session?.user) {
+          // Use setTimeout to avoid deadlock
+          setTimeout(() => {
+            if (isMounted) {
+              setRolesLoaded(false);
+              fetchUserData(session.user.id);
+            }
+          }, 0);
+        } else {
           setProfile(null);
           setRoles([]);
+          setRolesLoaded(true);
         }
-        setIsLoading(false);
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
@@ -128,6 +163,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       profile,
       roles,
       isLoading,
+      rolesLoaded,
       isAdmin,
       isManager,
       isSeller,
