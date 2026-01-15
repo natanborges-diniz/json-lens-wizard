@@ -76,7 +76,8 @@ export const LensCard = ({
     getIndexDisplay, 
     resolveAddonName,
     resolveFamilyDisplay,
-    scaleToStars 
+    scaleToStars,
+    getTechnologiesForFamily
   } = useCatalogResolver();
   
   // Get tier configuration from resolver (uses JSON data)
@@ -222,9 +223,17 @@ export const LensCard = ({
           <h3 className="font-bold text-foreground text-lg leading-tight">
             {family.name_original}
           </h3>
-          <Badge variant="outline" className="mt-1 text-xs">
-            {family.supplier}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            <Badge variant="outline" className="text-xs">
+              {family.supplier}
+            </Badge>
+            {/* Show up to 2 technologies as badges */}
+            {getTechnologiesForFamily(family as any).slice(0, 2).map(tech => (
+              <Badge key={tech.id} variant="secondary" className="text-[10px] bg-primary/10 text-primary">
+                {tech.name_common}
+              </Badge>
+            ))}
+          </div>
         </div>
       </CardHeader>
 
