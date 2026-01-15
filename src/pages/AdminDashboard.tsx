@@ -86,14 +86,16 @@ const AdminDashboard = () => {
     isDataLoaded
   } = useLensStore();
 
-  // Load data on mount if not loaded
+  // Load data on mount - always load from JSON if families are empty
   useEffect(() => {
     const loadData = async () => {
-      if (!isDataLoaded) {
+      // Check if we actually have data, not just the isDataLoaded flag
+      if (families.length === 0) {
         setIsLoading(true);
         try {
           const response = await fetch('/data/lenses.json');
           const data: LensData = await response.json();
+          console.log('Loading initial data from lenses.json:', data.families?.length, 'families');
           loadLensData(data);
         } catch (error) {
           console.error('Error loading lens data:', error);
@@ -103,7 +105,7 @@ const AdminDashboard = () => {
       }
     };
     loadData();
-  }, [isDataLoaded, loadLensData]);
+  }, [families.length, loadLensData]);
 
   const validateJson = () => {
     try {
