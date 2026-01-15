@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { 
   Check, 
   ChevronDown, 
@@ -22,6 +22,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useCatalogResolver } from '@/hooks/useCatalogResolver';
 import type { Family, Price, Addon, Tier } from '@/types/lens';
 
 interface LensCardProps {
@@ -46,62 +47,12 @@ export interface LensCardConfiguration {
   totalPrice: number;
 }
 
-const tierConfig = {
-  essential: {
-    label: 'Essencial',
-    icon: Shield,
-    color: 'text-muted-foreground',
-    bgHeader: 'bg-muted',
-    borderColor: 'border-muted-foreground/20',
-    dotColor: 'bg-muted-foreground',
-    selectedBorder: 'ring-muted-foreground',
-  },
-  comfort: {
-    label: 'Conforto',
-    icon: Star,
-    color: 'text-primary',
-    bgHeader: 'bg-primary/10',
-    borderColor: 'border-primary/30',
-    dotColor: 'bg-primary',
-    selectedBorder: 'ring-primary',
-  },
-  advanced: {
-    label: 'Avançada',
-    icon: Zap,
-    color: 'text-blue-500',
-    bgHeader: 'bg-blue-500/10',
-    borderColor: 'border-blue-500/30',
-    dotColor: 'bg-blue-400',
-    selectedBorder: 'ring-blue-500',
-  },
-  top: {
-    label: 'Top de Mercado',
-    icon: Crown,
-    color: 'text-amber-500',
-    bgHeader: 'bg-amber-500/10',
-    borderColor: 'border-amber-500/30',
-    dotColor: 'bg-amber-400',
-    selectedBorder: 'ring-amber-500',
-  },
-};
-
-// Index display configuration
-const indexInfo: Record<string, { name: string; description: string; aestheticScore: number }> = {
-  '1.50': { name: 'Padrão', description: 'Espessura normal', aestheticScore: 1 },
-  '1.56': { name: 'Leve', description: 'Levemente mais fina', aestheticScore: 2 },
-  '1.59': { name: 'Policarbonato', description: 'Resistente a impactos', aestheticScore: 2 },
-  '1.60': { name: 'Fina', description: 'Boa estética', aestheticScore: 3 },
-  '1.67': { name: 'Mais Fina', description: 'Excelente estética', aestheticScore: 4 },
-  '1.74': { name: 'Ultra Fina', description: 'Máxima finura', aestheticScore: 5 },
-};
-
-// Treatment display configuration
-const treatmentInfo: Record<string, { name: string; description: string }> = {
-  'ADDON_FOTOSSENSIVEL': { name: 'Fotossensível', description: 'Escurece no sol' },
-  'ADDON_POLARIZADO': { name: 'Polarizado', description: 'Reduz reflexos intensos' },
-  'ADDON_UPGRADE_AR': { name: 'AR Premium', description: 'Antirreflexo melhorado' },
-  'ADDON_LUZ_AZUL': { name: 'Luz Azul', description: 'Proteção para telas' },
-  'ADDON_ALTA_RESISTENCIA': { name: 'Alta Resistência', description: 'Mais durabilidade' },
+// Icon mapping for dynamic icon resolution
+const ICON_MAP: Record<string, React.ElementType> = {
+  Shield,
+  Star,
+  Zap,
+  Crown,
 };
 
 export const LensCard = ({
@@ -118,8 +69,19 @@ export const LensCard = ({
   attributeDefs = [],
 }: LensCardProps) => {
   const [showAlternatives, setShowAlternatives] = useState(false);
-  const config = tierConfig[tier];
-  const TierIcon = config.icon;
+  
+  // Use CatalogResolver for all display data
+  const { 
+    getTierConfig, 
+    getIndexDisplay, 
+    resolveAddonName,
+    resolveFamilyDisplay,
+    scaleToStars 
+  } = useCatalogResolver();
+  
+  // Get tier configuration from resolver (uses JSON data)
+  const config = getTierConfig(family.macro);
+  const TierIcon = ICON_MAP[config.icon] || Shield;
 
   // Get unique indices available for this family
   const availableIndices = useMemo(() => {
@@ -138,7 +100,6 @@ export const LensCard = ({
 
   // Find the best price for selected index and treatments
   const currentPrice = useMemo(() => {
-    // First, find prices that match selected treatments
     let matchingPrices = pricesForIndex;
     
     if (selectedTreatments.length > 0) {
@@ -147,7 +108,6 @@ export const LensCard = ({
         return selectedTreatments.every(t => detected.includes(t));
       });
     } else {
-      // If no treatments selected, prefer prices without addons
       const noAddonPrices = pricesForIndex.filter(p => !p.addons_detected || p.addons_detected.length === 0);
       if (noAddonPrices.length > 0) {
         matchingPrices = noAddonPrices;
@@ -158,7 +118,6 @@ export const LensCard = ({
       matchingPrices = pricesForIndex;
     }
 
-    // Sort by price and return cheapest
     return matchingPrices.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0] || null;
   }, [pricesForIndex, selectedTreatments]);
 
@@ -170,13 +129,14 @@ export const LensCard = ({
     const treatmentIds = new Set<string>();
     allPrices.forEach(p => {
       (p.addons_detected || []).forEach(addon => {
-        if (treatmentInfo[addon]) {
+        // Check if addon exists in our addons list
+        if (addons.some(a => a.id === addon)) {
           treatmentIds.add(addon);
         }
       });
     });
     return Array.from(treatmentIds);
-  }, [allPrices]);
+  }, [allPrices, addons]);
 
   // Handle treatment toggle
   const toggleTreatment = (treatmentId: string) => {
@@ -185,13 +145,6 @@ export const LensCard = ({
         ? prev.filter(t => t !== treatmentId)
         : [...prev, treatmentId]
     );
-  };
-
-  // Convert 0-3 scale to 1-5 stars
-  const scaleToStars = (value: number): number => {
-    // 0 -> 1, 1 -> 2, 2 -> 4, 3 -> 5
-    const mapping = [1, 2, 4, 5];
-    return mapping[Math.min(value, 3)] || 1;
   };
 
   // Get attribute display value
@@ -223,25 +176,31 @@ export const LensCard = ({
     });
   };
 
-  // Get addon display name for this supplier
-  const getAddonDisplayName = (addon: Addon) => {
-    return addon.name_commercial?.[family.supplier] || addon.name_common;
+  // Get addon display info using resolver
+  const getAddonInfo = (addonId: string) => {
+    const addon = addons.find(a => a.id === addonId);
+    if (!addon) return { name: addonId, description: '' };
+    
+    return {
+      name: resolveAddonName(addon, family.supplier),
+      description: addon.description_client,
+    };
   };
 
   return (
     <Card className={`flex flex-col h-full border-2 transition-all duration-300 ${
       isSelected
-        ? `ring-4 ${config.selectedBorder} ring-offset-2 border-transparent shadow-lg scale-[1.02]`
+        ? `ring-4 ${config.selectedBorderClass} ring-offset-2 border-transparent shadow-lg scale-[1.02]`
         : isRecommended 
           ? 'ring-2 ring-primary ring-offset-2 border-primary' 
-          : config.borderColor
+          : config.borderClass
     }`}>
       {/* Header */}
-      <CardHeader className={`${config.bgHeader} rounded-t-lg p-4 space-y-2`}>
+      <CardHeader className={`${config.bgHeaderClass} rounded-t-lg p-4 space-y-2`}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <TierIcon className={`w-5 h-5 ${config.color}`} />
-            <span className={`font-bold ${config.color}`}>{config.label}</span>
+            <TierIcon className={`w-5 h-5 ${config.colorClass}`} />
+            <span className={`font-bold ${config.colorClass}`}>{config.label}</span>
           </div>
           <div className="flex gap-1">
             {isSelected && (
@@ -288,7 +247,7 @@ export const LensCard = ({
           )}
         </div>
 
-        {/* Attributes - Scale 1-5 */}
+        {/* Attributes - Scale 1-5 using resolver */}
         <div className="space-y-2">
           <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide flex items-center gap-1">
             Características
@@ -318,7 +277,7 @@ export const LensCard = ({
                         key={i}
                         className={`w-3 h-3 ${
                           i <= stars 
-                            ? `${config.color} fill-current`
+                            ? `${config.colorClass} fill-current`
                             : 'text-muted'
                         }`}
                       />
@@ -330,7 +289,7 @@ export const LensCard = ({
           </div>
         </div>
 
-        {/* Index Selection */}
+        {/* Index Selection - using resolver */}
         {availableIndices.length > 1 && (
           <div className="space-y-2 border-t pt-3">
             <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
@@ -342,7 +301,7 @@ export const LensCard = ({
               className="grid grid-cols-2 gap-2"
             >
               {availableIndices.map(index => {
-                const info = indexInfo[index] || { name: index, description: '', aestheticScore: 1 };
+                const indexDisplay = getIndexDisplay(index);
                 return (
                   <div key={index} className="flex items-center space-x-2">
                     <RadioGroupItem value={index} id={`${family.id}-index-${index}`} />
@@ -351,7 +310,7 @@ export const LensCard = ({
                       className="text-xs cursor-pointer flex flex-col"
                     >
                       <span className="font-medium">{index}</span>
-                      <span className="text-muted-foreground text-[10px]">{info.name}</span>
+                      <span className="text-muted-foreground text-[10px]">{indexDisplay.name}</span>
                     </Label>
                   </div>
                 );
@@ -360,7 +319,7 @@ export const LensCard = ({
           </div>
         )}
 
-        {/* Treatment Selection */}
+        {/* Treatment Selection - using resolver for names */}
         {availableTreatments.length > 0 && (
           <div className="space-y-2 border-t pt-3">
             <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
@@ -368,8 +327,7 @@ export const LensCard = ({
             </h4>
             <div className="space-y-2">
               {availableTreatments.map(treatmentId => {
-                const info = treatmentInfo[treatmentId];
-                if (!info) return null;
+                const addonInfo = getAddonInfo(treatmentId);
                 
                 return (
                   <label 
@@ -383,9 +341,9 @@ export const LensCard = ({
                     />
                     <div className="flex-1">
                       <span className="text-xs font-medium text-foreground group-hover:text-primary transition-colors">
-                        {info.name}
+                        {addonInfo.name}
                       </span>
-                      <p className="text-[10px] text-muted-foreground">{info.description}</p>
+                      <p className="text-[10px] text-muted-foreground">{addonInfo.description}</p>
                     </div>
                   </label>
                 );
@@ -394,7 +352,7 @@ export const LensCard = ({
           </div>
         )}
 
-        {/* Benefits */}
+        {/* Benefits - from JSON attributes_display_base */}
         <div className="space-y-1.5 border-t pt-3">
           <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
             Inclusos
