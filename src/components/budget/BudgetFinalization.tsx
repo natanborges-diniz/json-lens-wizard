@@ -6,9 +6,9 @@ import {
   Percent,
   DollarSign,
   Copy,
-  Printer,
   Plus,
-  Minus
+  Sparkles,
+  MessageCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,12 +20,13 @@ import { Separator } from '@/components/ui/separator';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import type { Family, AnamnesisData, AttributeDef } from '@/types/lens';
+import { useCatalogResolver } from '@/hooks/useCatalogResolver';
+import type { FamilyExtended, AnamnesisData, AttributeDef } from '@/types/lens';
 import { LensCardConfiguration } from '@/components/recommendations/LensCard';
 
 interface BudgetFinalizationProps {
   configuration: LensCardConfiguration;
-  family: Family;
+  family: FamilyExtended;
   customerName: string;
   anamnesisData: AnamnesisData;
   attributeDefs: AttributeDef[];
@@ -43,12 +44,6 @@ const paymentMethods = [
   { id: 'credit_12x', label: 'Crédito 12x', discount: 0 },
 ];
 
-// Convert 0-3 scale to 1-5 stars
-const scaleToStars = (value: number): number => {
-  const mapping = [1, 2, 4, 5];
-  return mapping[Math.min(value, 3)] || 1;
-};
-
 export const BudgetFinalization = ({
   configuration,
   family,
@@ -63,6 +58,19 @@ export const BudgetFinalization = ({
   const [secondPairEnabled, setSecondPairEnabled] = useState(false);
   const [secondPairPrice, setSecondPairPrice] = useState(0);
   const [notes, setNotes] = useState('');
+
+  // Use catalog resolver for all display data (no hardcode)
+  const { 
+    scaleToStars, 
+    getTechnologiesForFamily, 
+    generateQuoteExplanation 
+  } = useCatalogResolver();
+
+  // Get technologies for this family from JSON
+  const technologies = getTechnologiesForFamily(family);
+  
+  // Get personalized explanation based on anamnesis
+  const explanations = generateQuoteExplanation(family, anamnesisData);
 
   const basePrice = configuration.totalPrice;
   
@@ -90,13 +98,17 @@ export const BudgetFinalization = ({
   const relevantAttributes = getRelevantAttributes();
 
   const handleCopy = () => {
+    const techText = technologies.length > 0 
+      ? `Tecnologias: ${technologies.map(t => t.name_common).join(', ')}\n` 
+      : '';
+    
     const text = `
 ORÇAMENTO - ${customerName || 'Cliente'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Lente: ${family.name_original} (${family.supplier})
 Índice: ${configuration.selectedIndex}
 ${configuration.selectedTreatments.length > 0 ? `Tratamentos: ${configuration.selectedTreatments.join(', ')}` : ''}
-
+${techText}
 Preço base: R$ ${basePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
 ${secondPairEnabled ? `2º Par: R$ ${secondPairPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : ''}
 ${totalDiscount > 0 ? `Desconto: -R$ ${totalDiscount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : ''}
@@ -178,6 +190,28 @@ ${notes ? `\nObs: ${notes}` : ''}
 
             <Separator />
 
+            {/* Technologies - from JSON technology_library */}
+            {technologies.length > 0 && (
+              <>
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                    Tecnologias Embarcadas
+                  </h4>
+                  {technologies.map(tech => (
+                    <div key={tech.id} className="flex items-start gap-2 text-xs bg-primary/5 rounded-lg p-2">
+                      <Sparkles className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-medium text-foreground">{tech.name_common}</span>
+                        <p className="text-muted-foreground">{tech.description_short}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Separator />
+              </>
+            )}
+
             {/* Benefits */}
             <div className="space-y-1.5">
               <h4 className="text-sm font-semibold">Benefícios Inclusos</h4>
@@ -188,6 +222,26 @@ ${notes ? `\nObs: ${notes}` : ''}
                 </div>
               ))}
             </div>
+
+            {/* Dynamic Explanation - from quote_explainer */}
+            {explanations.length > 0 && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                    <MessageCircle className="w-4 h-4 text-primary" />
+                    Por que esta lente?
+                  </h4>
+                  <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+                    {explanations.map((paragraph, i) => (
+                      <p key={i} className="text-xs text-muted-foreground leading-relaxed">
+                        {paragraph}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 

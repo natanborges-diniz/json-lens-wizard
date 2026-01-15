@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { useLensStore } from '@/store/lensStore';
+import { useCatalogResolver } from '@/hooks/useCatalogResolver';
 import type { 
   Prescription, 
   Tier, 
@@ -38,20 +39,6 @@ import { RecommendationsGrid } from '@/components/recommendations/Recommendation
 import { BudgetFinalization } from '@/components/budget/BudgetFinalization';
 import { LensCardConfiguration } from '@/components/recommendations/LensCard';
 
-type Step = 'profile' | 'complaints' | 'lifestyle' | 'prescription' | 'frame' | 'recommendations' | 'budget';
-
-// Tier mapping
-const macroToTier: Record<string, Tier> = {
-  'PROG_BASICO': 'essential',
-  'PROG_CONFORTO': 'comfort',
-  'PROG_AVANCADO': 'advanced',
-  'PROG_TOP': 'top',
-  'MONO_BASICO': 'essential',
-  'MONO_ENTRADA': 'comfort',
-  'MONO_INTER': 'advanced',
-  'MONO_TOP': 'top',
-};
-
 interface FamilyWithPrice {
   family: Family;
   bestPrice: Price | null;
@@ -70,6 +57,8 @@ const defaultAnamnesis: AnamnesisData = {
   clearLensPreference: 'indifferent',
   aestheticPriority: 'medium',
 };
+
+type Step = 'profile' | 'complaints' | 'lifestyle' | 'prescription' | 'frame' | 'recommendations' | 'budget';
 
 const SellerFlow = () => {
   const [currentStep, setCurrentStep] = useState<Step>('profile');
@@ -93,6 +82,9 @@ const SellerFlow = () => {
   const [lensCategory, setLensCategory] = useState<'PROGRESSIVA' | 'MONOFOCAL'>('PROGRESSIVA');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedConfiguration, setSelectedConfiguration] = useState<LensCardConfiguration | null>(null);
+
+  // Use catalog resolver for dynamic tier mapping (no hardcode)
+  const { getTierKey } = useCatalogResolver();
 
   const { 
     families = [], 
@@ -234,7 +226,7 @@ const SellerFlow = () => {
 
     // Group by macro and find best price for each family
     categoryFamilies.forEach(family => {
-      const tier = macroToTier[family.macro];
+      const tier = getTierKey(family.macro);
       if (!tier) return;
 
       // Only pass prescription if it has real values (not just initialization defaults)
