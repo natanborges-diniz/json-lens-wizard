@@ -8,8 +8,7 @@ import {
   Loader2,
   Eye,
   EyeOff,
-  Trash2,
-  Edit
+  Store
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { StoreAccessManager } from '@/components/users/StoreAccessManager';
 
 type AppRole = 'admin' | 'manager' | 'seller';
 
@@ -41,6 +41,8 @@ const UserManagement = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showStoreAccess, setShowStoreAccess] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
   
   // New user form
   const [newUserName, setNewUserName] = useState('');
@@ -330,6 +332,7 @@ const UserManagement = () => {
                   <TableHead>Nome</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Função</TableHead>
+                  <TableHead>Lojas</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -339,6 +342,21 @@ const UserManagement = () => {
                     <TableCell className="font-medium">{u.full_name}</TableCell>
                     <TableCell className="text-muted-foreground">{u.email}</TableCell>
                     <TableCell>{getRoleBadge(u.role)}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1"
+                        onClick={() => {
+                          setSelectedUser(u);
+                          setShowStoreAccess(true);
+                        }}
+                        disabled={u.role === 'admin'}
+                      >
+                        <Store className="w-4 h-4" />
+                        Gerenciar
+                      </Button>
+                    </TableCell>
                     <TableCell className="text-right">
                       <Select 
                         value={u.role} 
@@ -359,7 +377,7 @@ const UserManagement = () => {
                 ))}
                 {users.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                       Nenhum usuário encontrado
                     </TableCell>
                   </TableRow>
@@ -402,6 +420,29 @@ const UserManagement = () => {
           </CardContent>
         </Card>
       </main>
+
+      {/* Store Access Dialog */}
+      <Dialog open={showStoreAccess} onOpenChange={setShowStoreAccess}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Acesso às Lojas</DialogTitle>
+            <DialogDescription>
+              Configure quais lojas este usuário pode acessar
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedUser && (
+            <StoreAccessManager
+              userId={selectedUser.user_id}
+              userName={selectedUser.full_name}
+              onClose={() => {
+                setShowStoreAccess(false);
+                setSelectedUser(null);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
