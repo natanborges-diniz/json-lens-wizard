@@ -17,9 +17,15 @@ import type {
   QuoteExplainer,
   IndexDisplay
 } from '@/types/lens';
+import { 
+  validateImport, 
+  executeImport, 
+  type ImportResult, 
+  type ImportSummary 
+} from '@/lib/catalogImporter';
 
 // Catalog event types
-export type CatalogEventType = 'data_loaded' | 'schema_updated' | 'catalog_updated';
+export type CatalogEventType = 'data_loaded' | 'schema_updated' | 'catalog_updated' | 'rollback_executed';
 
 export interface CatalogEvent {
   type: CatalogEventType;
@@ -47,6 +53,10 @@ interface LensState {
   // Raw data backup for export (preserves all root keys)
   rawLensData: LensData | null;
   
+  // Rollback support (Seção 9 da política)
+  previousLensData: LensData | null;
+  lastImportSummary: ImportSummary | null;
+  
   // Custom settings (not from JSON)
   supplierPriorities: SupplierPriority[];
   
@@ -63,6 +73,11 @@ interface LensState {
   loadLensData: (data: LensData) => void;
   clearAllData: () => void;
   validateImportedData: (data: LensData) => { valid: boolean; errors: string[]; warnings: string[] };
+  
+  // New import actions (policy-compliant)
+  importCatalog: (data: unknown, mode: 'increment' | 'replace') => ImportResult;
+  rollbackLastImport: () => boolean;
+  canRollback: () => boolean;
   
   toggleFamilyActive: (id: string) => void;
   toggleAddonActive: (id: string) => void;
@@ -108,72 +123,136 @@ export const useLensStore = create<LensState>()(
       // Raw data backup for export
       rawLensData: null,
       
+      // Rollback support (Seção 9 da política)
+      previousLensData: null,
+      lastImportSummary: null,
+      
       currentCustomer: null,
       currentPrescription: null,
       currentFrame: null,
       selectedAddons: [],
       isDataLoaded: false,
       
-      // Validate imported data - checks for required fields
+      // Validate imported data - checks for required fields (legacy method, kept for compatibility)
       validateImportedData: (data: LensData) => {
-        const errors: string[] = [];
-        const warnings: string[] = [];
-        
-        // Basic structure validation
-        if (!data.meta) errors.push('Campo "meta" ausente');
-        if (!data.macros || data.macros.length === 0) errors.push('Campo "macros" ausente ou vazio');
-        if (!data.families || data.families.length === 0) errors.push('Campo "families" ausente ou vazio');
-        if (!data.addons) warnings.push('Campo "addons" ausente');
-        if (!data.prices || data.prices.length === 0) errors.push('Campo "prices" ausente ou vazio');
-        
-        // Extended catalog validation (required for schema 1.2+)
-        const schemaVersion = data.meta?.schema_version || '1.0';
-        const isExtendedSchema = parseFloat(schemaVersion) >= 1.2;
-        
-        if (isExtendedSchema) {
-          if (!data.technology_library) {
-            errors.push('Campo "technology_library" ausente (obrigatório para schema 1.2+)');
-          }
-          if (!data.benefit_rules) {
-            errors.push('Campo "benefit_rules" ausente (obrigatório para schema 1.2+)');
-          }
-          if (!data.quote_explainer) {
-            errors.push('Campo "quote_explainer" ausente (obrigatório para schema 1.2+)');
-          }
-          if (!data.index_display || data.index_display.length === 0) {
-            errors.push('Campo "index_display" ausente ou vazio (obrigatório para schema 1.2+)');
-          }
-          
-          // Validate macros have tier_key and display
-          data.macros?.forEach((macro, i) => {
-            if (!macro.tier_key) {
-              warnings.push(`Macro "${macro.id}": tier_key ausente`);
-            }
-            if (!macro.display) {
-              warnings.push(`Macro "${macro.id}": display ausente`);
-            }
-          });
-          
-          // Validate families have technology_refs
-          data.families?.forEach((family, i) => {
-            if (!family.technology_refs || family.technology_refs.length === 0) {
-              warnings.push(`Family "${family.id}": technology_refs ausente`);
-            }
-          });
-        } else {
-          // Warn about missing extended fields even for older schemas
-          if (!data.technology_library) warnings.push('Campo "technology_library" ausente');
-          if (!data.benefit_rules) warnings.push('Campo "benefit_rules" ausente');
-          if (!data.quote_explainer) warnings.push('Campo "quote_explainer" ausente');
-          if (!data.index_display) warnings.push('Campo "index_display" ausente');
-        }
-        
-        return { valid: errors.length === 0, errors, warnings };
+        const result = validateImport(data, 'replace');
+        return { 
+          valid: result.valid, 
+          errors: [...result.errors, ...result.integrityErrors], 
+          warnings: result.warnings 
+        };
       },
       
-      // Load complete lens data from JSON - PRESERVES ALL ROOT KEYS
+      // NEW: Policy-compliant import with validation, merge, and rollback support
+      importCatalog: (data: unknown, mode: 'increment' | 'replace'): ImportResult => {
+        const state = get();
+        const currentData = state.rawLensData;
+        
+        console.log(`[LensStore] Executing ${mode.toUpperCase()} import...`);
+        
+        const result = executeImport(data, currentData, mode);
+        
+        if (result.success && result.mergedData) {
+          // Store previous data for rollback (Seção 9)
+          const previousData = currentData ? JSON.parse(JSON.stringify(currentData)) : null;
+          
+          // Generate supplier priorities from the new data
+          const newPriorities = (result.mergedData.macros || []).map(macro => ({
+            macroId: macro.id,
+            suppliers: [...new Set(
+              (result.mergedData!.families || [])
+                .filter(f => f.macro === macro.id && f.active)
+                .map(f => f.supplier)
+            )]
+          }));
+          
+          set({
+            schemaVersion: result.mergedData.meta?.schema_version || '1.0',
+            scales: result.mergedData.scales || {},
+            attributeDefs: result.mergedData.attribute_defs || [],
+            macros: result.mergedData.macros || [],
+            families: result.mergedData.families || [],
+            addons: result.mergedData.addons || [],
+            prices: result.mergedData.prices || [],
+            supplierPriorities: newPriorities,
+            technologyLibrary: result.mergedData.technology_library || null,
+            benefitRules: result.mergedData.benefit_rules || null,
+            quoteExplainer: result.mergedData.quote_explainer || null,
+            indexDisplay: result.mergedData.index_display || [],
+            benefitPriorityOrder: result.mergedData.benefit_priority_order || result.mergedData.benefit_rules?.priority_order || [],
+            rawLensData: result.mergedData,
+            previousLensData: previousData,
+            lastImportSummary: result.summary,
+            isDataLoaded: true,
+          });
+          
+          // Emit catalog update event for cache invalidation (Seção 6)
+          state.emitCatalogEvent('catalog_updated');
+          
+          console.log('[LensStore] Import successful. Catalog event emitted.');
+        } else {
+          console.error('[LensStore] Import failed:', result.validation);
+        }
+        
+        return result;
+      },
+      
+      // Rollback support (Seção 9)
+      canRollback: (): boolean => {
+        return get().previousLensData !== null;
+      },
+      
+      rollbackLastImport: (): boolean => {
+        const state = get();
+        const previousData = state.previousLensData;
+        
+        if (!previousData) {
+          console.warn('[LensStore] No previous data available for rollback');
+          return false;
+        }
+        
+        console.log('[LensStore] Executing rollback...');
+        
+        // Generate supplier priorities from the previous data
+        const newPriorities = (previousData.macros || []).map(macro => ({
+          macroId: macro.id,
+          suppliers: [...new Set(
+            (previousData.families || [])
+              .filter(f => f.macro === macro.id && f.active)
+              .map(f => f.supplier)
+          )]
+        }));
+        
+        set({
+          schemaVersion: previousData.meta?.schema_version || '1.0',
+          scales: previousData.scales || {},
+          attributeDefs: previousData.attribute_defs || [],
+          macros: previousData.macros || [],
+          families: previousData.families || [],
+          addons: previousData.addons || [],
+          prices: previousData.prices || [],
+          supplierPriorities: newPriorities,
+          technologyLibrary: previousData.technology_library || null,
+          benefitRules: previousData.benefit_rules || null,
+          quoteExplainer: previousData.quote_explainer || null,
+          indexDisplay: previousData.index_display || [],
+          benefitPriorityOrder: previousData.benefit_priority_order || previousData.benefit_rules?.priority_order || [],
+          rawLensData: previousData,
+          previousLensData: null, // Clear rollback data after use
+          lastImportSummary: null,
+          isDataLoaded: true,
+        });
+        
+        // Emit rollback event
+        state.emitCatalogEvent('rollback_executed');
+        
+        console.log('[LensStore] Rollback successful');
+        return true;
+      },
+      
+      // Load complete lens data from JSON - PRESERVES ALL ROOT KEYS (legacy method)
       loadLensData: (data: LensData) => {
-        console.log('[LensStore] Loading lens data:', {
+        console.log('[LensStore] Loading lens data (legacy method):', {
           families: data.families?.length || 0,
           addons: data.addons?.length || 0,
           prices: data.prices?.length || 0,
@@ -185,6 +264,9 @@ export const useLensStore = create<LensState>()(
             index_display: !!data.index_display,
           }
         });
+        
+        const state = get();
+        const previousData = state.rawLensData ? JSON.parse(JSON.stringify(state.rawLensData)) : null;
         
         // Generate supplier priorities from the new data
         const newPriorities = (data.macros || []).map(macro => ({
@@ -213,6 +295,7 @@ export const useLensStore = create<LensState>()(
           benefitPriorityOrder: data.benefit_priority_order || data.benefit_rules?.priority_order || [],
           // Store raw data for full export capability
           rawLensData: data,
+          previousLensData: previousData,
           isDataLoaded: true,
         });
         
@@ -237,6 +320,8 @@ export const useLensStore = create<LensState>()(
         indexDisplay: [],
         benefitPriorityOrder: [],
         rawLensData: null,
+        previousLensData: null,
+        lastImportSummary: null,
         isDataLoaded: false,
       }),
       

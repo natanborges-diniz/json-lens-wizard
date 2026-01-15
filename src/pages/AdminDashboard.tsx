@@ -17,7 +17,11 @@ import {
   Loader2,
   Download,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  RotateCcw,
+  FileText,
+  AlertCircle,
+  Info
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,11 +40,25 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from '@/components/ui/alert';
 import { useLensStore } from '@/store/lensStore';
 import type { ImportMode, LensData } from '@/types/lens';
+import { formatImportReceipt, type ImportResult, type ImportSummary } from '@/lib/catalogImporter';
 import { toast } from 'sonner';
 
-// Tier mapping for display
+// Tier mapping for display (fallback, prefer JSON data)
 const macroToTier: Record<string, string> = {
   'PROG_BASICO': 'Essencial',
   'PROG_CONFORTO': 'Conforto',
@@ -67,20 +85,9 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('import');
   const [jsonInput, setJsonInput] = useState('');
   const [importMode, setImportMode] = useState<ImportMode>('replace');
-  const [validationResult, setValidationResult] = useState<{ 
-    valid: boolean; 
-    errors: string[]; 
-    warnings: string[];
-    summary: any;
-    extendedFields: {
-      technology_library: boolean;
-      benefit_rules: boolean;
-      quote_explainer: boolean;
-      index_display: boolean;
-      macros_have_display: boolean;
-      families_have_tech_refs: boolean;
-    } | null;
-  } | null>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
   const { 
@@ -96,11 +103,14 @@ const AdminDashboard = () => {
     quoteExplainer,
     indexDisplay,
     rawLensData,
+    lastImportSummary,
     toggleFamilyActive,
     toggleAddonActive,
     loadLensData,
     clearAllData,
-    validateImportedData,
+    importCatalog,
+    canRollback,
+    rollbackLastImport,
     updateSupplierPriority,
     isDataLoaded
   } = useLensStore();
@@ -126,85 +136,48 @@ const AdminDashboard = () => {
     loadData();
   }, [families.length, loadLensData]);
 
-  // Enhanced validation with extended field checks
-  const validateJson = () => {
+  // Policy-compliant validation and import
+  const validateAndPreviewImport = () => {
     try {
-      const data: LensData = JSON.parse(jsonInput);
+      const data = JSON.parse(jsonInput);
       
-      // Use store's validation function
-      const validation = validateImportedData(data);
+      // Use new policy-compliant import system
+      const result = importCatalog(data, importMode);
+      setImportResult(result);
       
-      // Build summary
-      const summary = {
-        schema_version: data.meta?.schema_version || 'N/A',
-        macros: data.macros?.length || 0,
-        families: data.families?.length || 0,
-        addons: data.addons?.length || 0,
-        prices: data.prices?.length || 0,
-      };
-      
-      // Check extended fields presence
-      const macrosWithDisplay = data.macros?.filter(m => m.tier_key && m.display).length || 0;
-      const familiesWithTechRefs = data.families?.filter(f => f.technology_refs && f.technology_refs.length > 0).length || 0;
-      
-      const extendedFields = {
-        technology_library: !!data.technology_library,
-        benefit_rules: !!data.benefit_rules,
-        quote_explainer: !!data.quote_explainer,
-        index_display: !!(data.index_display && data.index_display.length > 0),
-        macros_have_display: macrosWithDisplay === (data.macros?.length || 0),
-        families_have_tech_refs: familiesWithTechRefs === (data.families?.length || 0),
-      };
-
-      setValidationResult({
-        valid: validation.valid,
-        errors: validation.errors,
-        warnings: validation.warnings,
-        summary,
-        extendedFields
-      });
-
+      if (result.success) {
+        setShowReceipt(true);
+        toast.success(`Importação ${importMode === 'replace' ? 'substituição' : 'incremento'} realizada com sucesso!`);
+        setJsonInput('');
+      } else {
+        const allErrors = [...result.validation.errors, ...result.validation.integrityErrors];
+        toast.error(`Falha na importação: ${allErrors.length} erro(s) encontrado(s)`);
+      }
     } catch (e) {
-      setValidationResult({
-        valid: false,
-        errors: ['JSON inválido: ' + (e as Error).message],
-        warnings: [],
+      setImportResult({
+        success: false,
+        validation: {
+          valid: false,
+          errors: ['JSON inválido: ' + (e as Error).message],
+          warnings: [],
+          integrityErrors: []
+        },
         summary: null,
-        extendedFields: null
+        mergedData: null,
+        previousData: null
       });
+      toast.error('JSON inválido');
     }
   };
 
-  const applyImport = () => {
-    if (!validationResult?.valid) return;
-    
-    try {
-      const data: LensData = JSON.parse(jsonInput);
-      
-      // Always clear and reload all data to ensure complete sync
-      // This preserves ALL root-level keys from the JSON
-      clearAllData();
-      loadLensData(data);
-      
-      // Build success message with extended field info
-      const extendedInfo = [];
-      if (data.technology_library) extendedInfo.push('tecnologias');
-      if (data.benefit_rules) extendedInfo.push('regras de benefício');
-      if (data.quote_explainer) extendedInfo.push('explicador de orçamento');
-      if (data.index_display?.length) extendedInfo.push('índices');
-      
-      const extendedMsg = extendedInfo.length > 0 
-        ? ` Campos estendidos: ${extendedInfo.join(', ')}.`
-        : '';
-      
-      toast.success(
-        `Importação realizada com sucesso! ${data.families.length} famílias, ` +
-        `${data.addons.length} add-ons e ${data.prices.length} SKUs carregados.${extendedMsg}`
-      );
-      setJsonInput('');
-      setValidationResult(null);
-    } catch (e) {
-      toast.error('Erro ao aplicar importação');
+  const handleRollback = () => {
+    const success = rollbackLastImport();
+    if (success) {
+      toast.success('Rollback executado com sucesso! Dados restaurados.');
+      setShowRollbackConfirm(false);
+      setImportResult(null);
+    } else {
+      toast.error('Não foi possível executar o rollback.');
     }
   };
 
@@ -367,7 +340,7 @@ const AdminDashboard = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex gap-4">
+                  <div className="flex gap-4 flex-wrap">
                     <Select value={importMode} onValueChange={(v) => setImportMode(v as ImportMode)}>
                       <SelectTrigger className="w-48">
                         <SelectValue />
@@ -377,87 +350,73 @@ const AdminDashboard = () => {
                         <SelectItem value="replace">Substituir</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button variant="outline" onClick={validateJson}>
-                      Validar JSON
+                    <Button onClick={validateAndPreviewImport} disabled={!jsonInput.trim()}>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Importar
                     </Button>
+                    {canRollback() && (
+                      <Button variant="outline" onClick={() => setShowRollbackConfirm(true)}>
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Desfazer
+                      </Button>
+                    )}
                   </div>
                   
                   <Textarea
                     value={jsonInput}
                     onChange={(e) => setJsonInput(e.target.value)}
                     placeholder={`{
-  "meta": { "schema_version": "1.1", ... },
+  "meta": { "schema_version": "1.2", ... },
   "macros": [...],
   "families": [...],
   "addons": [...],
   "prices": [...]
 }`}
-                    className="min-h-[400px] font-mono text-sm"
+                    className="min-h-[350px] font-mono text-sm"
                   />
                 </CardContent>
               </Card>
 
-              {/* Validation Result & Export */}
+              {/* Import Result & Export */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
-                    <span>Resultado da Validação</span>
+                    <span>Resultado</span>
                     <Button variant="outline" size="sm" onClick={exportJson} className="gap-2">
                       <Download className="w-4 h-4" />
-                      Exportar JSON
+                      Exportar
                     </Button>
                   </CardTitle>
-                  <CardDescription>
-                    Resumo e erros encontrados
-                  </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {!validationResult ? (
+                  {!importResult ? (
                     <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                       <FileJson className="w-12 h-12 mb-4 opacity-50" />
-                      <p>Cole um JSON e clique em Validar</p>
-                      <p className="text-sm mt-2">ou exporte os dados atuais</p>
+                      <p>Cole um JSON e clique em Importar</p>
                     </div>
                   ) : (
-                    <div className="space-y-6">
-                      {/* Status */}
+                    <div className="space-y-4">
                       <div className={`p-4 rounded-lg flex items-center gap-3 ${
-                        validationResult.valid 
+                        importResult.success 
                           ? 'bg-success/10 text-success' 
                           : 'bg-destructive/10 text-destructive'
                       }`}>
-                        {validationResult.valid ? (
+                        {importResult.success ? (
                           <CheckCircle className="w-5 h-5" />
                         ) : (
                           <AlertTriangle className="w-5 h-5" />
                         )}
                         <span className="font-medium">
-                          {validationResult.valid ? 'JSON válido!' : 'Erros encontrados'}
+                          {importResult.success ? 'Importação realizada!' : 'Erros encontrados'}
                         </span>
                       </div>
 
-                      {/* Summary */}
-                      {validationResult.summary && (
-                        <div className="space-y-2">
-                          <h4 className="font-medium text-foreground">Resumo da Importação</h4>
-                          <div className="grid grid-cols-2 gap-2 text-sm">
-                            {Object.entries(validationResult.summary).map(([key, value]) => (
-                              <div key={key} className="flex justify-between p-2 bg-muted/50 rounded">
-                                <span className="text-muted-foreground">{key}</span>
-                                <span className="font-medium">{String(value)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Errors */}
-                      {validationResult.errors.length > 0 && (
+                      {(importResult.validation.errors.length > 0 || importResult.validation.integrityErrors.length > 0) && (
                         <div className="space-y-2">
                           <h4 className="font-medium text-destructive">Erros</h4>
-                          <div className="space-y-1 max-h-40 overflow-y-auto">
-                            {validationResult.errors.map((error, i) => (
-                              <div key={i} className="text-sm text-destructive/80 p-2 bg-destructive/5 rounded">
+                          <div className="space-y-1 max-h-32 overflow-y-auto">
+                            {[...importResult.validation.errors, ...importResult.validation.integrityErrors].map((error, i) => (
+                              <div key={i} className="text-xs text-destructive/80 p-2 bg-destructive/5 rounded font-mono">
                                 {error}
                               </div>
                             ))}
@@ -465,18 +424,39 @@ const AdminDashboard = () => {
                         </div>
                       )}
 
-                      {/* Apply Button */}
-                      {validationResult.valid && (
-                        <Button onClick={applyImport} className="w-full gradient-primary text-primary-foreground">
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          Aplicar Importação (Substituir Todos os Dados)
-                        </Button>
+                      {importResult.summary && (
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="p-2 bg-muted/50 rounded flex justify-between">
+                            <span className="text-muted-foreground">Famílias</span>
+                            <span className="font-medium">{importResult.summary.totals.families}</span>
+                          </div>
+                          <div className="p-2 bg-muted/50 rounded flex justify-between">
+                            <span className="text-muted-foreground">SKUs</span>
+                            <span className="font-medium">{importResult.summary.totals.prices}</span>
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
                 </CardContent>
               </Card>
             </div>
+
+            {/* Rollback Confirmation Dialog */}
+            <Dialog open={showRollbackConfirm} onOpenChange={setShowRollbackConfirm}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Confirmar Rollback</DialogTitle>
+                  <DialogDescription>
+                    Isso irá restaurar os dados anteriores à última importação. Esta ação não pode ser desfeita.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowRollbackConfirm(false)}>Cancelar</Button>
+                  <Button variant="destructive" onClick={handleRollback}>Confirmar Rollback</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           {/* Priorities Tab */}
