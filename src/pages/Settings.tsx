@@ -4,23 +4,23 @@ import {
   ArrowLeft, 
   Building2, 
   Save, 
-  Upload, 
   Loader2,
   Instagram,
   Facebook,
   Phone,
   Mail,
-  MapPin
+  MapPin,
+  Store
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { LogoUpload } from '@/components/settings/LogoUpload';
 
 interface CompanySettings {
   id: string;
@@ -158,10 +158,19 @@ const Settings = () => {
               </div>
             </div>
             
-            <Button onClick={handleSave} disabled={isSaving} className="gap-2">
-              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Salvar
-            </Button>
+            <div className="flex gap-2">
+              <Link to="/stores">
+                <Button variant="outline" className="gap-2">
+                  <Store className="w-4 h-4" />
+                  Lojas
+                </Button>
+              </Link>
+              
+              <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Salvar
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -207,33 +216,12 @@ const Settings = () => {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="logo_url">URL do Logo</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="logo_url"
-                    value={settings.logo_url || ''}
-                    onChange={(e) => updateField('logo_url', e.target.value)}
-                    placeholder="https://exemplo.com/logo.png"
-                    className="flex-1"
-                  />
-                  {settings.logo_url && (
-                    <div className="w-12 h-12 border rounded flex items-center justify-center overflow-hidden">
-                      <img 
-                        src={settings.logo_url} 
-                        alt="Logo preview" 
-                        className="max-w-full max-h-full object-contain"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Cole a URL de uma imagem hospedada externamente (Imgur, CloudFlare, etc.)
-                </p>
-              </div>
+              <LogoUpload
+                currentLogoUrl={settings.logo_url}
+                onLogoChange={(url) => updateField('logo_url', url || '')}
+                storeId="company"
+                label="Logo da Empresa"
+              />
             </CardContent>
           </Card>
 

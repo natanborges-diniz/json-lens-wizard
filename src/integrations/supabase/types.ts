@@ -337,6 +337,63 @@ export type Database = {
           },
         ]
       }
+      stores: {
+        Row: {
+          address: string | null
+          budget_terms: string | null
+          cnpj: string | null
+          created_at: string
+          email: string | null
+          facebook: string | null
+          footer_text: string | null
+          id: string
+          instagram: string | null
+          is_active: boolean
+          logo_url: string | null
+          name: string
+          phone: string | null
+          slogan: string | null
+          updated_at: string
+          whatsapp: string | null
+        }
+        Insert: {
+          address?: string | null
+          budget_terms?: string | null
+          cnpj?: string | null
+          created_at?: string
+          email?: string | null
+          facebook?: string | null
+          footer_text?: string | null
+          id?: string
+          instagram?: string | null
+          is_active?: boolean
+          logo_url?: string | null
+          name: string
+          phone?: string | null
+          slogan?: string | null
+          updated_at?: string
+          whatsapp?: string | null
+        }
+        Update: {
+          address?: string | null
+          budget_terms?: string | null
+          cnpj?: string | null
+          created_at?: string
+          email?: string | null
+          facebook?: string | null
+          footer_text?: string | null
+          id?: string
+          instagram?: string | null
+          is_active?: boolean
+          logo_url?: string | null
+          name?: string
+          phone?: string | null
+          slogan?: string | null
+          updated_at?: string
+          whatsapp?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -358,6 +415,38 @@ export type Database = {
         }
         Relationships: []
       }
+      user_store_access: {
+        Row: {
+          created_at: string
+          has_access_to_all: boolean
+          id: string
+          store_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          has_access_to_all?: boolean
+          id?: string
+          store_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          has_access_to_all?: boolean
+          id?: string
+          store_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_store_access_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -371,6 +460,10 @@ export type Database = {
         Returns: boolean
       }
       is_admin_or_manager: { Args: { _user_id: string }; Returns: boolean }
+      user_has_store_access: {
+        Args: { _store_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "manager" | "seller"
