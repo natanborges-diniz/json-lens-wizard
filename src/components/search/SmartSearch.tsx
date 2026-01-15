@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Search, Sparkles, X, Loader2, Bot, Filter, MessageCircle } from 'lucide-react';
+import { Search, Sparkles, X, Loader2, Bot, Filter, MessageCircle, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,24 +16,25 @@ import { supabase } from '@/integrations/supabase/client';
 import type { Family, AnamnesisData, LensData } from '@/types/lens';
 import { toast } from 'sonner';
 
+export interface AIRecommendation {
+  familyId: string;
+  reason: string;
+  priority: number;
+}
+
+export interface AIResponse {
+  recommendations: AIRecommendation[];
+  suggestedAddons?: string[];
+  explanation: string;
+}
+
 interface SmartSearchProps {
   lensData: LensData | null;
   anamnesisData: AnamnesisData;
   lensCategory: 'PROGRESSIVA' | 'MONOFOCAL';
   onHighlightFamilies: (familyIds: string[]) => void;
   onSuggestAddons: (addonIds: string[]) => void;
-}
-
-interface AIRecommendation {
-  familyId: string;
-  reason: string;
-  priority: number;
-}
-
-interface AIResponse {
-  recommendations: AIRecommendation[];
-  suggestedAddons?: string[];
-  explanation: string;
+  onSelectAIRecommendation?: (recommendation: AIRecommendation, allRecommendations: AIRecommendation[], aiResponse: AIResponse) => void;
 }
 
 export const SmartSearch = ({
@@ -42,6 +43,7 @@ export const SmartSearch = ({
   lensCategory,
   onHighlightFamilies,
   onSuggestAddons,
+  onSelectAIRecommendation,
 }: SmartSearchProps) => {
   const [localQuery, setLocalQuery] = useState('');
   const [aiQuery, setAiQuery] = useState('');
@@ -317,14 +319,22 @@ export const SmartSearch = ({
                   {/* Recommendations */}
                   {aiResponse.recommendations?.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">Recomendações:</p>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Recomendações (clique para ver detalhes):
+                      </p>
                       <div className="space-y-2">
                         {aiResponse.recommendations
                           .sort((a, b) => b.priority - a.priority)
                           .map((rec, idx) => (
-                            <div 
+                            <button
                               key={idx}
-                              className="p-2 bg-background rounded-lg border flex items-start gap-2"
+                              onClick={() => {
+                                if (onSelectAIRecommendation) {
+                                  onSelectAIRecommendation(rec, aiResponse.recommendations, aiResponse);
+                                  setIsAiDialogOpen(false);
+                                }
+                              }}
+                              className="w-full p-2 bg-background rounded-lg border flex items-start gap-2 hover:border-primary hover:bg-primary/5 transition-all text-left group"
                             >
                               <Badge 
                                 variant={idx === 0 ? 'default' : 'outline'} 
@@ -333,10 +343,13 @@ export const SmartSearch = ({
                                 {idx + 1}º
                               </Badge>
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm">{getFamilyName(rec.familyId)}</p>
+                                <p className="font-medium text-sm group-hover:text-primary transition-colors">
+                                  {getFamilyName(rec.familyId)}
+                                </p>
                                 <p className="text-xs text-muted-foreground">{rec.reason}</p>
                               </div>
-                            </div>
+                              <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </button>
                           ))}
                       </div>
                     </div>
