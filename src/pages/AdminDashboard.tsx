@@ -136,10 +136,27 @@ const AdminDashboard = () => {
     loadData();
   }, [families.length, loadLensData]);
 
+  // Sanitize JSON string BEFORE parsing - replace NaN, Infinity, -Infinity with null
+  const sanitizeJsonString = (jsonString: string): string => {
+    return jsonString
+      .replace(/:\s*NaN\b/g, ': null')
+      .replace(/:\s*-?Infinity\b/g, ': null')
+      .replace(/,\s*NaN\b/g, ', null')
+      .replace(/,\s*-?Infinity\b/g, ', null')
+      .replace(/\[\s*NaN\b/g, '[null')
+      .replace(/\[\s*-?Infinity\b/g, '[null');
+  };
+
   // Policy-compliant validation and import
   const validateAndPreviewImport = () => {
     try {
-      const data = JSON.parse(jsonInput);
+      // Sanitize JSON string before parsing to handle NaN, Infinity
+      const sanitizedInput = sanitizeJsonString(jsonInput);
+      
+      // Check if sanitization was needed (for user feedback)
+      const hadInvalidValues = sanitizedInput !== jsonInput;
+      
+      const data = JSON.parse(sanitizedInput);
       
       // Use new policy-compliant import system
       const result = importCatalog(data, importMode);
@@ -147,7 +164,10 @@ const AdminDashboard = () => {
       
       if (result.success) {
         setShowReceipt(true);
-        toast.success(`Importação ${importMode === 'replace' ? 'substituição' : 'incremento'} realizada com sucesso!`);
+        const warningMsg = hadInvalidValues 
+          ? ' (valores NaN/Infinity convertidos para null)' 
+          : '';
+        toast.success(`Importação ${importMode === 'replace' ? 'substituição' : 'incremento'} realizada com sucesso!${warningMsg}`);
         setJsonInput('');
       } else {
         const allErrors = [...result.validation.errors, ...result.validation.integrityErrors];
