@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import AdminDashboard from "./pages/AdminDashboard";
 import SellerFlow from "./pages/SellerFlow";
@@ -26,12 +27,36 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/management" element={<Management />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/users" element={<UserManagement />} />
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/seller" element={<SellerFlow />} />
+            <Route path="/dashboard" element={
+              <ProtectedRoute allowedRoles={['admin', 'manager', 'seller']}>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/management" element={
+              <ProtectedRoute allowedRoles={['admin', 'manager', 'seller']}>
+                <Management />
+              </ProtectedRoute>
+            } />
+            <Route path="/settings" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <Settings />
+              </ProtectedRoute>
+            } />
+            <Route path="/users" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <UserManagement />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/seller" element={
+              <ProtectedRoute allowedRoles={['admin', 'manager', 'seller']}>
+                <SellerFlow />
+              </ProtectedRoute>
+            } />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
