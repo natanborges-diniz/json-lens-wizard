@@ -11,7 +11,8 @@ import {
   LayoutDashboard,
   Building2,
   UserCog,
-  Eye
+  Eye,
+  UserPlus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -319,7 +320,21 @@ const Dashboard = () => {
                 Administração
               </h2>
               
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-3 gap-4">
+                <Link to="/users">
+                  <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <UserPlus className="w-5 h-5" />
+                        Gerenciar Usuários
+                      </CardTitle>
+                      <CardDescription>
+                        Crie e gerencie os acessos da equipe
+                      </CardDescription>
+                    </CardHeader>
+                  </Card>
+                </Link>
+
                 <Link to="/settings">
                   <Card className="hover:border-primary/50 transition-colors cursor-pointer">
                     <CardHeader>
