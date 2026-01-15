@@ -67,7 +67,20 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('import');
   const [jsonInput, setJsonInput] = useState('');
   const [importMode, setImportMode] = useState<ImportMode>('replace');
-  const [validationResult, setValidationResult] = useState<{ valid: boolean; errors: string[]; summary: any } | null>(null);
+  const [validationResult, setValidationResult] = useState<{ 
+    valid: boolean; 
+    errors: string[]; 
+    warnings: string[];
+    summary: any;
+    extendedFields: {
+      technology_library: boolean;
+      benefit_rules: boolean;
+      quote_explainer: boolean;
+      index_display: boolean;
+      macros_have_display: boolean;
+      families_have_tech_refs: boolean;
+    } | null;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   
   const { 
@@ -78,10 +91,16 @@ const AdminDashboard = () => {
     addons,
     prices,
     supplierPriorities,
+    technologyLibrary,
+    benefitRules,
+    quoteExplainer,
+    indexDisplay,
+    rawLensData,
     toggleFamilyActive,
     toggleAddonActive,
     loadLensData,
     clearAllData,
+    validateImportedData,
     updateSupplierPriority,
     isDataLoaded
   } = useLensStore();
@@ -107,10 +126,15 @@ const AdminDashboard = () => {
     loadData();
   }, [families.length, loadLensData]);
 
+  // Enhanced validation with extended field checks
   const validateJson = () => {
     try {
       const data: LensData = JSON.parse(jsonInput);
-      const errors: string[] = [];
+      
+      // Use store's validation function
+      const validation = validateImportedData(data);
+      
+      // Build summary
       const summary = {
         schema_version: data.meta?.schema_version || 'N/A',
         macros: data.macros?.length || 0,
@@ -118,40 +142,35 @@ const AdminDashboard = () => {
         addons: data.addons?.length || 0,
         prices: data.prices?.length || 0,
       };
-
-      // Validate structure
-      if (!data.meta) errors.push('Campo "meta" ausente');
-      if (!data.macros) errors.push('Campo "macros" ausente');
-      if (!data.families) errors.push('Campo "families" ausente');
-      if (!data.addons) errors.push('Campo "addons" ausente');
-      if (!data.prices) errors.push('Campo "prices" ausente');
-
-      if (data.families) {
-        data.families.forEach((f, i) => {
-          if (!f.id) errors.push(`Família ${i + 1}: ID obrigatório`);
-          if (!f.macro) errors.push(`Família ${i + 1}: macro obrigatório`);
-          if (!f.supplier) errors.push(`Família ${i + 1}: supplier obrigatório`);
-        });
-      }
-
-      if (data.prices) {
-        data.prices.forEach((p, i) => {
-          if (!p.erp_code) errors.push(`Price ${i + 1}: erp_code obrigatório`);
-          if (!p.family_id) errors.push(`Price ${i + 1}: family_id obrigatório`);
-        });
-      }
+      
+      // Check extended fields presence
+      const macrosWithDisplay = data.macros?.filter(m => m.tier_key && m.display).length || 0;
+      const familiesWithTechRefs = data.families?.filter(f => f.technology_refs && f.technology_refs.length > 0).length || 0;
+      
+      const extendedFields = {
+        technology_library: !!data.technology_library,
+        benefit_rules: !!data.benefit_rules,
+        quote_explainer: !!data.quote_explainer,
+        index_display: !!(data.index_display && data.index_display.length > 0),
+        macros_have_display: macrosWithDisplay === (data.macros?.length || 0),
+        families_have_tech_refs: familiesWithTechRefs === (data.families?.length || 0),
+      };
 
       setValidationResult({
-        valid: errors.length === 0,
-        errors,
-        summary
+        valid: validation.valid,
+        errors: validation.errors,
+        warnings: validation.warnings,
+        summary,
+        extendedFields
       });
 
     } catch (e) {
       setValidationResult({
         valid: false,
         errors: ['JSON inválido: ' + (e as Error).message],
-        summary: null
+        warnings: [],
+        summary: null,
+        extendedFields: null
       });
     }
   };
@@ -163,10 +182,25 @@ const AdminDashboard = () => {
       const data: LensData = JSON.parse(jsonInput);
       
       // Always clear and reload all data to ensure complete sync
+      // This preserves ALL root-level keys from the JSON
       clearAllData();
       loadLensData(data);
       
-      toast.success(`Importação realizada com sucesso! ${data.families.length} famílias, ${data.addons.length} add-ons e ${data.prices.length} SKUs carregados.`);
+      // Build success message with extended field info
+      const extendedInfo = [];
+      if (data.technology_library) extendedInfo.push('tecnologias');
+      if (data.benefit_rules) extendedInfo.push('regras de benefício');
+      if (data.quote_explainer) extendedInfo.push('explicador de orçamento');
+      if (data.index_display?.length) extendedInfo.push('índices');
+      
+      const extendedMsg = extendedInfo.length > 0 
+        ? ` Campos estendidos: ${extendedInfo.join(', ')}.`
+        : '';
+      
+      toast.success(
+        `Importação realizada com sucesso! ${data.families.length} famílias, ` +
+        `${data.addons.length} add-ons e ${data.prices.length} SKUs carregados.${extendedMsg}`
+      );
       setJsonInput('');
       setValidationResult(null);
     } catch (e) {
@@ -174,11 +208,15 @@ const AdminDashboard = () => {
     }
   };
 
-  // Export current data as JSON
+  // Export current data as JSON - preserves ALL root keys
   const exportJson = () => {
+    // If we have raw data, use it as base to preserve unknown keys
+    const baseData = rawLensData || {};
+    
     const exportData: LensData = {
+      ...baseData,
       meta: {
-        schema_version: schemaVersion || '1.1',
+        schema_version: schemaVersion || '1.2',
         dataset_name: 'LensFlow Export',
         generated_at: new Date().toISOString(),
         counts: {
@@ -188,13 +226,18 @@ const AdminDashboard = () => {
         },
         notes: ['Exported from LensFlow Admin']
       },
-      scales: {},
+      scales: rawLensData?.scales || {},
       attribute_defs: attributeDefs,
       macros: macros,
       families: families,
       addons: addons,
-      products_avulsos: [],
-      prices: prices
+      products_avulsos: rawLensData?.products_avulsos || [],
+      prices: prices,
+      // Include extended fields from store
+      technology_library: technologyLibrary || undefined,
+      benefit_rules: benefitRules || undefined,
+      quote_explainer: quoteExplainer || undefined,
+      index_display: indexDisplay?.length > 0 ? indexDisplay : undefined,
     };
 
     const jsonStr = JSON.stringify(exportData, null, 2);
@@ -208,7 +251,7 @@ const AdminDashboard = () => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    toast.success('JSON exportado com sucesso!');
+    toast.success('JSON exportado com sucesso!')
   };
 
   // Move supplier priority up or down

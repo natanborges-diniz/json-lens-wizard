@@ -5,13 +5,38 @@ import { useMemo, useCallback } from 'react';
 import { useLensStore } from '@/store/lensStore';
 import type { 
   Technology, 
-  MacroDisplay, 
-  ResolvedFamilyDisplay,
-  BenefitRule,
+  MacroExtended,
+  FamilyExtended,
+  TechnologyLibrary,
+  BenefitRules,
+  QuoteExplainer,
   IndexDisplay,
-  CatalogEvent
-} from '@/types/catalog';
-import type { Family, Addon, AnamnesisData } from '@/types/lens';
+  AnamnesisData 
+} from '@/types/lens';
+import type { CatalogEvent } from '@/store/lensStore';
+
+// Resolved display data for a family
+export interface ResolvedFamilyDisplay {
+  family: FamilyExtended;
+  macro: MacroExtended;
+  technologies: Technology[];
+  attributeLabels: Array<{
+    id: string;
+    name: string;
+    value: number;
+    label: string;
+    stars: number;
+  }>;
+  tierConfig: {
+    label: string;
+    icon: string;
+    colorClass: string;
+    bgHeaderClass: string;
+    borderClass: string;
+    dotColorClass: string;
+    selectedBorderClass: string;
+  };
+}
 
 // Default tier configuration (fallback if JSON doesn't have display config)
 const DEFAULT_TIER_CONFIG: Record<string, {
@@ -69,18 +94,8 @@ const DEFAULT_SCALE_LABELS: Record<string, string> = {
   '3': 'Avançado',
 };
 
-// Default index display (fallback)
-const DEFAULT_INDEX_DISPLAY: IndexDisplay[] = [
-  { value: '1.50', name: 'Padrão', description: 'Espessura normal', aesthetic_score: 1 },
-  { value: '1.56', name: 'Leve', description: 'Levemente mais fina', aesthetic_score: 2 },
-  { value: '1.59', name: 'Policarbonato', description: 'Resistente a impactos', aesthetic_score: 2 },
-  { value: '1.60', name: 'Fina', description: 'Boa estética', aesthetic_score: 3 },
-  { value: '1.67', name: 'Mais Fina', description: 'Excelente estética', aesthetic_score: 4 },
-  { value: '1.74', name: 'Ultra Fina', description: 'Máxima finura', aesthetic_score: 5 },
-];
-
-// Macro ID to tier key mapping
-const MACRO_TO_TIER: Record<string, 'essential' | 'comfort' | 'advanced' | 'top'> = {
+// Macro ID to tier key mapping (fallback)
+const MACRO_TO_TIER_FALLBACK: Record<string, 'essential' | 'comfort' | 'advanced' | 'top'> = {
   'PROG_BASICO': 'essential',
   'PROG_CONFORTO': 'comfort',
   'PROG_AVANCADO': 'advanced',
@@ -91,83 +106,95 @@ const MACRO_TO_TIER: Record<string, 'essential' | 'comfort' | 'advanced' | 'top'
   'MONO_TOP': 'top',
 };
 
+// Default index display (fallback)
+const DEFAULT_INDEX_DISPLAY: IndexDisplay[] = [
+  { value: '1.50', name: 'Padrão', description: 'Espessura normal', aesthetic_score: 1 },
+  { value: '1.56', name: 'Leve', description: 'Levemente mais fina', aesthetic_score: 2 },
+  { value: '1.59', name: 'Policarbonato', description: 'Resistente a impactos', aesthetic_score: 2 },
+  { value: '1.60', name: 'Fina', description: 'Boa estética', aesthetic_score: 3 },
+  { value: '1.67', name: 'Mais Fina', description: 'Excelente estética', aesthetic_score: 4 },
+  { value: '1.74', name: 'Ultra Fina', description: 'Máxima finura', aesthetic_score: 5 },
+];
+
 interface CatalogResolverResult {
   // Core resolvers
-  resolveFamilyDisplay: (family: Family) => ResolvedFamilyDisplay | null;
-  resolveAddonName: (addon: Addon, supplier: string) => string;
+  resolveFamilyDisplay: (family: FamilyExtended) => ResolvedFamilyDisplay | null;
+  resolveAddonName: (addon: { name_common: string; name_commercial?: Record<string, string> }, supplier: string) => string;
   resolveTechnology: (techId: string) => Technology | null;
   resolveAttributeLabel: (attributeId: string, value: number) => string;
   
   // Tier helpers
   getTierConfig: (macroId: string) => typeof DEFAULT_TIER_CONFIG.essential;
   getTierKey: (macroId: string) => 'essential' | 'comfort' | 'advanced' | 'top';
-  getMacroDisplay: (macroId: string) => MacroDisplay | null;
+  getMacroDisplay: (macroId: string) => MacroExtended | null;
   
   // Index helpers
   getIndexDisplay: (indexValue: string) => IndexDisplay;
   getAllIndexDisplays: () => IndexDisplay[];
   
   // Quote generation
-  generateQuoteExplanation: (family: Family, anamnesis: AnamnesisData) => string[];
+  generateQuoteExplanation: (family: FamilyExtended, anamnesis: AnamnesisData) => string[];
   
   // Scale helpers
   getScaleLabels: (scaleId: string) => Record<string, string>;
   scaleToStars: (value: number, maxScale?: number) => number;
+  
+  // Technology helpers
+  getAllTechnologies: () => Technology[];
+  getTechnologiesForFamily: (family: FamilyExtended) => Technology[];
   
   // Events
   emitCatalogEvent: (event: CatalogEvent) => void;
   
   // Status
   isLoaded: boolean;
+  hasExtendedData: boolean;
 }
 
 export const useCatalogResolver = (): CatalogResolverResult => {
   const { 
     macros, 
     families, 
-    addons, 
+    addons,
+    scales,
     attributeDefs, 
+    technologyLibrary,
+    benefitRules,
+    quoteExplainer,
+    indexDisplay,
     isDataLoaded 
   } = useLensStore();
   
-  // Get extended data from store (if available)
-  // For now, we work with current schema and gracefully fallback
+  // Check if extended data is available
+  const hasExtendedData = useMemo(() => {
+    return !!(technologyLibrary || benefitRules || quoteExplainer || (indexDisplay && indexDisplay.length > 0));
+  }, [technologyLibrary, benefitRules, quoteExplainer, indexDisplay]);
   
   // Build macro lookup map
   const macroMap = useMemo(() => {
-    const map = new Map<string, MacroDisplay>();
+    const map = new Map<string, MacroExtended>();
     macros.forEach(macro => {
-      const tierKey = MACRO_TO_TIER[macro.id] || 'essential';
-      const defaultConfig = DEFAULT_TIER_CONFIG[tierKey];
-      
-      map.set(macro.id, {
-        id: macro.id,
-        category: macro.category,
-        name_client: macro.name_client,
-        description_client: macro.description_client,
-        tier_key: tierKey,
-        display: {
-          icon: defaultConfig.icon,
-          color_class: defaultConfig.colorClass,
-          bg_header_class: defaultConfig.bgHeaderClass,
-          border_class: defaultConfig.borderClass,
-          dot_color_class: defaultConfig.dotColorClass,
-        },
-      });
+      map.set(macro.id, macro);
     });
     return map;
   }, [macros]);
   
-  // Get tier key from macro ID
+  // Get tier key from macro ID - reads from JSON first, fallback to hardcoded
   const getTierKey = useCallback((macroId: string): 'essential' | 'comfort' | 'advanced' | 'top' => {
-    return MACRO_TO_TIER[macroId] || 'essential';
-  }, []);
-  
-  // Get tier configuration
-  const getTierConfig = useCallback((macroId: string) => {
-    const tierKey = getTierKey(macroId);
     const macro = macroMap.get(macroId);
+    if (macro?.tier_key) {
+      return macro.tier_key;
+    }
+    return MACRO_TO_TIER_FALLBACK[macroId] || 'essential';
+  }, [macroMap]);
+  
+  // Get tier configuration - reads from JSON macro.display first
+  const getTierConfig = useCallback((macroId: string) => {
+    const macro = macroMap.get(macroId);
+    const tierKey = getTierKey(macroId);
+    const defaultConfig = DEFAULT_TIER_CONFIG[tierKey];
     
+    // If macro has display config from JSON, use it
     if (macro?.display) {
       return {
         label: macro.name_client,
@@ -176,23 +203,39 @@ export const useCatalogResolver = (): CatalogResolverResult => {
         bgHeaderClass: macro.display.bg_header_class,
         borderClass: macro.display.border_class,
         dotColorClass: macro.display.dot_color_class,
-        selectedBorderClass: DEFAULT_TIER_CONFIG[tierKey].selectedBorderClass,
+        selectedBorderClass: defaultConfig.selectedBorderClass,
       };
     }
     
-    return DEFAULT_TIER_CONFIG[tierKey];
+    // Fallback to default with macro name if available
+    return {
+      ...defaultConfig,
+      label: macro?.name_client || defaultConfig.label,
+    };
   }, [macroMap, getTierKey]);
   
   // Get macro display data
-  const getMacroDisplay = useCallback((macroId: string): MacroDisplay | null => {
+  const getMacroDisplay = useCallback((macroId: string): MacroExtended | null => {
     return macroMap.get(macroId) || null;
   }, [macroMap]);
   
-  // Get scale labels from JSON or fallback
+  // Get scale labels from JSON scales or benefit_rules, fallback to default
   const getScaleLabels = useCallback((scaleId: string): Record<string, string> => {
-    // TODO: Read from lensData.scales when extended schema is loaded
+    // First try to get from scales in JSON
+    if (scales && scales[scaleId]) {
+      return scales[scaleId] as Record<string, string>;
+    }
+    
+    // Then try benefit_rules
+    if (benefitRules?.rules) {
+      const rule = benefitRules.rules.find(r => r.attribute_id === scaleId);
+      if (rule?.scale_labels) {
+        return rule.scale_labels;
+      }
+    }
+    
     return DEFAULT_SCALE_LABELS;
-  }, []);
+  }, [scales, benefitRules]);
   
   // Convert 0-3 scale to 1-5 stars
   const scaleToStars = useCallback((value: number, maxScale: number = 3): number => {
@@ -201,46 +244,68 @@ export const useCatalogResolver = (): CatalogResolverResult => {
     return mapping[Math.min(value, maxScale)] || 1;
   }, []);
   
-  // Resolve attribute value to human label
+  // Resolve attribute value to human label - reads from benefit_rules
   const resolveAttributeLabel = useCallback((attributeId: string, value: number): string => {
+    // Try to find in benefit_rules first
+    if (benefitRules?.rules) {
+      const rule = benefitRules.rules.find(r => r.attribute_id === attributeId);
+      if (rule?.scale_labels) {
+        return rule.scale_labels[String(value)] || DEFAULT_SCALE_LABELS[String(value)] || DEFAULT_SCALE_LABELS['0'];
+      }
+    }
+    
+    // Fallback to general scale labels
     const labels = getScaleLabels('range_0_3');
     return labels[String(value)] || labels['0'];
-  }, [getScaleLabels]);
+  }, [benefitRules, getScaleLabels]);
   
   // Resolve addon name for specific supplier
-  const resolveAddonName = useCallback((addon: Addon, supplier: string): string => {
+  const resolveAddonName = useCallback((addon: { name_common: string; name_commercial?: Record<string, string> }, supplier: string): string => {
     return addon.name_commercial?.[supplier] || addon.name_common;
   }, []);
   
-  // Resolve technology by ID
+  // Resolve technology by ID - reads from technology_library
   const resolveTechnology = useCallback((techId: string): Technology | null => {
-    // TODO: Implement when technology_library is added to JSON
-    return null;
-  }, []);
+    if (!technologyLibrary?.items) return null;
+    return technologyLibrary.items[techId] || null;
+  }, [technologyLibrary]);
   
-  // Get index display configuration
+  // Get all technologies
+  const getAllTechnologies = useCallback((): Technology[] => {
+    if (!technologyLibrary?.items) return [];
+    return Object.values(technologyLibrary.items);
+  }, [technologyLibrary]);
+  
+  // Get technologies for a family
+  const getTechnologiesForFamily = useCallback((family: FamilyExtended): Technology[] => {
+    if (!family.technology_refs || !technologyLibrary?.items) return [];
+    return family.technology_refs
+      .map(ref => technologyLibrary.items[ref])
+      .filter(Boolean) as Technology[];
+  }, [technologyLibrary]);
+  
+  // Get index display configuration - reads from JSON first
   const getIndexDisplay = useCallback((indexValue: string): IndexDisplay => {
-    // TODO: Read from lensData.index_display when extended schema is loaded
-    const found = DEFAULT_INDEX_DISPLAY.find(i => i.value === indexValue);
+    // Use JSON index_display if available
+    const displays = indexDisplay && indexDisplay.length > 0 ? indexDisplay : DEFAULT_INDEX_DISPLAY;
+    const found = displays.find(i => i.value === indexValue);
     return found || { value: indexValue, name: indexValue, description: '', aesthetic_score: 1 };
-  }, []);
+  }, [indexDisplay]);
   
   // Get all index displays
   const getAllIndexDisplays = useCallback((): IndexDisplay[] => {
-    return DEFAULT_INDEX_DISPLAY;
-  }, []);
+    return indexDisplay && indexDisplay.length > 0 ? indexDisplay : DEFAULT_INDEX_DISPLAY;
+  }, [indexDisplay]);
   
   // Resolve complete family display data
-  const resolveFamilyDisplay = useCallback((family: Family): ResolvedFamilyDisplay | null => {
+  const resolveFamilyDisplay = useCallback((family: FamilyExtended): ResolvedFamilyDisplay | null => {
     const macro = macroMap.get(family.macro);
     if (!macro) return null;
     
-    const tierKey = getTierKey(family.macro);
     const tierConfig = getTierConfig(family.macro);
     
-    // Resolve technologies
-    const technologies: Technology[] = [];
-    // TODO: Resolve from technology_refs when available
+    // Resolve technologies from family.technology_refs
+    const technologies = getTechnologiesForFamily(family);
     
     // Resolve attribute labels
     const prefix = family.category === 'PROGRESSIVA' ? 'PROG_' : 'MONO_';
@@ -263,22 +328,81 @@ export const useCatalogResolver = (): CatalogResolverResult => {
     });
     
     return {
-      family: family as any,
+      family,
       macro,
       technologies,
       attributeLabels,
       tierConfig,
     };
-  }, [macroMap, attributeDefs, getTierKey, getTierConfig, resolveAttributeLabel, scaleToStars]);
+  }, [macroMap, attributeDefs, getTierConfig, getTechnologiesForFamily, resolveAttributeLabel, scaleToStars]);
   
-  // Generate quote explanation based on anamnesis
+  // Generate quote explanation based on anamnesis - uses quote_explainer from JSON
   const generateQuoteExplanation = useCallback((
-    family: Family, 
+    family: FamilyExtended, 
     anamnesis: AnamnesisData
   ): string[] => {
     const paragraphs: string[] = [];
     const macro = macroMap.get(family.macro);
     
+    // Try to use quote_explainer rules from JSON
+    if (quoteExplainer?.rules && quoteExplainer.rules.length > 0) {
+      // Add intro template
+      if (quoteExplainer.intro_templates?.length > 0) {
+        const introTemplate = quoteExplainer.intro_templates[0];
+        paragraphs.push(
+          introTemplate
+            .replace('{product_name}', family.name_original)
+            .replace('{category}', macro?.name_client || 'padrão')
+        );
+      }
+      
+      // Evaluate each rule
+      const sortedRules = [...quoteExplainer.rules].sort((a, b) => a.priority - b.priority);
+      
+      for (const rule of sortedRules) {
+        const conditionsMet = rule.conditions.every(condition => {
+          const fieldValue = (anamnesis as any)[condition.field];
+          
+          switch (condition.operator) {
+            case 'equals':
+              return fieldValue === condition.value;
+            case 'in':
+              return Array.isArray(condition.value) && condition.value.includes(fieldValue);
+            case 'greater_than':
+              // Handle screen hours specially
+              if (condition.field === 'screenHours') {
+                const hoursMap: Record<string, number> = { '0-2': 1, '3-5': 4, '6-8': 7, '8+': 9 };
+                return (hoursMap[fieldValue] || 0) > (condition.value as number);
+              }
+              return typeof fieldValue === 'number' && fieldValue > (condition.value as number);
+            case 'less_than':
+              return typeof fieldValue === 'number' && fieldValue < (condition.value as number);
+            default:
+              return false;
+          }
+        });
+        
+        if (conditionsMet) {
+          paragraphs.push(
+            rule.template
+              .replace('{product_name}', family.name_original)
+              .replace('{screenHours}', anamnesis.screenHours || '')
+              .replace('{category}', macro?.name_client || 'padrão')
+          );
+        }
+      }
+      
+      // Add closing template
+      if (quoteExplainer.closing_templates?.length > 0 && paragraphs.length > 1) {
+        paragraphs.push(quoteExplainer.closing_templates[0]);
+      }
+      
+      if (paragraphs.length > 0) {
+        return paragraphs;
+      }
+    }
+    
+    // Fallback to hardcoded logic if no quote_explainer
     // Intro based on category
     if (family.category === 'PROGRESSIVA') {
       paragraphs.push(
@@ -333,7 +457,7 @@ export const useCatalogResolver = (): CatalogResolverResult => {
     }
     
     return paragraphs;
-  }, [macroMap]);
+  }, [macroMap, quoteExplainer]);
   
   // Emit catalog event (for cache invalidation)
   const emitCatalogEvent = useCallback((event: CatalogEvent) => {
@@ -355,7 +479,10 @@ export const useCatalogResolver = (): CatalogResolverResult => {
     generateQuoteExplanation,
     getScaleLabels,
     scaleToStars,
+    getAllTechnologies,
+    getTechnologiesForFamily,
     emitCatalogEvent,
     isLoaded: isDataLoaded,
+    hasExtendedData,
   };
 };
