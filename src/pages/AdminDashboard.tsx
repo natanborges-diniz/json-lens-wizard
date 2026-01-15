@@ -181,6 +181,25 @@ const AdminDashboard = () => {
     }
   };
 
+  // Sanitize data to replace NaN, Infinity, undefined with null for valid JSON
+  const sanitizeForJson = (obj: unknown): unknown => {
+    if (obj === null || obj === undefined) return null;
+    if (typeof obj === 'number') {
+      if (Number.isNaN(obj) || !Number.isFinite(obj)) return null;
+      return obj;
+    }
+    if (typeof obj === 'string' || typeof obj === 'boolean') return obj;
+    if (Array.isArray(obj)) return obj.map(sanitizeForJson);
+    if (typeof obj === 'object') {
+      const result: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+        result[key] = sanitizeForJson(value);
+      }
+      return result;
+    }
+    return obj;
+  };
+
   // Export current data as JSON - preserves ALL root keys and reflects current state
   const exportJson = () => {
     // Validate that we have data to export
@@ -231,7 +250,10 @@ const AdminDashboard = () => {
       index_display: indexDisplay?.length > 0 ? indexDisplay : undefined,
     };
 
-    const jsonStr = JSON.stringify(exportData, null, 2);
+    // Sanitize data to ensure valid JSON (no NaN, Infinity, undefined)
+    const sanitizedData = sanitizeForJson(exportData) as LensData;
+
+    const jsonStr = JSON.stringify(sanitizedData, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
