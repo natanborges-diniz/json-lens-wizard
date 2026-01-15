@@ -1,15 +1,17 @@
 {
   "meta": {
-    "schema_version": "1.1",
-    "dataset_name": "Base Lentes - Unificada (V1) com preços",
-    "generated_at": "2026-01-14",
+    "schema_version": "1.2",
+    "dataset_name": "Base Lentes - Unificada (V1.2) com Extended Catalog",
+    "generated_at": "2026-01-15",
     "counts": {
       "families": 27,
       "addons": 6,
-      "skus_prices": 2689
+      "skus_prices": 2689,
+      "technologies": 20
     },
     "notes": [
-      "V1.1: adicionados campos por SKU em prices: addons_detected, attribute_overrides e flags, baseados em parsing da descrição e tratamentos_raw."
+      "V1.1: adicionados campos por SKU em prices: addons_detected, attribute_overrides e flags, baseados em parsing da descrição e tratamentos_raw.",
+      "V1.2: adicionados technology_library, benefit_rules, quote_explainer, index_display. Macros atualizados com tier_key e display. Families atualizados com technology_refs."
     ]
   },
   "scales": {
@@ -99,49 +101,113 @@
       "id": "PROG_BASICO",
       "category": "PROGRESSIVA",
       "name_client": "Essencial",
-      "description_client": "Corrige longe e perto com custo-benefício."
+      "description_client": "Corrige longe e perto com custo-benefício.",
+      "tier_key": "essential",
+      "display": {
+        "icon": "Shield",
+        "color_class": "text-blue-600",
+        "bg_header_class": "bg-gradient-to-r from-blue-50 to-sky-100",
+        "border_class": "border-blue-200",
+        "dot_color_class": "bg-blue-500"
+      }
     },
     {
       "id": "PROG_CONFORTO",
       "category": "PROGRESSIVA",
       "name_client": "Conforto",
-      "description_client": "Mais adaptação e conforto no dia a dia."
+      "description_client": "Mais adaptação e conforto no dia a dia.",
+      "tier_key": "comfort",
+      "display": {
+        "icon": "Heart",
+        "color_class": "text-green-600",
+        "bg_header_class": "bg-gradient-to-r from-green-50 to-emerald-100",
+        "border_class": "border-green-200",
+        "dot_color_class": "bg-green-500"
+      }
     },
     {
       "id": "PROG_AVANCADO",
       "category": "PROGRESSIVA",
       "name_client": "Avançada",
-      "description_client": "Ideal para uso intenso e telas."
+      "description_client": "Ideal para uso intenso e telas.",
+      "tier_key": "advanced",
+      "display": {
+        "icon": "Star",
+        "color_class": "text-amber-600",
+        "bg_header_class": "bg-gradient-to-r from-amber-50 to-orange-100",
+        "border_class": "border-amber-200",
+        "dot_color_class": "bg-amber-500"
+      }
     },
     {
       "id": "PROG_TOP",
       "category": "PROGRESSIVA",
       "name_client": "Top de Mercado",
-      "description_client": "Máxima personalização e conforto."
+      "description_client": "Máxima personalização e conforto.",
+      "tier_key": "top",
+      "display": {
+        "icon": "Gem",
+        "color_class": "text-violet-600",
+        "bg_header_class": "bg-gradient-to-r from-violet-50 to-purple-100",
+        "border_class": "border-violet-200",
+        "dot_color_class": "bg-violet-500"
+      }
     },
     {
       "id": "MONO_BASICO",
       "category": "MONOFOCAL",
       "name_client": "Essencial",
-      "description_client": "Correção visual simples e econômica."
+      "description_client": "Correção visual simples e econômica.",
+      "tier_key": "essential",
+      "display": {
+        "icon": "Shield",
+        "color_class": "text-blue-600",
+        "bg_header_class": "bg-gradient-to-r from-blue-50 to-sky-100",
+        "border_class": "border-blue-200",
+        "dot_color_class": "bg-blue-500"
+      }
     },
     {
       "id": "MONO_ENTRADA",
       "category": "MONOFOCAL",
       "name_client": "Conforto",
-      "description_client": "Mais nitidez, menos reflexo no dia a dia."
+      "description_client": "Mais nitidez, menos reflexo no dia a dia.",
+      "tier_key": "comfort",
+      "display": {
+        "icon": "Heart",
+        "color_class": "text-green-600",
+        "bg_header_class": "bg-gradient-to-r from-green-50 to-emerald-100",
+        "border_class": "border-green-200",
+        "dot_color_class": "bg-green-500"
+      }
     },
     {
       "id": "MONO_INTER",
       "category": "MONOFOCAL",
       "name_client": "Avançada",
-      "description_client": "Ideal para quem usa bastante celular e computador."
+      "description_client": "Ideal para quem usa bastante celular e computador.",
+      "tier_key": "advanced",
+      "display": {
+        "icon": "Star",
+        "color_class": "text-amber-600",
+        "bg_header_class": "bg-gradient-to-r from-amber-50 to-orange-100",
+        "border_class": "border-amber-200",
+        "dot_color_class": "bg-amber-500"
+      }
     },
     {
       "id": "MONO_TOP",
       "category": "MONOFOCAL",
       "name_client": "Top de Mercado",
-      "description_client": "Máximo conforto, proteção e durabilidade."
+      "description_client": "Máximo conforto, proteção e durabilidade.",
+      "tier_key": "top",
+      "display": {
+        "icon": "Gem",
+        "color_class": "text-violet-600",
+        "bg_header_class": "bg-gradient-to-r from-violet-50 to-purple-100",
+        "border_class": "border-violet-200",
+        "dot_color_class": "bg-violet-500"
+      }
     }
   ],
   "families": [
@@ -165,6 +231,7 @@
         "Proteção UV (UVProtect)",
         "Antirreflexo básico (DuraVision Silver UV)"
       ],
+      "technology_refs": ["ZEISS_UVPROTECT", "ZEISS_DURAVISION_SILVER"],
       "active": true
     },
     {
@@ -187,6 +254,7 @@
         "Proteção UV (UVProtect)",
         "Antirreflexo premium (DuraVision Platinum UV)"
       ],
+      "technology_refs": ["ZEISS_UVPROTECT", "ZEISS_DURAVISION_PLATINUM"],
       "active": true
     },
     {
@@ -210,6 +278,7 @@
         "Antirreflexo premium (DuraVision Platinum UV)",
         "Conforto para telas (Digital Inside)"
       ],
+      "technology_refs": ["ZEISS_UVPROTECT", "ZEISS_DURAVISION_PLATINUM", "ZEISS_SMARTLIFE"],
       "active": true
     },
     {
@@ -234,6 +303,7 @@
         "Controle de luz azul (BlueGuard)",
         "Personalização avançada (IndividualFit)"
       ],
+      "technology_refs": ["ZEISS_UVPROTECT", "ZEISS_DURAVISION_PLATINUM", "ZEISS_BLUEGUARD", "ZEISS_INDIVIDUALFIT", "ZEISS_SMARTLIFE"],
       "active": true
     },
     {
@@ -256,6 +326,7 @@
         "Proteção UV (UVControl)",
         "Antirreflexo básico (Hi-Vision)"
       ],
+      "technology_refs": ["HOYA_UVCONTROL", "HOYA_HIVISION"],
       "active": true
     },
     {
@@ -278,6 +349,7 @@
         "Proteção UV (UVControl)",
         "Antirreflexo resistente (LongLife)"
       ],
+      "technology_refs": ["HOYA_UVCONTROL", "HOYA_LONGLIFE"],
       "active": true
     },
     {
@@ -301,6 +373,7 @@
         "Conforto para telas (Lifestyle Optimization)",
         "Personalização por armação (FrameFit)"
       ],
+      "technology_refs": ["HOYA_UVCONTROL", "HOYA_LONGLIFE", "HOYA_ID_TECHNOLOGY", "HOYA_FRAMEFIT"],
       "active": true
     },
     {
@@ -325,6 +398,7 @@
         "Personalização avançada (iD Technology)",
         "Campos de visão máximos (Binocular Harmonization)"
       ],
+      "technology_refs": ["HOYA_UVCONTROL", "HOYA_LONGLIFE_PREMIUM", "HOYA_BLUECONTROL", "HOYA_ID_TECHNOLOGY", "HOYA_BINOCULAR_HARMONIZATION"],
       "active": true
     },
     {
@@ -347,6 +421,7 @@
         "Proteção UV (UV Filter Essilor)",
         "Antirreflexo premium (Crizal Sapphire HR)"
       ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_SAPPHIRE"],
       "active": true
     },
     {
@@ -369,6 +444,7 @@
         "Proteção UV (UV Filter Essilor)",
         "Antirreflexo premium (Crizal Sapphire HR)"
       ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_SAPPHIRE", "ESSILOR_VARILUX_TECHNOLOGY"],
       "active": true
     },
     {
@@ -392,6 +468,7 @@
         "Conforto para telas (W.A.V.E. 2.0)",
         "Personalização por armação (Eyecode)"
       ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_ROCK", "ESSILOR_WAVE", "ESSILOR_EYECODE"],
       "active": true
     },
     {
@@ -416,6 +493,7 @@
         "Campos de visão máximos (XR-motion)",
         "Personalização avançada (Eyecode)"
       ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_ROCK", "ESSILOR_BLUE_UV_FILTER", "ESSILOR_XR_MOTION", "ESSILOR_EYECODE"],
       "active": true
     },
     {
@@ -440,6 +518,7 @@
         "Campos de visão máximos (XR-motion)",
         "Personalização avançada (Eyecode)"
       ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_ROCK", "ESSILOR_BLUE_UV_FILTER", "ESSILOR_XR_MOTION", "ESSILOR_EYECODE", "ESSILOR_EYE_TRACKING"],
       "active": true
     },
     {
@@ -464,6 +543,7 @@
         "Campos de visão máximos (XR-motion)",
         "Personalização avançada (Eyecode + CVP + 4D Technology)"
       ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_ROCK", "ESSILOR_BLUE_UV_FILTER", "ESSILOR_XR_MOTION", "ESSILOR_EYECODE", "ESSILOR_4D_TECHNOLOGY"],
       "active": true
     },
     {
@@ -486,6 +566,7 @@
         "Proteção UV (UV Filter Essilor)",
         "Antirreflexo básico (Crizal)"
       ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL"],
       "active": true
     },
     {
@@ -508,6 +589,7 @@
         "Proteção UV (UV Filter Essilor)",
         "Antirreflexo premium (Crizal Sapphire HR)"
       ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_SAPPHIRE"],
       "active": true
     },
     {
@@ -531,6 +613,7 @@
         "Proteção UV (UV Filter Essilor)",
         "Conforto visual leve para telas (Eyezen Focus)"
       ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_SAPPHIRE", "ESSILOR_EYEZEN_FOCUS"],
       "active": true
     },
     {
@@ -554,6 +637,7 @@
         "Proteção UV (UV Filter Essilor)",
         "Conforto para telas (Eyezen Focus)"
       ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_ROCK", "ESSILOR_EYEZEN_FOCUS"],
       "active": true
     },
     {
@@ -578,6 +662,7 @@
         "Controle de luz azul (Blue UV Filter)",
         "Conforto para telas (Eyezen Focus)"
       ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_ROCK", "ESSILOR_BLUE_UV_FILTER", "ESSILOR_EYEZEN_FOCUS"],
       "active": true
     },
     {
@@ -600,6 +685,7 @@
         "Proteção UV (UVProtect)",
         "Antirreflexo básico (DuraVision Silver UV)"
       ],
+      "technology_refs": ["ZEISS_UVPROTECT", "ZEISS_DURAVISION_SILVER"],
       "active": true
     },
     {
@@ -622,6 +708,7 @@
         "Proteção UV (UVProtect)",
         "Antirreflexo premium (DuraVision Platinum UV)"
       ],
+      "technology_refs": ["ZEISS_UVPROTECT", "ZEISS_DURAVISION_PLATINUM", "ZEISS_SMARTLIFE"],
       "active": true
     },
     {
@@ -645,6 +732,7 @@
         "Antirreflexo premium (DuraVision Platinum UV)",
         "Controle de luz azul (BlueGuard)"
       ],
+      "technology_refs": ["ZEISS_UVPROTECT", "ZEISS_DURAVISION_PLATINUM", "ZEISS_BLUEGUARD", "ZEISS_SMARTLIFE"],
       "active": true
     },
     {
@@ -669,6 +757,7 @@
         "Controle de luz azul (BlueGuard)",
         "Personalização avançada (IndividualFit)"
       ],
+      "technology_refs": ["ZEISS_UVPROTECT", "ZEISS_DURAVISION_PLATINUM", "ZEISS_BLUEGUARD", "ZEISS_INDIVIDUALFIT", "ZEISS_SMARTLIFE"],
       "active": true
     },
     {
@@ -691,6 +780,7 @@
         "Proteção UV (UVControl)",
         "Antirreflexo básico (Hi-Vision)"
       ],
+      "technology_refs": ["HOYA_UVCONTROL", "HOYA_HIVISION"],
       "active": true
     },
     {
@@ -713,6 +803,7 @@
         "Proteção UV (UVControl)",
         "Antirreflexo resistente (LongLife)"
       ],
+      "technology_refs": ["HOYA_UVCONTROL", "HOYA_LONGLIFE"],
       "active": true
     },
     {
@@ -736,6 +827,7 @@
         "Controle de luz azul (BlueControl)",
         "Proteção UV (UVControl)"
       ],
+      "technology_refs": ["HOYA_UVCONTROL", "HOYA_LONGLIFE", "HOYA_BLUECONTROL"],
       "active": true
     },
     {
@@ -760,6 +852,7 @@
         "Personalização avançada (iD Technology)",
         "Proteção UV (UVControl)"
       ],
+      "technology_refs": ["HOYA_UVCONTROL", "HOYA_LONGLIFE_PREMIUM", "HOYA_BLUECONTROL", "HOYA_ID_TECHNOLOGY"],
       "active": true
     }
   ],
@@ -777,10 +870,7 @@
         "HOYA": "Sensity"
       },
       "rules": {
-        "categories": [
-          "MONOFOCAL",
-          "PROGRESSIVA"
-        ]
+        "categories": ["MONOFOCAL", "PROGRESSIVA"]
       },
       "active": true
     },
@@ -797,10 +887,7 @@
         "HOYA": "Polarized"
       },
       "rules": {
-        "categories": [
-          "MONOFOCAL",
-          "PROGRESSIVA"
-        ]
+        "categories": ["MONOFOCAL", "PROGRESSIVA"]
       },
       "active": true
     },
@@ -818,10 +905,7 @@
         "HOYA": "LongLife / LongLife Premium"
       },
       "rules": {
-        "categories": [
-          "MONOFOCAL",
-          "PROGRESSIVA"
-        ]
+        "categories": ["MONOFOCAL", "PROGRESSIVA"]
       },
       "active": true
     },
@@ -840,10 +924,7 @@
         "HOYA": "BlueControl"
       },
       "rules": {
-        "categories": [
-          "MONOFOCAL",
-          "PROGRESSIVA"
-        ],
+        "categories": ["MONOFOCAL", "PROGRESSIVA"],
         "only_if": "BLUE < 1"
       },
       "active": true
@@ -861,10 +942,7 @@
         "HOYA": "Índice 1.60 / 1.67 / 1.74"
       },
       "rules": {
-        "categories": [
-          "MONOFOCAL",
-          "PROGRESSIVA"
-        ]
+        "categories": ["MONOFOCAL", "PROGRESSIVA"]
       },
       "active": true
     },
@@ -882,13 +960,530 @@
         "HOYA": "LongLife / LongLife Premium"
       },
       "rules": {
-        "categories": [
-          "MONOFOCAL",
-          "PROGRESSIVA"
-        ],
+        "categories": ["MONOFOCAL", "PROGRESSIVA"],
         "only_if": "DURABILIDADE < 3"
       },
       "active": true
+    }
+  ],
+  "technology_library": {
+    "items": {
+      "ZEISS_UVPROTECT": {
+        "id": "ZEISS_UVPROTECT",
+        "name_common": "Proteção UV Total",
+        "name_commercial": { "ZEISS": "UVProtect" },
+        "description_short": "Bloqueia 100% dos raios UV até 400nm em todas as lentes ZEISS.",
+        "description_long": "A tecnologia UVProtect da ZEISS garante proteção completa contra raios UV nocivos até 400nm, o padrão recomendado pela OMS. Esta proteção está presente em todas as lentes claras ZEISS, ajudando a prevenir catarata precoce e envelhecimento periocular.",
+        "benefits": ["Protege contra catarata precoce", "Previne envelhecimento periocular", "Padrão OMS 400nm"],
+        "icon": "Sun"
+      },
+      "ZEISS_BLUEGUARD": {
+        "id": "ZEISS_BLUEGUARD",
+        "name_common": "Controle de Luz Azul",
+        "name_commercial": { "ZEISS": "BlueGuard" },
+        "description_short": "Filtra a luz azul nociva mantendo aparência natural da lente.",
+        "description_long": "BlueGuard incorpora o bloqueio de luz azul diretamente no material da lente, oferecendo proteção mais eficiente sem os reflexos azulados típicos de tratamentos convencionais. Ideal para uso intenso de dispositivos digitais.",
+        "benefits": ["Reduz fadiga visual digital", "Aparência estética natural", "Proteção incorporada ao material"],
+        "icon": "Monitor"
+      },
+      "ZEISS_DURAVISION_PLATINUM": {
+        "id": "ZEISS_DURAVISION_PLATINUM",
+        "name_common": "Antirreflexo Premium",
+        "name_commercial": { "ZEISS": "DuraVision Platinum UV" },
+        "description_short": "Camada antirreflexo de alta durabilidade com proteção UV.",
+        "description_long": "O tratamento DuraVision Platinum UV combina múltiplas camadas de proteção: antirreflexo de última geração, proteção UV na face interna, camada hidrofóbica e oleofóbica para fácil limpeza, e resistência a riscos otimizada.",
+        "benefits": ["Máxima transparência", "Fácil limpeza", "Alta durabilidade", "Proteção UV frontal e posterior"],
+        "icon": "Sparkles"
+      },
+      "ZEISS_DURAVISION_SILVER": {
+        "id": "ZEISS_DURAVISION_SILVER",
+        "name_common": "Antirreflexo Básico",
+        "name_commercial": { "ZEISS": "DuraVision Silver UV" },
+        "description_short": "Tratamento antirreflexo com boa relação custo-benefício.",
+        "description_long": "DuraVision Silver UV oferece proteção antirreflexo essencial com proteção UV, sendo uma opção acessível para quem busca qualidade ZEISS com menor investimento.",
+        "benefits": ["Redução de reflexos", "Proteção UV", "Custo-benefício"],
+        "icon": "Shield"
+      },
+      "ZEISS_INDIVIDUALFIT": {
+        "id": "ZEISS_INDIVIDUALFIT",
+        "name_common": "Personalização Individual",
+        "name_commercial": { "ZEISS": "IndividualFit" },
+        "description_short": "Lente calculada para cada cliente com parâmetros individuais.",
+        "description_long": "A tecnologia IndividualFit considera parâmetros únicos de cada usuário como distância de leitura, ângulo pantoscópico e curvatura da armação para criar uma lente verdadeiramente personalizada.",
+        "benefits": ["Máxima precisão visual", "Campos de visão ampliados", "Adaptação rápida"],
+        "icon": "User"
+      },
+      "ZEISS_SMARTLIFE": {
+        "id": "ZEISS_SMARTLIFE",
+        "name_common": "Design SmartLife",
+        "name_commercial": { "ZEISS": "SmartLife Technology" },
+        "description_short": "Design otimizado para o estilo de vida digital moderno.",
+        "description_long": "SmartLife Technology considera os movimentos oculares dinâmicos do uso de smartphones e tablets, otimizando as zonas de visão para alternar naturalmente entre dispositivos e visão de longe.",
+        "benefits": ["Otimizado para smartphones", "Transições naturais de foco", "Menos fadiga visual"],
+        "icon": "Smartphone"
+      },
+      "HOYA_UVCONTROL": {
+        "id": "HOYA_UVCONTROL",
+        "name_common": "Proteção UV",
+        "name_commercial": { "HOYA": "UVControl" },
+        "description_short": "Proteção contra raios UV nocivos em lentes HOYA.",
+        "description_long": "A tecnologia UVControl da HOYA proporciona proteção contra raios UV prejudiciais, preservando a saúde ocular a longo prazo.",
+        "benefits": ["Proteção UV", "Saúde ocular", "Prevenção a longo prazo"],
+        "icon": "Sun"
+      },
+      "HOYA_BLUECONTROL": {
+        "id": "HOYA_BLUECONTROL",
+        "name_common": "Controle de Luz Azul",
+        "name_commercial": { "HOYA": "BlueControl" },
+        "description_short": "Filtra a luz azul de dispositivos digitais.",
+        "description_long": "BlueControl é o tratamento da HOYA que reduz a transmissão de luz azul nociva emitida por telas, proporcionando mais conforto visual durante uso prolongado de computadores e smartphones.",
+        "benefits": ["Menos fadiga visual", "Conforto em telas", "Melhora do sono"],
+        "icon": "Monitor"
+      },
+      "HOYA_LONGLIFE": {
+        "id": "HOYA_LONGLIFE",
+        "name_common": "Antirreflexo Durável",
+        "name_commercial": { "HOYA": "LongLife" },
+        "description_short": "Tratamento resistente com longa durabilidade.",
+        "description_long": "O tratamento LongLife da HOYA é projetado para resistir ao desgaste diário, oferecendo durabilidade superior e facilidade de limpeza.",
+        "benefits": ["Alta durabilidade", "Fácil limpeza", "Resistência a riscos"],
+        "icon": "Shield"
+      },
+      "HOYA_LONGLIFE_PREMIUM": {
+        "id": "HOYA_LONGLIFE_PREMIUM",
+        "name_common": "Antirreflexo Premium",
+        "name_commercial": { "HOYA": "LongLife Premium" },
+        "description_short": "O melhor tratamento antirreflexo da HOYA.",
+        "description_long": "LongLife Premium combina as melhores tecnologias da HOYA em um único tratamento: máxima transparência, super resistência a riscos e oleofobia avançada.",
+        "benefits": ["Máxima transparência", "Super resistência", "Oleofobia avançada"],
+        "icon": "Sparkles"
+      },
+      "HOYA_HIVISION": {
+        "id": "HOYA_HIVISION",
+        "name_common": "Antirreflexo Básico",
+        "name_commercial": { "HOYA": "Hi-Vision" },
+        "description_short": "Tratamento antirreflexo de entrada.",
+        "description_long": "Hi-Vision oferece proteção antirreflexo essencial com boa relação custo-benefício para uso diário.",
+        "benefits": ["Redução de reflexos", "Custo acessível"],
+        "icon": "Eye"
+      },
+      "HOYA_ID_TECHNOLOGY": {
+        "id": "HOYA_ID_TECHNOLOGY",
+        "name_common": "Personalização iD",
+        "name_commercial": { "HOYA": "iD Technology" },
+        "description_short": "Tecnologia de personalização exclusiva HOYA.",
+        "description_long": "A iD Technology permite criar lentes com design binocular integrado, considerando a interação entre os dois olhos para uma visão mais natural e campos ampliados.",
+        "benefits": ["Design binocular", "Campos ampliados", "Visão natural"],
+        "icon": "User"
+      },
+      "HOYA_FRAMEFIT": {
+        "id": "HOYA_FRAMEFIT",
+        "name_common": "Otimização por Armação",
+        "name_commercial": { "HOYA": "FrameFit" },
+        "description_short": "Otimiza a lente para a armação escolhida.",
+        "description_long": "FrameFit considera as medidas específicas da armação escolhida para otimizar a distribuição das zonas de visão da lente progressiva.",
+        "benefits": ["Otimização por armação", "Melhor aproveitamento visual"],
+        "icon": "Glasses"
+      },
+      "HOYA_BINOCULAR_HARMONIZATION": {
+        "id": "HOYA_BINOCULAR_HARMONIZATION",
+        "name_common": "Harmonização Binocular",
+        "name_commercial": { "HOYA": "Binocular Harmonization" },
+        "description_short": "Equilibra a visão entre os dois olhos.",
+        "description_long": "A tecnologia de Harmonização Binocular da HOYA garante que ambas as lentes trabalhem em perfeita sincronia, proporcionando uma experiência visual mais natural e confortável.",
+        "benefits": ["Visão equilibrada", "Conforto binocular", "Percepção espacial aprimorada"],
+        "icon": "Eye"
+      },
+      "ESSILOR_UV_FILTER": {
+        "id": "ESSILOR_UV_FILTER",
+        "name_common": "Proteção UV",
+        "name_commercial": { "ESSILOR": "UV Filter" },
+        "description_short": "Proteção completa contra raios UV.",
+        "description_long": "O filtro UV da Essilor bloqueia os raios ultravioleta nocivos, protegendo os olhos e a pele ao redor contra danos causados pela exposição solar.",
+        "benefits": ["Proteção UV", "Saúde ocular", "Proteção periocular"],
+        "icon": "Sun"
+      },
+      "ESSILOR_BLUE_UV_FILTER": {
+        "id": "ESSILOR_BLUE_UV_FILTER",
+        "name_common": "Filtro Luz Azul-Violeta",
+        "name_commercial": { "ESSILOR": "Blue UV Filter" },
+        "description_short": "Filtra luz azul-violeta nociva mantendo luz azul-turquesa benéfica.",
+        "description_long": "O Blue UV Filter da Essilor é seletivo: bloqueia a luz azul-violeta nociva (415-455nm) enquanto permite a passagem da luz azul-turquesa benéfica para o ciclo circadiano.",
+        "benefits": ["Filtro seletivo", "Preserva ritmo circadiano", "Reduz fadiga digital"],
+        "icon": "Monitor"
+      },
+      "ESSILOR_CRIZAL": {
+        "id": "ESSILOR_CRIZAL",
+        "name_common": "Antirreflexo Crizal",
+        "name_commercial": { "ESSILOR": "Crizal" },
+        "description_short": "Tratamento antirreflexo de referência mundial.",
+        "description_long": "Crizal é a linha de tratamentos antirreflexo mais reconhecida do mundo, oferecendo transparência e proteção em diferentes níveis para cada necessidade.",
+        "benefits": ["Transparência", "Confiabilidade", "Marca referência"],
+        "icon": "Eye"
+      },
+      "ESSILOR_CRIZAL_SAPPHIRE": {
+        "id": "ESSILOR_CRIZAL_SAPPHIRE",
+        "name_common": "Antirreflexo Premium",
+        "name_commercial": { "ESSILOR": "Crizal Sapphire HR" },
+        "description_short": "Máxima transparência com tecnologia de múltiplas camadas.",
+        "description_long": "Crizal Sapphire HR utiliza tecnologia de múltiplas camadas para oferecer a máxima transparência, reduzindo reflexos em até 30% comparado a antirreflexos convencionais.",
+        "benefits": ["Máxima transparência", "30% menos reflexos", "Estética superior"],
+        "icon": "Sparkles"
+      },
+      "ESSILOR_CRIZAL_ROCK": {
+        "id": "ESSILOR_CRIZAL_ROCK",
+        "name_common": "Antirreflexo Ultra Resistente",
+        "name_commercial": { "ESSILOR": "Crizal Rock" },
+        "description_short": "O antirreflexo mais resistente da Essilor.",
+        "description_long": "Crizal Rock é a evolução máxima da linha Crizal: 3x mais resistente a riscos e 3x mais fácil de limpar que tratamentos anteriores.",
+        "benefits": ["3x mais resistente", "3x mais fácil de limpar", "Durabilidade extrema"],
+        "icon": "Shield"
+      },
+      "ESSILOR_EYECODE": {
+        "id": "ESSILOR_EYECODE",
+        "name_common": "Centralização Visual",
+        "name_commercial": { "ESSILOR": "Eyecode" },
+        "description_short": "Medição precisa do centro de rotação do olho.",
+        "description_long": "Eyecode é uma tecnologia exclusiva que mede o centro de rotação individual de cada olho, permitindo criar lentes com precisão milimétrica.",
+        "benefits": ["Precisão individual", "Centro de rotação único", "Visão otimizada"],
+        "icon": "Focus"
+      },
+      "ESSILOR_WAVE": {
+        "id": "ESSILOR_WAVE",
+        "name_common": "Tecnologia Wave",
+        "name_commercial": { "ESSILOR": "W.A.V.E. Technology" },
+        "description_short": "Análise avançada da frente de onda visual.",
+        "description_long": "A tecnologia W.A.V.E. (Wavefront Advanced Vision Enhancement) analisa e corrige aberrações de alta ordem para uma visão mais nítida e precisa.",
+        "benefits": ["Correção de aberrações", "Visão mais nítida", "Tecnologia avançada"],
+        "icon": "Waves"
+      },
+      "ESSILOR_XR_MOTION": {
+        "id": "ESSILOR_XR_MOTION",
+        "name_common": "Campos Visuais Expandidos",
+        "name_commercial": { "ESSILOR": "XR-motion" },
+        "description_short": "Campos de visão até 24% mais amplos.",
+        "description_long": "A tecnologia XR-motion das lentes Varilux XR oferece campos de visão expandidos em até 24% para perto e intermediário, com transições mais suaves entre as zonas.",
+        "benefits": ["24% mais campo de visão", "Transições suaves", "Menos distorções laterais"],
+        "icon": "Maximize"
+      },
+      "ESSILOR_EYEZEN_FOCUS": {
+        "id": "ESSILOR_EYEZEN_FOCUS",
+        "name_common": "Suporte Visual Digital",
+        "name_commercial": { "ESSILOR": "Eyezen Focus" },
+        "description_short": "Alívio para os olhos durante uso de telas.",
+        "description_long": "Eyezen Focus incorpora um leve suporte acomodativo na zona de leitura que reduz o esforço visual durante uso prolongado de smartphones e tablets.",
+        "benefits": ["Reduz esforço acomodativo", "Conforto digital", "Menos fadiga visual"],
+        "icon": "Smartphone"
+      },
+      "ESSILOR_VARILUX_TECHNOLOGY": {
+        "id": "ESSILOR_VARILUX_TECHNOLOGY",
+        "name_common": "Tecnologia Varilux",
+        "name_commercial": { "ESSILOR": "Varilux Technology" },
+        "description_short": "50+ anos de liderança em lentes progressivas.",
+        "description_long": "Varilux é a marca pioneira e líder mundial em lentes progressivas desde 1959, com mais de 500 milhões de usuários satisfeitos.",
+        "benefits": ["Marca líder mundial", "50+ anos de inovação", "Confiabilidade comprovada"],
+        "icon": "Award"
+      },
+      "ESSILOR_4D_TECHNOLOGY": {
+        "id": "ESSILOR_4D_TECHNOLOGY",
+        "name_common": "Tecnologia 4D",
+        "name_commercial": { "ESSILOR": "4D Technology" },
+        "description_short": "Predição inteligente de movimentos oculares.",
+        "description_long": "A tecnologia 4D incorpora inteligência artificial para prever e otimizar os caminhos visuais mais utilizados pelo usuário, resultando em visão mais fluida.",
+        "benefits": ["IA preditiva", "Visão dinâmica otimizada", "Personalização extrema"],
+        "icon": "Brain"
+      },
+      "ESSILOR_EYE_TRACKING": {
+        "id": "ESSILOR_EYE_TRACKING",
+        "name_common": "Rastreamento Ocular",
+        "name_commercial": { "ESSILOR": "Eye Tracking" },
+        "description_short": "Design baseado em movimentos oculares reais.",
+        "description_long": "A tecnologia de Eye Tracking da Essilor usa dados de rastreamento ocular para otimizar o design das lentes para os padrões de movimento mais comuns.",
+        "benefits": ["Design baseado em dados reais", "Movimentos naturais", "Conforto otimizado"],
+        "icon": "ScanEye"
+      }
+    }
+  },
+  "benefit_rules": {
+    "rules": [
+      {
+        "attribute_id": "PROG_ADAPT",
+        "scale_labels": {
+          "0": "Adaptação básica",
+          "1": "Adaptação confortável",
+          "2": "Adaptação fácil",
+          "3": "Adaptação instantânea"
+        },
+        "priority": 1
+      },
+      {
+        "attribute_id": "PROG_CAMPO",
+        "scale_labels": {
+          "0": "Campo básico",
+          "1": "Campo ampliado",
+          "2": "Campo amplo",
+          "3": "Campo máximo"
+        },
+        "priority": 2
+      },
+      {
+        "attribute_id": "PROG_DIGITAL",
+        "scale_labels": {
+          "0": "Sem otimização digital",
+          "1": "Conforto digital leve",
+          "2": "Conforto digital otimizado",
+          "3": "Conforto digital máximo"
+        },
+        "priority": 3
+      },
+      {
+        "attribute_id": "PROG_PERSON",
+        "scale_labels": {
+          "0": "Design padrão",
+          "1": "Personalização leve",
+          "2": "Personalização avançada",
+          "3": "Personalização individual"
+        },
+        "priority": 4
+      },
+      {
+        "attribute_id": "MONO_NITIDEZ",
+        "scale_labels": {
+          "0": "Nitidez básica",
+          "1": "Nitidez boa",
+          "2": "Nitidez otimizada",
+          "3": "Nitidez máxima"
+        },
+        "priority": 5
+      },
+      {
+        "attribute_id": "MONO_CONFORTO",
+        "scale_labels": {
+          "0": "Conforto básico",
+          "1": "Conforto bom",
+          "2": "Conforto otimizado",
+          "3": "Conforto máximo"
+        },
+        "priority": 6
+      },
+      {
+        "attribute_id": "MONO_DIGITAL",
+        "scale_labels": {
+          "0": "Sem otimização digital",
+          "1": "Suporte digital leve",
+          "2": "Suporte digital otimizado",
+          "3": "Suporte digital máximo"
+        },
+        "priority": 7
+      },
+      {
+        "attribute_id": "MONO_ESTETICA",
+        "scale_labels": {
+          "0": "Espessura padrão",
+          "1": "Espessura reduzida",
+          "2": "Espessura fina",
+          "3": "Espessura mínima"
+        },
+        "priority": 8
+      },
+      {
+        "attribute_id": "AR_QUALIDADE",
+        "scale_labels": {
+          "0": "Sem antirreflexo",
+          "1": "Antirreflexo básico",
+          "2": "Antirreflexo premium",
+          "3": "Antirreflexo topo"
+        },
+        "priority": 9
+      },
+      {
+        "attribute_id": "BLUE",
+        "scale_labels": {
+          "0": "Sem filtro azul",
+          "1": "Filtro azul leve",
+          "2": "Filtro azul completo",
+          "3": "Filtro azul máximo"
+        },
+        "priority": 10
+      },
+      {
+        "attribute_id": "DURABILIDADE",
+        "scale_labels": {
+          "0": "Durabilidade básica",
+          "1": "Durabilidade boa",
+          "2": "Durabilidade alta",
+          "3": "Durabilidade máxima"
+        },
+        "priority": 11
+      },
+      {
+        "attribute_id": "UV",
+        "scale_labels": {
+          "false": "Sem proteção UV",
+          "true": "Proteção UV completa"
+        },
+        "priority": 12
+      }
+    ],
+    "priority_order": [
+      "PROG_ADAPT",
+      "PROG_CAMPO",
+      "PROG_DIGITAL",
+      "PROG_PERSON",
+      "MONO_NITIDEZ",
+      "MONO_CONFORTO",
+      "MONO_DIGITAL",
+      "MONO_ESTETICA",
+      "AR_QUALIDADE",
+      "BLUE",
+      "DURABILIDADE",
+      "UV"
+    ]
+  },
+  "quote_explainer": {
+    "intro_templates": [
+      "Analisando seu perfil visual, recomendamos a {product_name}.",
+      "Baseado nas suas necessidades, a {product_name} é ideal para você.",
+      "Para o seu estilo de vida, selecionamos a {product_name}."
+    ],
+    "closing_templates": [
+      "Esta lente vai transformar sua experiência visual no dia a dia.",
+      "Com esta escolha, você terá mais conforto e proteção.",
+      "Uma excelente opção para suas necessidades visuais."
+    ],
+    "rules": [
+      {
+        "id": "high_screen_use",
+        "conditions": [
+          { "field": "screenHours", "operator": "greater_than", "value": 4 }
+        ],
+        "template": "Como você passa mais de 4 horas por dia em frente a telas, a {product_name} vai reduzir significativamente sua fadiga visual com seu {technology_digital}.",
+        "priority": 1
+      },
+      {
+        "id": "very_high_screen_use",
+        "conditions": [
+          { "field": "screenHours", "operator": "greater_than", "value": 8 }
+        ],
+        "template": "Com {screenHours} horas diárias de uso de telas, você precisa do máximo suporte digital. A {product_name} oferece proteção avançada para uso intensivo.",
+        "priority": 0
+      },
+      {
+        "id": "night_driving",
+        "conditions": [
+          { "field": "nightDriving", "operator": "equals", "value": "frequent" }
+        ],
+        "template": "Para sua rotina de direção noturna, o tratamento antirreflexo da {product_name} elimina halos de faróis e melhora a nitidez em baixa luminosidade.",
+        "priority": 2
+      },
+      {
+        "id": "outdoor_active",
+        "conditions": [
+          { "field": "outdoorPreference", "operator": "equals", "value": "active" }
+        ],
+        "template": "Com seu estilo de vida ativo ao ar livre, a proteção UV completa da {product_name} é essencial para a saúde dos seus olhos a longo prazo.",
+        "priority": 3
+      },
+      {
+        "id": "headache_complaint",
+        "conditions": [
+          { "field": "visualComplaints", "operator": "contains", "value": "headache" }
+        ],
+        "template": "Para minimizar suas dores de cabeça, a {product_name} oferece campos de visão otimizados que reduzem o esforço visual.",
+        "priority": 4
+      },
+      {
+        "id": "eye_strain_complaint",
+        "conditions": [
+          { "field": "visualComplaints", "operator": "contains", "value": "eyeStrain" }
+        ],
+        "template": "Para aliviar sua vista cansada, a {product_name} possui design ergonômico que diminui o esforço de acomodação.",
+        "priority": 5
+      },
+      {
+        "id": "reading_difficulty",
+        "conditions": [
+          { "field": "visualComplaints", "operator": "contains", "value": "readingDifficulty" }
+        ],
+        "template": "Para sua dificuldade de leitura, a {product_name} oferece uma zona de perto otimizada para maior conforto.",
+        "priority": 6
+      },
+      {
+        "id": "aesthetic_priority",
+        "conditions": [
+          { "field": "aestheticPriority", "operator": "equals", "value": "high" }
+        ],
+        "template": "Valorizando a estética, recomendamos um índice mais alto para a {product_name}, garantindo lentes mais finas e elegantes.",
+        "priority": 7
+      },
+      {
+        "id": "durability_priority",
+        "conditions": [
+          { "field": "clearLensPreference", "operator": "equals", "value": "durability" }
+        ],
+        "template": "Priorizando durabilidade, a {product_name} com tratamento resistente a riscos é perfeita para seu uso intenso.",
+        "priority": 8
+      },
+      {
+        "id": "first_time_progressive",
+        "conditions": [
+          { "field": "primaryUse", "operator": "equals", "value": "allDay" },
+          { "field": "age", "operator": "greater_than", "value": 40 }
+        ],
+        "template": "Como primeira progressiva, a {product_name} oferece adaptação facilitada, ideal para quem está começando a usar este tipo de lente.",
+        "priority": 9
+      }
+    ]
+  },
+  "index_display": [
+    {
+      "value": "1.50",
+      "name": "Padrão",
+      "description": "Espessura normal, ideal para graus baixos (até ±2.00)",
+      "aesthetic_score": 1,
+      "recommended_for": "Graus baixos, armações maiores"
+    },
+    {
+      "value": "1.53",
+      "name": "Leve",
+      "description": "Levemente mais fino que o padrão",
+      "aesthetic_score": 2,
+      "recommended_for": "Graus baixos a médios"
+    },
+    {
+      "value": "1.56",
+      "name": "Fino",
+      "description": "Moderadamente fino, boa opção intermediária",
+      "aesthetic_score": 2,
+      "recommended_for": "Graus médios (±2.00 a ±4.00)"
+    },
+    {
+      "value": "1.59",
+      "name": "Fino+",
+      "description": "Fino e leve, excelente custo-benefício",
+      "aesthetic_score": 3,
+      "recommended_for": "Graus médios a altos"
+    },
+    {
+      "value": "1.60",
+      "name": "Extra Fino",
+      "description": "Ideal para graus médios, significativamente mais fino",
+      "aesthetic_score": 3,
+      "recommended_for": "Graus médios a altos (±3.00 a ±6.00)"
+    },
+    {
+      "value": "1.67",
+      "name": "Super Fino",
+      "description": "Para graus altos, redução substancial de espessura",
+      "aesthetic_score": 4,
+      "recommended_for": "Graus altos (±5.00 a ±8.00)"
+    },
+    {
+      "value": "1.74",
+      "name": "Ultra Fino",
+      "description": "Máxima leveza e estética, o mais fino disponível",
+      "aesthetic_score": 5,
+      "recommended_for": "Graus muito altos (acima de ±6.00)"
     }
   ],
   "products_avulsos": [],
