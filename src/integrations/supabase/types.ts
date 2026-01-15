@@ -14,16 +14,367 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      budgets: {
+        Row: {
+          ai_description: string | null
+          base_price: number
+          created_at: string
+          extra_discount_type: string | null
+          extra_discount_value: number | null
+          family_id: string
+          family_name: string
+          final_total: number
+          finalized_at: string | null
+          id: string
+          is_finalized: boolean | null
+          notes: string | null
+          payment_discount_percent: number | null
+          payment_method: string | null
+          second_pair_description: string | null
+          second_pair_enabled: boolean | null
+          second_pair_price: number | null
+          selected_index: string
+          selected_treatments: string[] | null
+          service_id: string
+          subtotal: number
+          supplier: string
+          total_discount: number | null
+          updated_at: string
+        }
+        Insert: {
+          ai_description?: string | null
+          base_price: number
+          created_at?: string
+          extra_discount_type?: string | null
+          extra_discount_value?: number | null
+          family_id: string
+          family_name: string
+          final_total: number
+          finalized_at?: string | null
+          id?: string
+          is_finalized?: boolean | null
+          notes?: string | null
+          payment_discount_percent?: number | null
+          payment_method?: string | null
+          second_pair_description?: string | null
+          second_pair_enabled?: boolean | null
+          second_pair_price?: number | null
+          selected_index: string
+          selected_treatments?: string[] | null
+          service_id: string
+          subtotal: number
+          supplier: string
+          total_discount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          ai_description?: string | null
+          base_price?: number
+          created_at?: string
+          extra_discount_type?: string | null
+          extra_discount_value?: number | null
+          family_id?: string
+          family_name?: string
+          final_total?: number
+          finalized_at?: string | null
+          id?: string
+          is_finalized?: boolean | null
+          notes?: string | null
+          payment_discount_percent?: number | null
+          payment_method?: string | null
+          second_pair_description?: string | null
+          second_pair_enabled?: boolean | null
+          second_pair_price?: number | null
+          selected_index?: string
+          selected_treatments?: string[] | null
+          service_id?: string
+          subtotal?: number
+          supplier?: string
+          total_discount?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "budgets_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_settings: {
+        Row: {
+          address: string | null
+          budget_terms: string | null
+          cnpj: string | null
+          company_name: string
+          created_at: string
+          email: string | null
+          facebook: string | null
+          footer_text: string | null
+          id: string
+          instagram: string | null
+          logo_url: string | null
+          phone: string | null
+          slogan: string | null
+          updated_at: string
+          whatsapp: string | null
+        }
+        Insert: {
+          address?: string | null
+          budget_terms?: string | null
+          cnpj?: string | null
+          company_name?: string
+          created_at?: string
+          email?: string | null
+          facebook?: string | null
+          footer_text?: string | null
+          id?: string
+          instagram?: string | null
+          logo_url?: string | null
+          phone?: string | null
+          slogan?: string | null
+          updated_at?: string
+          whatsapp?: string | null
+        }
+        Update: {
+          address?: string | null
+          budget_terms?: string | null
+          cnpj?: string | null
+          company_name?: string
+          created_at?: string
+          email?: string | null
+          facebook?: string | null
+          footer_text?: string | null
+          id?: string
+          instagram?: string | null
+          logo_url?: string | null
+          phone?: string | null
+          slogan?: string | null
+          updated_at?: string
+          whatsapp?: string | null
+        }
+        Relationships: []
+      }
+      customers: {
+        Row: {
+          birth_date: string | null
+          cpf: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          birth_date?: string | null
+          cpf?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          birth_date?: string | null
+          cpf?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          phone: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name: string
+          id?: string
+          phone?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id?: string
+          phone?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      sales: {
+        Row: {
+          budget_id: string
+          created_at: string
+          customer_id: string
+          final_value: number
+          id: string
+          notes: string | null
+          payment_method: string
+          seller_id: string
+          service_id: string
+        }
+        Insert: {
+          budget_id: string
+          created_at?: string
+          customer_id: string
+          final_value: number
+          id?: string
+          notes?: string | null
+          payment_method: string
+          seller_id: string
+          service_id: string
+        }
+        Update: {
+          budget_id?: string
+          created_at?: string
+          customer_id?: string
+          final_value?: number
+          id?: string
+          notes?: string | null
+          payment_method?: string
+          seller_id?: string
+          service_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_budget_id_fkey"
+            columns: ["budget_id"]
+            isOneToOne: true
+            referencedRelation: "budgets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      services: {
+        Row: {
+          anamnesis_data: Json | null
+          created_at: string
+          customer_id: string
+          frame_data: Json | null
+          id: string
+          lens_category: string | null
+          notes: string | null
+          prescription_data: Json | null
+          seller_id: string
+          status: Database["public"]["Enums"]["service_status"]
+          updated_at: string
+        }
+        Insert: {
+          anamnesis_data?: Json | null
+          created_at?: string
+          customer_id: string
+          frame_data?: Json | null
+          id?: string
+          lens_category?: string | null
+          notes?: string | null
+          prescription_data?: Json | null
+          seller_id: string
+          status?: Database["public"]["Enums"]["service_status"]
+          updated_at?: string
+        }
+        Update: {
+          anamnesis_data?: Json | null
+          created_at?: string
+          customer_id?: string
+          frame_data?: Json | null
+          id?: string
+          lens_category?: string | null
+          notes?: string | null
+          prescription_data?: Json | null
+          seller_id?: string
+          status?: Database["public"]["Enums"]["service_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "services_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_admin_or_manager: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "manager" | "seller"
+      service_status: "in_progress" | "budget_sent" | "converted" | "lost"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +501,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "manager", "seller"],
+      service_status: ["in_progress", "budget_sent", "converted", "lost"],
+    },
   },
 } as const
