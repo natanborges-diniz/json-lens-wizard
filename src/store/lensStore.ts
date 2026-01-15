@@ -23,6 +23,10 @@ import {
   type ImportResult, 
   type ImportSummary 
 } from '@/lib/catalogImporter';
+import { supabase } from '@/integrations/supabase/client';
+
+// Debounce helper for auto-save
+let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // Catalog event types
 export type CatalogEventType = 'data_loaded' | 'schema_updated' | 'catalog_updated' | 'rollback_executed';
@@ -69,6 +73,10 @@ interface LensState {
   // Loading state
   isDataLoaded: boolean;
   
+  // Cloud save state
+  isSavingToCloud: boolean;
+  isLoadingFromCloud: boolean;
+  
   // Actions
   loadLensData: (data: LensData) => void;
   clearAllData: () => void;
@@ -98,6 +106,10 @@ interface LensState {
   
   // Catalog events
   emitCatalogEvent: (eventType: CatalogEvent['type']) => void;
+  
+  // Cloud persistence
+  saveCatalogToCloud: () => Promise<boolean>;
+  loadCatalogFromCloud: () => Promise<boolean>;
 }
 
 export const useLensStore = create<LensState>()(
@@ -132,6 +144,10 @@ export const useLensStore = create<LensState>()(
       currentFrame: null,
       selectedAddons: [],
       isDataLoaded: false,
+      
+      // Cloud save state
+      isSavingToCloud: false,
+      isLoadingFromCloud: false,
       
       // Validate imported data - checks for required fields (legacy method, kept for compatibility)
       validateImportedData: (data: LensData) => {
@@ -335,39 +351,60 @@ export const useLensStore = create<LensState>()(
         console.log('[LensStore] Catalog event emitted:', eventType);
       },
       
-      // Toggles - also sync with rawLensData for export consistency
-      toggleFamilyActive: (id) => set((state) => {
-        const newFamilies = state.families.map((f) => 
-          f.id === id ? { ...f, active: !f.active } : f
-        );
-        const newRawData = state.rawLensData ? {
-          ...state.rawLensData,
-          families: newFamilies
-        } : null;
-        return { families: newFamilies, rawLensData: newRawData };
-      }),
+      // Toggles - also sync with rawLensData for export consistency + debounced cloud save
+      toggleFamilyActive: (id) => {
+        set((state) => {
+          const newFamilies = state.families.map((f) => 
+            f.id === id ? { ...f, active: !f.active } : f
+          );
+          const newRawData = state.rawLensData ? {
+            ...state.rawLensData,
+            families: newFamilies
+          } : null;
+          return { families: newFamilies, rawLensData: newRawData };
+        });
+        // Debounced auto-save to cloud
+        if (saveTimeout) clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+          get().saveCatalogToCloud().catch(console.error);
+        }, 2000);
+      },
       
-      toggleAddonActive: (id) => set((state) => {
-        const newAddons = state.addons.map((a) => 
-          a.id === id ? { ...a, active: !a.active } : a
-        );
-        const newRawData = state.rawLensData ? {
-          ...state.rawLensData,
-          addons: newAddons
-        } : null;
-        return { addons: newAddons, rawLensData: newRawData };
-      }),
+      toggleAddonActive: (id) => {
+        set((state) => {
+          const newAddons = state.addons.map((a) => 
+            a.id === id ? { ...a, active: !a.active } : a
+          );
+          const newRawData = state.rawLensData ? {
+            ...state.rawLensData,
+            addons: newAddons
+          } : null;
+          return { addons: newAddons, rawLensData: newRawData };
+        });
+        // Debounced auto-save to cloud
+        if (saveTimeout) clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+          get().saveCatalogToCloud().catch(console.error);
+        }, 2000);
+      },
       
-      togglePriceActive: (erpCode) => set((state) => {
-        const newPrices = state.prices.map((p) => 
-          p.erp_code === erpCode ? { ...p, active: !p.active } : p
-        );
-        const newRawData = state.rawLensData ? {
-          ...state.rawLensData,
-          prices: newPrices
-        } : null;
-        return { prices: newPrices, rawLensData: newRawData };
-      }),
+      togglePriceActive: (erpCode) => {
+        set((state) => {
+          const newPrices = state.prices.map((p) => 
+            p.erp_code === erpCode ? { ...p, active: !p.active } : p
+          );
+          const newRawData = state.rawLensData ? {
+            ...state.rawLensData,
+            prices: newPrices
+          } : null;
+          return { prices: newPrices, rawLensData: newRawData };
+        });
+        // Debounced auto-save to cloud
+        if (saveTimeout) clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+          get().saveCatalogToCloud().catch(console.error);
+        }, 2000);
+      },
       
       updateSupplierPriority: (macroId, suppliers) => set((state) => {
         const updated = state.supplierPriorities.filter((p) => p.macroId !== macroId);
@@ -473,6 +510,101 @@ export const useLensStore = create<LensState>()(
           (a, b) => a.price_sale_half_pair - b.price_sale_half_pair
         );
         return sorted[0];
+      },
+      
+      // Cloud persistence functions
+      saveCatalogToCloud: async () => {
+        const state = get();
+        set({ isSavingToCloud: true });
+        
+        try {
+          // Build catalog data from current state
+          const catalogData: LensData = {
+            meta: {
+              schema_version: state.schemaVersion || '1.2',
+              dataset_name: 'LensFlow Catalog',
+              generated_at: new Date().toISOString(),
+              counts: {
+                families: state.families.filter(f => f.active).length,
+                addons: state.addons.filter(a => a.active).length,
+                skus_prices: state.prices.filter(p => p.active && !p.blocked).length
+              },
+              notes: ['Saved from LensFlow Admin']
+            },
+            scales: state.rawLensData?.scales || {},
+            attribute_defs: state.attributeDefs,
+            macros: state.macros,
+            families: state.families,
+            addons: state.addons,
+            prices: state.prices,
+            products_avulsos: state.rawLensData?.products_avulsos || [],
+            technology_library: state.technologyLibrary || undefined,
+            benefit_rules: state.benefitRules || undefined,
+            quote_explainer: state.quoteExplainer || undefined,
+            index_display: state.indexDisplay?.length > 0 ? state.indexDisplay : undefined,
+          };
+          
+          // Sanitize to avoid NaN/Infinity in JSON
+          const sanitizedData = JSON.parse(
+            JSON.stringify(catalogData, (key, value) => {
+              if (typeof value === 'number' && (!Number.isFinite(value) || Number.isNaN(value))) {
+                return null;
+              }
+              return value;
+            })
+          );
+          
+          const jsonBlob = new Blob([JSON.stringify(sanitizedData)], { type: 'application/json' });
+          
+          const { error } = await supabase.storage
+            .from('catalogs')
+            .upload('catalog-default.json', jsonBlob, { upsert: true });
+          
+          if (error) {
+            console.error('[LensStore] Cloud save failed:', error);
+            throw error;
+          }
+          
+          console.log('[LensStore] Catalog saved to cloud successfully');
+          return true;
+        } catch (e) {
+          console.error('[LensStore] Error saving to cloud:', e);
+          return false;
+        } finally {
+          set({ isSavingToCloud: false });
+        }
+      },
+      
+      loadCatalogFromCloud: async () => {
+        set({ isLoadingFromCloud: true });
+        
+        try {
+          const { data, error } = await supabase.storage
+            .from('catalogs')
+            .download('catalog-default.json');
+          
+          if (error || !data) {
+            console.log('[LensStore] No cloud catalog found:', error?.message);
+            return false;
+          }
+          
+          const text = await data.text();
+          const catalogData = JSON.parse(text) as LensData;
+          
+          console.log('[LensStore] Loaded catalog from cloud:', {
+            families: catalogData.families?.length || 0,
+            addons: catalogData.addons?.length || 0,
+            prices: catalogData.prices?.length || 0
+          });
+          
+          get().loadLensData(catalogData);
+          return true;
+        } catch (e) {
+          console.error('[LensStore] Error loading from cloud:', e);
+          return false;
+        } finally {
+          set({ isLoadingFromCloud: false });
+        }
       },
     }),
     {
