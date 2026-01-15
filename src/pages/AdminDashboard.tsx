@@ -14,7 +14,10 @@ import {
   ToggleLeft,
   ToggleRight,
   DollarSign,
-  Loader2
+  Loader2,
+  Download,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -68,6 +71,8 @@ const AdminDashboard = () => {
   const [isLoading, setIsLoading] = useState(false);
   
   const { 
+    schemaVersion,
+    attributeDefs,
     macros, 
     families, 
     addons,
@@ -77,6 +82,7 @@ const AdminDashboard = () => {
     toggleAddonActive,
     loadLensData,
     clearAllData,
+    updateSupplierPriority,
     isDataLoaded
   } = useLensStore();
 
@@ -154,18 +160,70 @@ const AdminDashboard = () => {
     try {
       const data: LensData = JSON.parse(jsonInput);
       
-      if (importMode === 'replace') {
-        clearAllData();
-      }
-      
+      // Always clear and reload all data to ensure complete sync
+      clearAllData();
       loadLensData(data);
       
-      toast.success(`Importação realizada com sucesso! ${data.families.length} famílias e ${data.prices.length} SKUs carregados.`);
+      toast.success(`Importação realizada com sucesso! ${data.families.length} famílias, ${data.addons.length} add-ons e ${data.prices.length} SKUs carregados.`);
       setJsonInput('');
       setValidationResult(null);
     } catch (e) {
       toast.error('Erro ao aplicar importação');
     }
+  };
+
+  // Export current data as JSON
+  const exportJson = () => {
+    const exportData: LensData = {
+      meta: {
+        schema_version: schemaVersion || '1.1',
+        dataset_name: 'LensFlow Export',
+        generated_at: new Date().toISOString(),
+        counts: {
+          families: families.length,
+          addons: addons.length,
+          skus_prices: prices.length
+        },
+        notes: ['Exported from LensFlow Admin']
+      },
+      scales: {},
+      attribute_defs: attributeDefs,
+      macros: macros,
+      families: families,
+      addons: addons,
+      products_avulsos: [],
+      prices: prices
+    };
+
+    const jsonStr = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lenses-export-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast.success('JSON exportado com sucesso!');
+  };
+
+  // Move supplier priority up or down
+  const moveSupplierPriority = (macroId: string, supplierIndex: number, direction: 'up' | 'down') => {
+    const priority = supplierPriorities.find(p => p.macroId === macroId);
+    if (!priority) return;
+    
+    const suppliers = [...priority.suppliers];
+    const newIndex = direction === 'up' ? supplierIndex - 1 : supplierIndex + 1;
+    
+    if (newIndex < 0 || newIndex >= suppliers.length) return;
+    
+    // Swap positions
+    [suppliers[supplierIndex], suppliers[newIndex]] = [suppliers[newIndex], suppliers[supplierIndex]];
+    
+    updateSupplierPriority(macroId, suppliers);
+    toast.success(`Prioridade de ${suppliers[newIndex]} atualizada!`);
   };
 
   // Group families by category
@@ -294,10 +352,16 @@ const AdminDashboard = () => {
                 </CardContent>
               </Card>
 
-              {/* Validation Result */}
+              {/* Validation Result & Export */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Resultado da Validação</CardTitle>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Resultado da Validação</span>
+                    <Button variant="outline" size="sm" onClick={exportJson} className="gap-2">
+                      <Download className="w-4 h-4" />
+                      Exportar JSON
+                    </Button>
+                  </CardTitle>
                   <CardDescription>
                     Resumo e erros encontrados
                   </CardDescription>
@@ -307,6 +371,7 @@ const AdminDashboard = () => {
                     <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                       <FileJson className="w-12 h-12 mb-4 opacity-50" />
                       <p>Cole um JSON e clique em Validar</p>
+                      <p className="text-sm mt-2">ou exporte os dados atuais</p>
                     </div>
                   ) : (
                     <div className="space-y-6">
@@ -359,7 +424,7 @@ const AdminDashboard = () => {
                       {validationResult.valid && (
                         <Button onClick={applyImport} className="w-full gradient-primary text-primary-foreground">
                           <CheckCircle className="w-4 h-4 mr-2" />
-                          Aplicar Importação ({importMode === 'increment' ? 'Incrementar' : 'Substituir'})
+                          Aplicar Importação (Substituir Todos os Dados)
                         </Button>
                       )}
                     </div>
@@ -378,7 +443,7 @@ const AdminDashboard = () => {
                   Prioridade de Fornecedores por Macro
                 </CardTitle>
                 <CardDescription>
-                  Defina a ordem de preferência comercial para cada categoria
+                  Use as setas para reordenar a preferência comercial para cada categoria
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -388,7 +453,7 @@ const AdminDashboard = () => {
                     const suppliers = priority?.suppliers || [];
                     
                     return (
-                      <Collapsible key={macro.id}>
+                      <Collapsible key={macro.id} defaultOpen>
                         <CollapsibleTrigger asChild>
                           <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors">
                             <div>
@@ -408,12 +473,32 @@ const AdminDashboard = () => {
                           <div className="p-4 border border-t-0 rounded-b-lg space-y-2">
                             {suppliers.length > 0 ? (
                               suppliers.map((supplier, idx) => (
-                                <div key={supplier} className="flex items-center gap-3 p-3 bg-card rounded border">
+                                <div key={supplier} className="flex items-center gap-3 p-3 bg-card rounded border group">
                                   <GripVertical className="w-4 h-4 text-muted-foreground" />
                                   <Badge className={idx === 0 ? 'bg-secondary text-secondary-foreground' : 'bg-muted text-muted-foreground'}>
                                     {idx + 1}º
                                   </Badge>
-                                  <span className="font-medium">{supplier}</span>
+                                  <span className="font-medium flex-1">{supplier}</span>
+                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      disabled={idx === 0}
+                                      onClick={() => moveSupplierPriority(macro.id, idx, 'up')}
+                                    >
+                                      <ArrowUp className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      disabled={idx === suppliers.length - 1}
+                                      onClick={() => moveSupplierPriority(macro.id, idx, 'down')}
+                                    >
+                                      <ArrowDown className="w-4 h-4" />
+                                    </Button>
+                                  </div>
                                 </div>
                               ))
                             ) : (
