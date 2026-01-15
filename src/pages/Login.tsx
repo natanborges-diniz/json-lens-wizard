@@ -5,15 +5,15 @@ import { useAuth } from '@/hooks/useAuth';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { user, isLoading } = useAuth();
+  const auth = useAuth();
 
   useEffect(() => {
-    if (!isLoading && user) {
+    if (!auth.isLoading && auth.user) {
       navigate('/dashboard');
     }
-  }, [user, isLoading, navigate]);
+  }, [auth.user, auth.isLoading, navigate]);
 
-  if (isLoading) {
+  if (auth.isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
