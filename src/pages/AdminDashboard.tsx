@@ -181,8 +181,26 @@ const AdminDashboard = () => {
     }
   };
 
-  // Export current data as JSON - preserves ALL root keys
+  // Export current data as JSON - preserves ALL root keys and reflects current state
   const exportJson = () => {
+    // Validate that we have data to export
+    if (!families.length && !prices.length) {
+      toast.error('Nenhum dado para exportar');
+      return;
+    }
+
+    // Count only active items for meta
+    const activeFamiliesCount = families.filter(f => f.active).length;
+    const activeAddonsCount = addons.filter(a => a.active).length;
+    const activePricesCount = prices.filter(p => p.active && !p.blocked).length;
+
+    // Log export state for debugging
+    console.log('[Export] Estado atual:', {
+      famílias: { total: families.length, ativas: activeFamiliesCount },
+      addons: { total: addons.length, ativos: activeAddonsCount },
+      preços: { total: prices.length, ativos: activePricesCount }
+    });
+
     // If we have raw data, use it as base to preserve unknown keys
     const baseData = rawLensData || {};
     
@@ -193,19 +211,19 @@ const AdminDashboard = () => {
         dataset_name: 'LensFlow Export',
         generated_at: new Date().toISOString(),
         counts: {
-          families: families.length,
-          addons: addons.length,
-          skus_prices: prices.length
+          families: activeFamiliesCount,
+          addons: activeAddonsCount,
+          skus_prices: activePricesCount
         },
-        notes: ['Exported from LensFlow Admin']
+        notes: ['Exported from LensFlow Admin - Estado atual do sistema']
       },
       scales: rawLensData?.scales || {},
       attribute_defs: attributeDefs,
       macros: macros,
-      families: families,
-      addons: addons,
+      families: families,        // Current state with toggles applied
+      addons: addons,            // Current state with toggles applied
       products_avulsos: rawLensData?.products_avulsos || [],
-      prices: prices,
+      prices: prices,            // Current state with toggles applied
       // Include extended fields from store
       technology_library: technologyLibrary || undefined,
       benefit_rules: benefitRules || undefined,
@@ -224,7 +242,7 @@ const AdminDashboard = () => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    toast.success('JSON exportado com sucesso!')
+    toast.success(`JSON exportado! ${activeFamiliesCount} famílias, ${activePricesCount} SKUs ativos`);
   };
 
   // Move supplier priority up or down

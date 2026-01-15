@@ -335,24 +335,39 @@ export const useLensStore = create<LensState>()(
         console.log('[LensStore] Catalog event emitted:', eventType);
       },
       
-      // Toggles
-      toggleFamilyActive: (id) => set((state) => ({
-        families: state.families.map((f) => 
+      // Toggles - also sync with rawLensData for export consistency
+      toggleFamilyActive: (id) => set((state) => {
+        const newFamilies = state.families.map((f) => 
           f.id === id ? { ...f, active: !f.active } : f
-        ),
-      })),
+        );
+        const newRawData = state.rawLensData ? {
+          ...state.rawLensData,
+          families: newFamilies
+        } : null;
+        return { families: newFamilies, rawLensData: newRawData };
+      }),
       
-      toggleAddonActive: (id) => set((state) => ({
-        addons: state.addons.map((a) => 
+      toggleAddonActive: (id) => set((state) => {
+        const newAddons = state.addons.map((a) => 
           a.id === id ? { ...a, active: !a.active } : a
-        ),
-      })),
+        );
+        const newRawData = state.rawLensData ? {
+          ...state.rawLensData,
+          addons: newAddons
+        } : null;
+        return { addons: newAddons, rawLensData: newRawData };
+      }),
       
-      togglePriceActive: (erpCode) => set((state) => ({
-        prices: state.prices.map((p) => 
+      togglePriceActive: (erpCode) => set((state) => {
+        const newPrices = state.prices.map((p) => 
           p.erp_code === erpCode ? { ...p, active: !p.active } : p
-        ),
-      })),
+        );
+        const newRawData = state.rawLensData ? {
+          ...state.rawLensData,
+          prices: newPrices
+        } : null;
+        return { prices: newPrices, rawLensData: newRawData };
+      }),
       
       updateSupplierPriority: (macroId, suppliers) => set((state) => {
         const updated = state.supplierPriorities.filter((p) => p.macroId !== macroId);
@@ -461,15 +476,23 @@ export const useLensStore = create<LensState>()(
       },
     }),
     {
-      name: 'lens-store-v3', // Changed name to reset persisted state
-      version: 3,
-      // Only persist custom settings, NOT the main data (which comes from JSON import)
+      name: 'lens-store-v4', // Changed name to reset persisted state with new structure
+      version: 4,
+      // Persist editable data along with custom settings
       partialize: (state) => ({
+        // Custom settings
         supplierPriorities: state.supplierPriorities,
         currentCustomer: state.currentCustomer,
         currentPrescription: state.currentPrescription,
         currentFrame: state.currentFrame,
         selectedAddons: state.selectedAddons,
+        // Editable catalog data (for persisting active toggles)
+        schemaVersion: state.schemaVersion,
+        families: state.families,
+        addons: state.addons,
+        prices: state.prices,
+        rawLensData: state.rawLensData,
+        isDataLoaded: state.isDataLoaded,
       }),
     }
   )
