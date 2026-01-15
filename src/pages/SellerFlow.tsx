@@ -13,18 +13,14 @@ import {
   Info
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useLensStore } from '@/store/lensStore';
 import type { 
-  CustomerProfile, 
   Prescription, 
   Tier, 
   Family, 
-  Addon, 
   Price, 
   LensData, 
   AnamnesisData,
@@ -39,8 +35,10 @@ import { LifestyleStep } from '@/components/anamnesis/LifestyleStep';
 import { PrescriptionStep } from '@/components/anamnesis/PrescriptionStep';
 import { FrameStep } from '@/components/anamnesis/FrameStep';
 import { RecommendationsGrid } from '@/components/recommendations/RecommendationsGrid';
+import { BudgetFinalization } from '@/components/budget/BudgetFinalization';
+import { LensCardConfiguration } from '@/components/recommendations/LensCard';
 
-type Step = 'profile' | 'complaints' | 'lifestyle' | 'prescription' | 'frame' | 'recommendations';
+type Step = 'profile' | 'complaints' | 'lifestyle' | 'prescription' | 'frame' | 'recommendations' | 'budget';
 
 // Tier mapping
 const macroToTier: Record<string, Tier> = {
@@ -57,8 +55,9 @@ const macroToTier: Record<string, Tier> = {
 interface FamilyWithPrice {
   family: Family;
   bestPrice: Price | null;
+  allPrices: Price[];
   tier: Tier;
-  score: number; // Recommendation score based on anamnesis
+  score: number;
 }
 
 // Default anamnesis data
@@ -93,6 +92,7 @@ const SellerFlow = () => {
   });
   const [lensCategory, setLensCategory] = useState<'PROGRESSIVA' | 'MONOFOCAL'>('PROGRESSIVA');
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedConfiguration, setSelectedConfiguration] = useState<LensCardConfiguration | null>(null);
 
   const { 
     families = [], 
@@ -100,13 +100,11 @@ const SellerFlow = () => {
     prices = [],
     macros = [],
     supplierPriorities = [],
-    selectedAddons = [],
     attributeDefs = [],
-    toggleAddon,
-    clearSelectedAddons,
     isDataLoaded,
     loadLensData,
     getBestPriceForFamily,
+    getCompatiblePrices,
   } = useLensStore();
 
   // Load data on mount if not loaded
@@ -143,6 +141,7 @@ const SellerFlow = () => {
     { id: 'prescription', label: 'Receita', icon: <FileText className="w-4 h-4" /> },
     { id: 'frame', label: 'Armação', icon: <Glasses className="w-4 h-4" /> },
     { id: 'recommendations', label: 'Soluções', icon: <ThumbsUp className="w-4 h-4" /> },
+    { id: 'budget', label: 'Orçamento', icon: <Check className="w-4 h-4" /> },
   ];
 
   const stepIndex = steps.findIndex(s => s.id === currentStep);
@@ -249,11 +248,13 @@ const SellerFlow = () => {
       const frame = frameData.altura ? frameData as FrameMeasurements : null;
       
       const bestPrice = getBestPriceForFamily(family.id, prescription, frame);
+      const allPrices = getCompatiblePrices(family.id, prescription, frame);
       const score = calculateScore(family, bestPrice);
       
       result[tier].push({
         family,
         bestPrice,
+        allPrices,
         tier,
         score,
       });
@@ -272,7 +273,7 @@ const SellerFlow = () => {
     });
 
     return result;
-  }, [families, lensCategory, prescriptionData, frameData, supplierPriorities, anamnesisData, getBestPriceForFamily]);
+  }, [families, lensCategory, prescriptionData, frameData, supplierPriorities, anamnesisData, getBestPriceForFamily, getCompatiblePrices]);
 
   const recommendations = getRecommendationsByTier;
   const activeAddons = addons.filter(a => a.active && a.rules.categories.includes(lensCategory));
@@ -298,14 +299,29 @@ const SellerFlow = () => {
   const mostRecommended = getMostRecommended();
 
   // Handle lens selection
-  const handleSelectLens = (family: Family, price: Price | null) => {
-    toast.success(`Lente selecionada: ${family.name_original}`);
-    // TODO: Add to cart / order
+  const handleSelectLens = (configuration: LensCardConfiguration) => {
+    setSelectedConfiguration(configuration);
+    toast.success('Lente selecionada!');
+  };
+
+  // Get selected family details
+  const getSelectedFamily = (): Family | null => {
+    if (!selectedConfiguration) return null;
+    return families.find(f => f.id === selectedConfiguration.familyId) || null;
   };
 
   // Update anamnesis data helper
   const updateAnamnesis = (data: Partial<AnamnesisData>) => {
     setAnamnesisData(prev => ({ ...prev, ...data }));
+  };
+
+  // Handle finalize budget
+  const handleFinalizeBudget = () => {
+    if (selectedConfiguration) {
+      setCurrentStep('budget');
+    } else {
+      toast.error('Selecione uma lente primeiro');
+    }
   };
 
   if (isLoading) {
@@ -446,9 +462,8 @@ const SellerFlow = () => {
             <RecommendationsGrid
               recommendations={recommendations}
               addons={activeAddons}
-              selectedAddons={selectedAddons}
-              onToggleAddon={toggleAddon}
               onSelectLens={handleSelectLens}
+              selectedFamilyId={selectedConfiguration?.familyId}
               mostRecommendedId={mostRecommended?.family.id}
               lensCategory={lensCategory}
               attributeDefs={attributeDefs}
@@ -467,6 +482,20 @@ const SellerFlow = () => {
           </div>
         )}
 
+        {/* Step 7: Budget Finalization */}
+        {currentStep === 'budget' && selectedConfiguration && (
+          <div className="animate-slide-up max-w-4xl mx-auto">
+            <BudgetFinalization
+              configuration={selectedConfiguration}
+              family={getSelectedFamily()!}
+              customerName={customerName}
+              anamnesisData={anamnesisData}
+              attributeDefs={attributeDefs}
+              onBack={() => setCurrentStep('recommendations')}
+            />
+          </div>
+        )}
+
         {/* Navigation Buttons */}
         <div className="flex justify-between mt-8 pt-6 border-t">
           <Button 
@@ -479,17 +508,23 @@ const SellerFlow = () => {
             Voltar
           </Button>
           
-          {stepIndex < steps.length - 1 ? (
+          {currentStep === 'recommendations' ? (
+            <Button 
+              onClick={handleFinalizeBudget}
+              disabled={!selectedConfiguration}
+              className="gap-2 gradient-secondary text-secondary-foreground"
+            >
+              <Check className="w-4 h-4" />
+              Finalizar Orçamento
+            </Button>
+          ) : currentStep === 'budget' ? (
+            <div />
+          ) : stepIndex < steps.length - 1 ? (
             <Button onClick={goNext} className="gap-2 gradient-primary text-primary-foreground">
               Continuar
               <ArrowRight className="w-4 h-4" />
             </Button>
-          ) : (
-            <Button className="gap-2 gradient-secondary text-secondary-foreground">
-              <Check className="w-4 h-4" />
-              Finalizar Orçamento
-            </Button>
-          )}
+          ) : null}
         </div>
       </main>
     </div>

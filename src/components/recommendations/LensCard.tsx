@@ -1,32 +1,48 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   Check, 
   ChevronDown, 
   ChevronUp, 
-  Plus, 
   Star,
   ThumbsUp,
   Crown,
   Shield,
-  Zap
+  Zap,
+  Info
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import type { Family, Price, Addon, Tier } from '@/types/lens';
 
 interface LensCardProps {
   family: Family;
   bestPrice: Price | null;
+  allPrices: Price[];
   tier: Tier;
   isRecommended?: boolean;
+  isSelected?: boolean;
   addons: Addon[];
-  selectedAddons: string[];
-  onToggleAddon: (addonId: string) => void;
-  onSelect: () => void;
+  onSelect: (configuration: LensCardConfiguration) => void;
   alternativeFamilies?: { family: Family; bestPrice: Price | null }[];
   attributeDefs?: { id: string; name_common: string }[];
+}
+
+export interface LensCardConfiguration {
+  familyId: string;
+  selectedPrice: Price;
+  selectedIndex: string;
+  selectedTreatments: string[];
+  totalPrice: number;
 }
 
 const tierConfig = {
@@ -37,6 +53,7 @@ const tierConfig = {
     bgHeader: 'bg-muted',
     borderColor: 'border-muted-foreground/20',
     dotColor: 'bg-muted-foreground',
+    selectedBorder: 'ring-muted-foreground',
   },
   comfort: {
     label: 'Conforto',
@@ -45,6 +62,7 @@ const tierConfig = {
     bgHeader: 'bg-primary/10',
     borderColor: 'border-primary/30',
     dotColor: 'bg-primary',
+    selectedBorder: 'ring-primary',
   },
   advanced: {
     label: 'Avançada',
@@ -53,6 +71,7 @@ const tierConfig = {
     bgHeader: 'bg-blue-500/10',
     borderColor: 'border-blue-500/30',
     dotColor: 'bg-blue-400',
+    selectedBorder: 'ring-blue-500',
   },
   top: {
     label: 'Top de Mercado',
@@ -61,17 +80,37 @@ const tierConfig = {
     bgHeader: 'bg-amber-500/10',
     borderColor: 'border-amber-500/30',
     dotColor: 'bg-amber-400',
+    selectedBorder: 'ring-amber-500',
   },
+};
+
+// Index display configuration
+const indexInfo: Record<string, { name: string; description: string; aestheticScore: number }> = {
+  '1.50': { name: 'Padrão', description: 'Espessura normal', aestheticScore: 1 },
+  '1.56': { name: 'Leve', description: 'Levemente mais fina', aestheticScore: 2 },
+  '1.59': { name: 'Policarbonato', description: 'Resistente a impactos', aestheticScore: 2 },
+  '1.60': { name: 'Fina', description: 'Boa estética', aestheticScore: 3 },
+  '1.67': { name: 'Mais Fina', description: 'Excelente estética', aestheticScore: 4 },
+  '1.74': { name: 'Ultra Fina', description: 'Máxima finura', aestheticScore: 5 },
+};
+
+// Treatment display configuration
+const treatmentInfo: Record<string, { name: string; description: string }> = {
+  'ADDON_FOTOSSENSIVEL': { name: 'Fotossensível', description: 'Escurece no sol' },
+  'ADDON_POLARIZADO': { name: 'Polarizado', description: 'Reduz reflexos intensos' },
+  'ADDON_UPGRADE_AR': { name: 'AR Premium', description: 'Antirreflexo melhorado' },
+  'ADDON_LUZ_AZUL': { name: 'Luz Azul', description: 'Proteção para telas' },
+  'ADDON_ALTA_RESISTENCIA': { name: 'Alta Resistência', description: 'Mais durabilidade' },
 };
 
 export const LensCard = ({
   family,
   bestPrice,
+  allPrices,
   tier,
   isRecommended,
+  isSelected,
   addons,
-  selectedAddons,
-  onToggleAddon,
   onSelect,
   alternativeFamilies = [],
   attributeDefs = [],
@@ -79,6 +118,79 @@ export const LensCard = ({
   const [showAlternatives, setShowAlternatives] = useState(false);
   const config = tierConfig[tier];
   const TierIcon = config.icon;
+
+  // Get unique indices available for this family
+  const availableIndices = useMemo(() => {
+    const indices = [...new Set(allPrices.map(p => p.index))];
+    return indices.sort((a, b) => parseFloat(a) - parseFloat(b));
+  }, [allPrices]);
+
+  // State for configuration
+  const [selectedIndex, setSelectedIndex] = useState<string>(bestPrice?.index || availableIndices[0] || '1.50');
+  const [selectedTreatments, setSelectedTreatments] = useState<string[]>([]);
+
+  // Get prices for selected index
+  const pricesForIndex = useMemo(() => {
+    return allPrices.filter(p => p.index === selectedIndex);
+  }, [allPrices, selectedIndex]);
+
+  // Find the best price for selected index and treatments
+  const currentPrice = useMemo(() => {
+    // First, find prices that match selected treatments
+    let matchingPrices = pricesForIndex;
+    
+    if (selectedTreatments.length > 0) {
+      matchingPrices = pricesForIndex.filter(p => {
+        const detected = p.addons_detected || [];
+        return selectedTreatments.every(t => detected.includes(t));
+      });
+    } else {
+      // If no treatments selected, prefer prices without addons
+      const noAddonPrices = pricesForIndex.filter(p => !p.addons_detected || p.addons_detected.length === 0);
+      if (noAddonPrices.length > 0) {
+        matchingPrices = noAddonPrices;
+      }
+    }
+
+    if (matchingPrices.length === 0) {
+      matchingPrices = pricesForIndex;
+    }
+
+    // Sort by price and return cheapest
+    return matchingPrices.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0] || null;
+  }, [pricesForIndex, selectedTreatments]);
+
+  // Calculate total price (pair)
+  const totalPrice = currentPrice ? currentPrice.price_sale_half_pair * 2 : 0;
+
+  // Get available treatments for this family
+  const availableTreatments = useMemo(() => {
+    const treatmentIds = new Set<string>();
+    allPrices.forEach(p => {
+      (p.addons_detected || []).forEach(addon => {
+        if (treatmentInfo[addon]) {
+          treatmentIds.add(addon);
+        }
+      });
+    });
+    return Array.from(treatmentIds);
+  }, [allPrices]);
+
+  // Handle treatment toggle
+  const toggleTreatment = (treatmentId: string) => {
+    setSelectedTreatments(prev => 
+      prev.includes(treatmentId)
+        ? prev.filter(t => t !== treatmentId)
+        : [...prev, treatmentId]
+    );
+  };
+
+  // Convert 0-3 scale to 1-5 stars
+  const scaleToStars = (value: number): number => {
+    // 0 -> 1, 1 -> 2, 2 -> 4, 3 -> 5
+    const mapping = [1, 2, 4, 5];
+    return mapping[Math.min(value, 3)] || 1;
+  };
 
   // Get attribute display value
   const getAttributeValue = (attrId: string): number => {
@@ -89,32 +201,38 @@ export const LensCard = ({
   // Filter relevant attributes based on category
   const getRelevantAttributes = () => {
     const prefix = family.category === 'PROGRESSIVA' ? 'PROG_' : 'MONO_';
-    return attributeDefs.filter(a => a.id.startsWith(prefix) || ['AR_QUALIDADE', 'BLUE', 'DURABILIDADE'].includes(a.id));
+    return attributeDefs.filter(a => 
+      a.id.startsWith(prefix) || ['AR_QUALIDADE', 'BLUE', 'DURABILIDADE'].includes(a.id)
+    );
   };
 
   const relevantAttributes = getRelevantAttributes();
 
-  // Compatible addons for this family's supplier/category
-  const compatibleAddons = addons.filter(addon => 
-    addon.active && 
-    addon.rules.categories.includes(family.category)
-  );
+  // Handle selection
+  const handleSelect = () => {
+    if (!currentPrice) return;
+    
+    onSelect({
+      familyId: family.id,
+      selectedPrice: currentPrice,
+      selectedIndex,
+      selectedTreatments,
+      totalPrice,
+    });
+  };
 
   // Get addon display name for this supplier
   const getAddonDisplayName = (addon: Addon) => {
     return addon.name_commercial?.[family.supplier] || addon.name_common;
   };
 
-  // Calculate total price with selected addons
-  const basePrice = bestPrice ? bestPrice.price_sale_half_pair * 2 : 0;
-  const addonPrice = 0; // TODO: Calculate addon prices when available
-  const totalPrice = basePrice + addonPrice;
-
   return (
-    <Card className={`flex flex-col h-full border-2 transition-all ${
-      isRecommended 
-        ? 'ring-2 ring-primary ring-offset-2 border-primary' 
-        : config.borderColor
+    <Card className={`flex flex-col h-full border-2 transition-all duration-300 ${
+      isSelected
+        ? `ring-4 ${config.selectedBorder} ring-offset-2 border-transparent shadow-lg scale-[1.02]`
+        : isRecommended 
+          ? 'ring-2 ring-primary ring-offset-2 border-primary' 
+          : config.borderColor
     }`}>
       {/* Header */}
       <CardHeader className={`${config.bgHeader} rounded-t-lg p-4 space-y-2`}>
@@ -123,12 +241,20 @@ export const LensCard = ({
             <TierIcon className={`w-5 h-5 ${config.color}`} />
             <span className={`font-bold ${config.color}`}>{config.label}</span>
           </div>
-          {isRecommended && (
-            <Badge className="bg-primary text-primary-foreground text-xs gap-1">
-              <ThumbsUp className="w-3 h-3" />
-              Recomendada
-            </Badge>
-          )}
+          <div className="flex gap-1">
+            {isSelected && (
+              <Badge className="bg-success text-success-foreground text-xs gap-1">
+                <Check className="w-3 h-3" />
+                Selecionada
+              </Badge>
+            )}
+            {isRecommended && !isSelected && (
+              <Badge className="bg-primary text-primary-foreground text-xs gap-1">
+                <ThumbsUp className="w-3 h-3" />
+                Recomendada
+              </Badge>
+            )}
+          </div>
         </div>
         
         <div>
@@ -143,10 +269,12 @@ export const LensCard = ({
 
       <CardContent className="flex-1 flex flex-col p-4 space-y-4">
         {/* Price */}
-        <div className="text-center py-3 bg-muted/30 rounded-lg">
-          {bestPrice ? (
+        <div className={`text-center py-3 rounded-lg transition-colors ${
+          isSelected ? 'bg-success/10' : 'bg-muted/30'
+        }`}>
+          {currentPrice ? (
             <>
-              <div className="text-3xl font-bold text-foreground">
+              <div className={`text-3xl font-bold ${isSelected ? 'text-success' : 'text-foreground'}`}>
                 R$ {totalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </div>
               <div className="text-xs text-muted-foreground">par completo</div>
@@ -158,27 +286,38 @@ export const LensCard = ({
           )}
         </div>
 
-        {/* Attributes */}
+        {/* Attributes - Scale 1-5 */}
         <div className="space-y-2">
-          <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
+          <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide flex items-center gap-1">
             Características
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <Info className="w-3 h-3" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">Escala de 1 a 5 estrelas</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </h4>
           <div className="space-y-1.5">
             {relevantAttributes.slice(0, 5).map(attr => {
-              const value = getAttributeValue(attr.id);
+              const rawValue = getAttributeValue(attr.id);
+              const stars = scaleToStars(rawValue);
               return (
                 <div key={attr.id} className="flex items-center justify-between gap-2">
                   <span className="text-xs text-muted-foreground truncate flex-1">
                     {attr.name_common}
                   </span>
                   <div className="flex gap-0.5">
-                    {[0, 1, 2, 3].map(i => (
-                      <div 
+                    {[1, 2, 3, 4, 5].map(i => (
+                      <Star 
                         key={i}
-                        className={`w-2.5 h-2.5 rounded-full ${
-                          i < value 
-                            ? config.dotColor
-                            : 'bg-muted'
+                        className={`w-3 h-3 ${
+                          i <= stars 
+                            ? `${config.color} fill-current`
+                            : 'text-muted'
                         }`}
                       />
                     ))}
@@ -189,8 +328,75 @@ export const LensCard = ({
           </div>
         </div>
 
+        {/* Index Selection */}
+        {availableIndices.length > 1 && (
+          <div className="space-y-2 border-t pt-3">
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
+              Índice (Espessura)
+            </h4>
+            <RadioGroup 
+              value={selectedIndex} 
+              onValueChange={setSelectedIndex}
+              className="grid grid-cols-2 gap-2"
+            >
+              {availableIndices.map(index => {
+                const info = indexInfo[index] || { name: index, description: '', aestheticScore: 1 };
+                return (
+                  <div key={index} className="flex items-center space-x-2">
+                    <RadioGroupItem value={index} id={`${family.id}-index-${index}`} />
+                    <Label 
+                      htmlFor={`${family.id}-index-${index}`}
+                      className="text-xs cursor-pointer flex flex-col"
+                    >
+                      <span className="font-medium">{index}</span>
+                      <span className="text-muted-foreground text-[10px]">{info.name}</span>
+                    </Label>
+                  </div>
+                );
+              })}
+            </RadioGroup>
+          </div>
+        )}
+
+        {/* Treatment Selection */}
+        {availableTreatments.length > 0 && (
+          <div className="space-y-2 border-t pt-3">
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
+              Tratamentos
+            </h4>
+            <div className="space-y-2">
+              {availableTreatments.map(treatmentId => {
+                const info = treatmentInfo[treatmentId];
+                if (!info) return null;
+                
+                return (
+                  <label 
+                    key={treatmentId}
+                    className="flex items-start gap-2 cursor-pointer group"
+                  >
+                    <Checkbox 
+                      checked={selectedTreatments.includes(treatmentId)}
+                      onCheckedChange={() => toggleTreatment(treatmentId)}
+                      className="mt-0.5 data-[state=checked]:bg-primary"
+                    />
+                    <div className="flex-1">
+                      <span className="text-xs font-medium text-foreground group-hover:text-primary transition-colors">
+                        {info.name}
+                      </span>
+                      <p className="text-[10px] text-muted-foreground">{info.description}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Benefits */}
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 border-t pt-3">
+          <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
+            Inclusos
+          </h4>
           {family.attributes_display_base.slice(0, 3).map((attr, i) => (
             <div key={i} className="flex items-start gap-2 text-xs">
               <Check className="w-3.5 h-3.5 text-success shrink-0 mt-0.5" />
@@ -203,32 +409,6 @@ export const LensCard = ({
             </div>
           )}
         </div>
-
-        {/* Addons */}
-        {compatibleAddons.length > 0 && (
-          <div className="space-y-2 border-t pt-3">
-            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
-              Complementos
-            </h4>
-            <div className="space-y-2">
-              {compatibleAddons.map(addon => (
-                <label 
-                  key={addon.id}
-                  className="flex items-center gap-2 cursor-pointer group"
-                >
-                  <Checkbox 
-                    checked={selectedAddons.includes(addon.id)}
-                    onCheckedChange={() => onToggleAddon(addon.id)}
-                    className="data-[state=checked]:bg-primary"
-                  />
-                  <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
-                    {getAddonDisplayName(addon)}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Alternatives toggle */}
         {alternativeFamilies.length > 0 && (
@@ -266,9 +446,6 @@ export const LensCard = ({
                         <div className="text-sm font-bold">
                           R$ {(alt.bestPrice.price_sale_half_pair * 2).toLocaleString('pt-BR')}
                         </div>
-                        <Button size="sm" variant="ghost" className="h-6 text-xs">
-                          Selecionar
-                        </Button>
                       </div>
                     )}
                   </div>
@@ -281,11 +458,27 @@ export const LensCard = ({
         {/* Select button */}
         <div className="mt-auto pt-3">
           <Button 
-            onClick={onSelect}
-            disabled={!bestPrice}
-            className={`w-full ${isRecommended ? 'gradient-primary' : ''}`}
+            onClick={handleSelect}
+            disabled={!currentPrice}
+            variant={isSelected ? 'outline' : 'default'}
+            className={`w-full ${
+              isSelected 
+                ? 'border-success text-success hover:bg-success/10' 
+                : isRecommended 
+                  ? 'gradient-primary' 
+                  : ''
+            }`}
           >
-            {isRecommended ? 'Escolher Recomendada' : 'Selecionar'}
+            {isSelected ? (
+              <>
+                <Check className="w-4 h-4 mr-2" />
+                Selecionada
+              </>
+            ) : isRecommended ? (
+              'Escolher Recomendada'
+            ) : (
+              'Selecionar'
+            )}
           </Button>
         </div>
       </CardContent>
