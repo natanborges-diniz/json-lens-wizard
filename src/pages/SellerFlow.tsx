@@ -452,6 +452,17 @@ const SellerFlow = () => {
               mostRecommendedId={mostRecommended?.family.id}
               lensCategory={lensCategory}
               attributeDefs={attributeDefs}
+              anamnesisData={anamnesisData}
+              lensData={isDataLoaded ? { 
+                meta: { schema_version: '', dataset_name: '', generated_at: '', counts: { families: 0, addons: 0, skus_prices: 0 }, notes: [] },
+                scales: {},
+                attribute_defs: attributeDefs,
+                macros,
+                families,
+                addons,
+                products_avulsos: [],
+                prices,
+              } : null}
             />
           </div>
         )}
