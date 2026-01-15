@@ -177,27 +177,28 @@ function validateIncrementMode(data: Partial<LensData>): ImportValidationResult 
   const warnings: string[] = [];
   const integrityErrors: string[] = [];
 
-  // 2.1 - Nunca aceitar arrays/objetos vazios
+  // 2.1 - Chaves vazias são IGNORADAS (não atualizadas), apenas geram warnings
+  // Isso permite enviar JSONs parciais sem precisar incluir todas as seções
   for (const [key, value] of Object.entries(data)) {
     if (isEmptyValue(value)) {
-      errors.push(`[INCREMENT] Chave "${key}" contém valor vazio (null, {}, [] ou undefined) - não permitido`);
+      warnings.push(`[INCREMENT] Chave "${key}" está vazia e será ignorada (não será atualizada)`);
     }
   }
 
-  // 2.4 - Verificar se há apenas chaves válidas (não podem criar seções vazias)
-  if (data.macros && Array.isArray(data.macros)) {
+  // 2.4 - Verificar estrutura das chaves que TÊM dados (não vazias)
+  if (data.macros && Array.isArray(data.macros) && data.macros.length > 0) {
     data.macros.forEach((macro, i) => {
       if (!macro.id) errors.push(`[INCREMENT] macros[${i}]: campo "id" obrigatório`);
     });
   }
 
-  if (data.families && Array.isArray(data.families)) {
+  if (data.families && Array.isArray(data.families) && data.families.length > 0) {
     data.families.forEach((family, i) => {
       if (!family.id) errors.push(`[INCREMENT] families[${i}]: campo "id" obrigatório`);
     });
   }
 
-  if (data.prices && Array.isArray(data.prices)) {
+  if (data.prices && Array.isArray(data.prices) && data.prices.length > 0) {
     data.prices.forEach((price, i) => {
       if (!price.family_id) errors.push(`[INCREMENT] prices[${i}]: campo "family_id" obrigatório`);
       if (!price.erp_code) errors.push(`[INCREMENT] prices[${i}]: campo "erp_code" obrigatório`);
