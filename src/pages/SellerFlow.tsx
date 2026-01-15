@@ -238,7 +238,14 @@ const SellerFlow = () => {
       const tier = macroToTier[family.macro];
       if (!tier) return;
 
-      const prescription = prescriptionData.rightSphere !== undefined ? prescriptionData as Prescription : null;
+      // Only pass prescription if it has real values (not just initialization defaults)
+      const hasRealPrescription = 
+        prescriptionData.rightSphere !== 0 || 
+        prescriptionData.leftSphere !== 0 ||
+        prescriptionData.rightCylinder !== 0 ||
+        prescriptionData.leftCylinder !== 0;
+      
+      const prescription = hasRealPrescription ? prescriptionData as Prescription : null;
       const frame = frameData.altura ? frameData as FrameMeasurements : null;
       
       const bestPrice = getBestPriceForFamily(family.id, prescription, frame);

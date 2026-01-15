@@ -157,44 +157,53 @@ export const useLensStore = create<LensState>()(
           !p.blocked
         );
         
-        // If no prescription or prescription has default values, return all prices without filtering
+        // If no prescription data at all, return all prices - don't filter
         if (!prescription) return familyPrices;
         
-        // Check if prescription has real values (not just defaults)
-        const hasRealPrescription = 
+        // Check if prescription has meaningful values for filtering
+        const hasSphereOrCyl = 
           prescription.rightSphere !== 0 || 
           prescription.leftSphere !== 0 ||
           prescription.rightCylinder !== 0 ||
           prescription.leftCylinder !== 0;
         
-        if (!hasRealPrescription) return familyPrices;
+        // If no meaningful prescription values, return all prices
+        if (!hasSphereOrCyl) return familyPrices;
         
-        return familyPrices.filter(p => {
+        // Filter by prescription specs when we have real data
+        const filtered = familyPrices.filter(p => {
           const { specs } = p;
+          if (!specs) return true; // No specs = no filtering
           
           // Check sphere range
-          const sphereOk = prescription.rightSphere >= specs.sphere_min && 
-                          prescription.rightSphere <= specs.sphere_max &&
-                          prescription.leftSphere >= specs.sphere_min && 
-                          prescription.leftSphere <= specs.sphere_max;
+          const sphereOk = 
+            prescription.rightSphere >= specs.sphere_min && 
+            prescription.rightSphere <= specs.sphere_max &&
+            prescription.leftSphere >= specs.sphere_min && 
+            prescription.leftSphere <= specs.sphere_max;
           
-          // Check cylinder range
-          const cylOk = prescription.rightCylinder >= specs.cyl_min && 
-                       prescription.rightCylinder <= specs.cyl_max &&
-                       prescription.leftCylinder >= specs.cyl_min && 
-                       prescription.leftCylinder <= specs.cyl_max;
+          // Check cylinder range (cylinder is typically negative, so cyl_min is more negative)
+          const cylOk = 
+            prescription.rightCylinder >= specs.cyl_min && 
+            prescription.rightCylinder <= specs.cyl_max &&
+            prescription.leftCylinder >= specs.cyl_min && 
+            prescription.leftCylinder <= specs.cyl_max;
           
-          // Check addition for progressive lenses (if specs have add range)
+          // Check addition for progressive lenses
+          // Only filter by addition if both prescription and specs have addition values
           let addOk = true;
-          if (specs.add_min !== undefined && specs.add_max !== undefined) {
-            const rightAdd = prescription.rightAddition || 0;
-            const leftAdd = prescription.leftAddition || 0;
-            // Only check if there's an addition value
-            if (rightAdd > 0 || leftAdd > 0) {
-              addOk = rightAdd >= specs.add_min && rightAdd <= specs.add_max &&
-                      leftAdd >= specs.add_min && leftAdd <= specs.add_max;
-            }
+          const rightAdd = prescription.rightAddition || 0;
+          const leftAdd = prescription.leftAddition || 0;
+          const hasAdditionInRx = rightAdd > 0 || leftAdd > 0;
+          const hasAdditionInSpecs = specs.add_min !== undefined && specs.add_max !== undefined;
+          
+          if (hasAdditionInRx && hasAdditionInSpecs) {
+            // Only check if we have addition in prescription
+            addOk = rightAdd >= specs.add_min! && rightAdd <= specs.add_max! &&
+                    leftAdd >= specs.add_min! && leftAdd <= specs.add_max!;
           }
+          // If no addition in prescription but specs require it, still allow the product
+          // This way products show up even if addition wasn't entered yet
           
           // Check frame dimensions if available
           let frameOk = true;
@@ -205,6 +214,9 @@ export const useLensStore = create<LensState>()(
           
           return sphereOk && cylOk && addOk && frameOk;
         });
+        
+        // If filtering removed all options, return unfiltered to show something
+        return filtered.length > 0 ? filtered : familyPrices;
       },
       
       getBestPriceForFamily: (familyId, prescription, frame) => {
