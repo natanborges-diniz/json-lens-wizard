@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { 
   LensData,
-  Macro, 
-  Family, 
+  MacroExtended, 
+  FamilyExtended, 
   Addon, 
   Price,
   SupplierPriority,
@@ -11,23 +11,29 @@ import type {
   Prescription,
   FrameMeasurements,
   AttributeDef,
-  Scale
-} from '@/types/lens';
-import type {
+  Scale,
   TechnologyLibrary,
   BenefitRules,
   QuoteExplainer,
-  IndexDisplay,
-  CatalogEvent
-} from '@/types/catalog';
+  IndexDisplay
+} from '@/types/lens';
+
+// Catalog event types
+export type CatalogEventType = 'data_loaded' | 'schema_updated' | 'catalog_updated';
+
+export interface CatalogEvent {
+  type: CatalogEventType;
+  timestamp: number;
+  payload?: any;
+}
 
 interface LensState {
   // Data from JSON
   schemaVersion: string;
   scales: Record<string, Scale>;
   attributeDefs: AttributeDef[];
-  macros: Macro[];
-  families: Family[];
+  macros: MacroExtended[];
+  families: FamilyExtended[];
   addons: Addon[];
   prices: Price[];
   
@@ -36,6 +42,10 @@ interface LensState {
   benefitRules: BenefitRules | null;
   quoteExplainer: QuoteExplainer | null;
   indexDisplay: IndexDisplay[];
+  benefitPriorityOrder: string[];
+  
+  // Raw data backup for export (preserves all root keys)
+  rawLensData: LensData | null;
   
   // Custom settings (not from JSON)
   supplierPriorities: SupplierPriority[];
@@ -52,6 +62,7 @@ interface LensState {
   // Actions
   loadLensData: (data: LensData) => void;
   clearAllData: () => void;
+  validateImportedData: (data: LensData) => { valid: boolean; errors: string[]; warnings: string[] };
   
   toggleFamilyActive: (id: string) => void;
   toggleAddonActive: (id: string) => void;
@@ -66,7 +77,7 @@ interface LensState {
   clearSelectedAddons: () => void;
   
   // Helpers
-  getFamiliesByMacro: (macroId: string) => Family[];
+  getFamiliesByMacro: (macroId: string) => FamilyExtended[];
   getCompatiblePrices: (familyId: string, prescription: Prescription | null, frame: FrameMeasurements | null) => Price[];
   getBestPriceForFamily: (familyId: string, prescription: Prescription | null, frame: FrameMeasurements | null) => Price | null;
   
@@ -92,6 +103,10 @@ export const useLensStore = create<LensState>()(
       benefitRules: null,
       quoteExplainer: null,
       indexDisplay: [],
+      benefitPriorityOrder: [],
+      
+      // Raw data backup for export
+      rawLensData: null,
       
       currentCustomer: null,
       currentPrescription: null,
@@ -99,13 +114,76 @@ export const useLensStore = create<LensState>()(
       selectedAddons: [],
       isDataLoaded: false,
       
-      // Load complete lens data from JSON - ALWAYS replaces all data
+      // Validate imported data - checks for required fields
+      validateImportedData: (data: LensData) => {
+        const errors: string[] = [];
+        const warnings: string[] = [];
+        
+        // Basic structure validation
+        if (!data.meta) errors.push('Campo "meta" ausente');
+        if (!data.macros || data.macros.length === 0) errors.push('Campo "macros" ausente ou vazio');
+        if (!data.families || data.families.length === 0) errors.push('Campo "families" ausente ou vazio');
+        if (!data.addons) warnings.push('Campo "addons" ausente');
+        if (!data.prices || data.prices.length === 0) errors.push('Campo "prices" ausente ou vazio');
+        
+        // Extended catalog validation (required for schema 1.2+)
+        const schemaVersion = data.meta?.schema_version || '1.0';
+        const isExtendedSchema = parseFloat(schemaVersion) >= 1.2;
+        
+        if (isExtendedSchema) {
+          if (!data.technology_library) {
+            errors.push('Campo "technology_library" ausente (obrigatório para schema 1.2+)');
+          }
+          if (!data.benefit_rules) {
+            errors.push('Campo "benefit_rules" ausente (obrigatório para schema 1.2+)');
+          }
+          if (!data.quote_explainer) {
+            errors.push('Campo "quote_explainer" ausente (obrigatório para schema 1.2+)');
+          }
+          if (!data.index_display || data.index_display.length === 0) {
+            errors.push('Campo "index_display" ausente ou vazio (obrigatório para schema 1.2+)');
+          }
+          
+          // Validate macros have tier_key and display
+          data.macros?.forEach((macro, i) => {
+            if (!macro.tier_key) {
+              warnings.push(`Macro "${macro.id}": tier_key ausente`);
+            }
+            if (!macro.display) {
+              warnings.push(`Macro "${macro.id}": display ausente`);
+            }
+          });
+          
+          // Validate families have technology_refs
+          data.families?.forEach((family, i) => {
+            if (!family.technology_refs || family.technology_refs.length === 0) {
+              warnings.push(`Family "${family.id}": technology_refs ausente`);
+            }
+          });
+        } else {
+          // Warn about missing extended fields even for older schemas
+          if (!data.technology_library) warnings.push('Campo "technology_library" ausente');
+          if (!data.benefit_rules) warnings.push('Campo "benefit_rules" ausente');
+          if (!data.quote_explainer) warnings.push('Campo "quote_explainer" ausente');
+          if (!data.index_display) warnings.push('Campo "index_display" ausente');
+        }
+        
+        return { valid: errors.length === 0, errors, warnings };
+      },
+      
+      // Load complete lens data from JSON - PRESERVES ALL ROOT KEYS
       loadLensData: (data: LensData) => {
-        console.log('Loading lens data:', {
+        console.log('[LensStore] Loading lens data:', {
           families: data.families?.length || 0,
           addons: data.addons?.length || 0,
           prices: data.prices?.length || 0,
-          macros: data.macros?.length || 0
+          macros: data.macros?.length || 0,
+          hasExtendedFields: {
+            technology_library: !!data.technology_library,
+            benefit_rules: !!data.benefit_rules,
+            quote_explainer: !!data.quote_explainer,
+            index_display: !!data.index_display,
+          }
         });
         
         // Generate supplier priorities from the new data
@@ -118,9 +196,6 @@ export const useLensStore = create<LensState>()(
           )]
         }));
         
-        // Cast to extended data type to access optional fields
-        const extendedData = data as any;
-        
         set({
           schemaVersion: data.meta?.schema_version || '1.0',
           scales: data.scales || {},
@@ -130,16 +205,21 @@ export const useLensStore = create<LensState>()(
           addons: data.addons || [],
           prices: data.prices || [],
           supplierPriorities: newPriorities,
-          // Extended catalog data (optional in JSON)
-          technologyLibrary: extendedData.technology_library || null,
-          benefitRules: extendedData.benefit_rules || null,
-          quoteExplainer: extendedData.quote_explainer || null,
-          indexDisplay: extendedData.index_display || [],
+          // Extended catalog data (all root keys preserved)
+          technologyLibrary: data.technology_library || null,
+          benefitRules: data.benefit_rules || null,
+          quoteExplainer: data.quote_explainer || null,
+          indexDisplay: data.index_display || [],
+          benefitPriorityOrder: data.benefit_priority_order || data.benefit_rules?.priority_order || [],
+          // Store raw data for full export capability
+          rawLensData: data,
           isDataLoaded: true,
         });
         
-        // Emit catalog update event
+        // Emit catalog update event for cache invalidation
         get().emitCatalogEvent('catalog_updated');
+        
+        console.log('[LensStore] Data loaded successfully. Catalog event emitted.');
       },
       
       clearAllData: () => set({
@@ -155,6 +235,8 @@ export const useLensStore = create<LensState>()(
         benefitRules: null,
         quoteExplainer: null,
         indexDisplay: [],
+        benefitPriorityOrder: [],
+        rawLensData: null,
         isDataLoaded: false,
       }),
       

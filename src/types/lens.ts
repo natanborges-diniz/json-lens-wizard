@@ -74,6 +74,79 @@ export interface Price {
   flags?: Record<string, boolean>;
 }
 
+// Extended macro with display configuration (optional, from JSON)
+export interface MacroExtended extends Macro {
+  tier_key?: 'essential' | 'comfort' | 'advanced' | 'top';
+  display?: {
+    icon: string;
+    color_class: string;
+    bg_header_class: string;
+    border_class: string;
+    dot_color_class: string;
+  };
+}
+
+// Extended family with technology references (optional, from JSON)
+export interface FamilyExtended extends Family {
+  technology_refs?: string[];
+}
+
+// Technology Library types
+export interface Technology {
+  id: string;
+  name_common: string;
+  name_commercial?: Record<string, string>;
+  description_short: string;
+  description_long?: string;
+  benefits?: string[];
+  icon?: string;
+}
+
+export interface TechnologyLibrary {
+  items: Record<string, Technology>;
+}
+
+// Benefit Rules types
+export interface BenefitRule {
+  attribute_id: string;
+  scale_labels: Record<string, string>;
+  priority: number;
+}
+
+export interface BenefitRules {
+  rules: BenefitRule[];
+  priority_order: string[];
+}
+
+// Quote Explainer types
+export interface QuoteCondition {
+  field: string;
+  operator: 'equals' | 'in' | 'greater_than' | 'less_than';
+  value: string | string[] | number | boolean;
+}
+
+export interface QuoteRule {
+  id: string;
+  conditions: QuoteCondition[];
+  template: string;
+  priority: number;
+}
+
+export interface QuoteExplainer {
+  rules: QuoteRule[];
+  intro_templates: string[];
+  closing_templates: string[];
+}
+
+// Index Display type
+export interface IndexDisplay {
+  value: string;
+  name: string;
+  description: string;
+  aesthetic_score: number;
+}
+
+// Main LensData interface - PRESERVES ALL ROOT KEYS
 export interface LensData {
   meta: {
     schema_version: string;
@@ -88,11 +161,19 @@ export interface LensData {
   };
   scales: Record<string, Scale>;
   attribute_defs: AttributeDef[];
-  macros: Macro[];
-  families: Family[];
+  macros: MacroExtended[];
+  families: FamilyExtended[];
   addons: Addon[];
   products_avulsos: any[];
   prices: Price[];
+  // Extended catalog fields (MANDATORY for schema v1.2+)
+  technology_library?: TechnologyLibrary;
+  benefit_rules?: BenefitRules;
+  quote_explainer?: QuoteExplainer;
+  index_display?: IndexDisplay[];
+  benefit_priority_order?: string[];
+  // Allow any additional root-level keys
+  [key: string]: any;
 }
 
 export interface SupplierPriority {
