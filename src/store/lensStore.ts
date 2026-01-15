@@ -74,25 +74,36 @@ export const useLensStore = create<LensState>()(
       selectedAddons: [],
       isDataLoaded: false,
       
-      // Load complete lens data from JSON
-      loadLensData: (data: LensData) => set({
-        schemaVersion: data.meta.schema_version,
-        attributeDefs: data.attribute_defs,
-        macros: data.macros,
-        families: data.families,
-        addons: data.addons,
-        prices: data.prices,
-        isDataLoaded: true,
-        // Generate default supplier priorities from families
-        supplierPriorities: data.macros.map(macro => ({
+      // Load complete lens data from JSON - ALWAYS replaces all data
+      loadLensData: (data: LensData) => {
+        console.log('Loading lens data:', {
+          families: data.families?.length || 0,
+          addons: data.addons?.length || 0,
+          prices: data.prices?.length || 0,
+          macros: data.macros?.length || 0
+        });
+        
+        // Generate supplier priorities from the new data
+        const newPriorities = (data.macros || []).map(macro => ({
           macroId: macro.id,
           suppliers: [...new Set(
-            data.families
+            (data.families || [])
               .filter(f => f.macro === macro.id && f.active)
               .map(f => f.supplier)
           )]
-        }))
-      }),
+        }));
+        
+        set({
+          schemaVersion: data.meta?.schema_version || '1.0',
+          attributeDefs: data.attribute_defs || [],
+          macros: data.macros || [],
+          families: data.families || [],
+          addons: data.addons || [],
+          prices: data.prices || [],
+          supplierPriorities: newPriorities,
+          isDataLoaded: true,
+        });
+      },
       
       clearAllData: () => set({
         schemaVersion: '',
@@ -231,7 +242,16 @@ export const useLensStore = create<LensState>()(
       },
     }),
     {
-      name: 'lens-store-v2', // Changed name to reset persisted state
+      name: 'lens-store-v3', // Changed name to reset persisted state
+      version: 3,
+      // Only persist custom settings, NOT the main data (which comes from JSON import)
+      partialize: (state) => ({
+        supplierPriorities: state.supplierPriorities,
+        currentCustomer: state.currentCustomer,
+        currentPrescription: state.currentPrescription,
+        currentFrame: state.currentFrame,
+        selectedAddons: state.selectedAddons,
+      }),
     }
   )
 );
