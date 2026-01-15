@@ -21,7 +21,8 @@ import {
   RotateCcw,
   FileText,
   AlertCircle,
-  Info
+  Info,
+  Cloud
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -112,29 +113,63 @@ const AdminDashboard = () => {
     canRollback,
     rollbackLastImport,
     updateSupplierPriority,
-    isDataLoaded
+    isDataLoaded,
+    // Cloud functions
+    saveCatalogToCloud,
+    loadCatalogFromCloud,
+    isSavingToCloud,
+    isLoadingFromCloud
   } = useLensStore();
 
-  // Load data on mount - always load from JSON if families are empty
+  // Load data on mount - try cloud first, then fallback to lenses.json
   useEffect(() => {
     const loadData = async () => {
       // Check if we actually have data, not just the isDataLoaded flag
       if (families.length === 0) {
         setIsLoading(true);
         try {
-          const response = await fetch('/data/lenses.json');
-          const data: LensData = await response.json();
-          console.log('Loading initial data from lenses.json:', data.families?.length, 'families');
-          loadLensData(data);
+          // Try to load from cloud first
+          const cloudLoaded = await loadCatalogFromCloud();
+          
+          if (!cloudLoaded) {
+            // Fallback to local lenses.json
+            console.log('No cloud catalog found, loading from lenses.json...');
+            const response = await fetch('/data/lenses.json');
+            const data: LensData = await response.json();
+            console.log('Loading initial data from lenses.json:', data.families?.length, 'families');
+            loadLensData(data);
+          }
         } catch (error) {
           console.error('Error loading lens data:', error);
+          // Final fallback
+          try {
+            const response = await fetch('/data/lenses.json');
+            const data: LensData = await response.json();
+            loadLensData(data);
+          } catch (e) {
+            console.error('Failed to load fallback data:', e);
+          }
         } finally {
           setIsLoading(false);
         }
       }
     };
     loadData();
-  }, [families.length, loadLensData]);
+  }, [families.length, loadLensData, loadCatalogFromCloud]);
+
+  // Manual save to cloud handler
+  const handleSaveToCloud = async () => {
+    try {
+      const success = await saveCatalogToCloud();
+      if (success) {
+        toast.success('Catálogo salvo na nuvem!');
+      } else {
+        toast.error('Erro ao salvar. Verifique se está logado.');
+      }
+    } catch (e) {
+      toast.error('Erro ao salvar: ' + (e as Error).message);
+    }
+  };
 
   // Sanitize JSON string BEFORE parsing - replace NaN, Infinity, -Infinity with null
   const sanitizeJsonString = (jsonString: string): string => {
@@ -346,19 +381,36 @@ const AdminDashboard = () => {
             </div>
           </div>
           
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Package className="w-4 h-4" />
-              <span>{families.length} famílias</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4" />
+                <span>{families.length} famílias</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-4 h-4" />
+                <span>{prices.length} SKUs</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Settings2 className="w-4 h-4" />
+                <span>{addons.length} add-ons</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              <span>{prices.length} SKUs</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Settings2 className="w-4 h-4" />
-              <span>{addons.length} add-ons</span>
-            </div>
+            
+            <Button 
+              onClick={handleSaveToCloud}
+              variant="outline"
+              size="sm"
+              disabled={isSavingToCloud || families.length === 0}
+              className="gap-2"
+            >
+              {isSavingToCloud ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Cloud className="w-4 h-4" />
+              )}
+              Salvar na Nuvem
+            </Button>
           </div>
         </div>
       </header>
