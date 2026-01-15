@@ -476,24 +476,46 @@ export const useLensStore = create<LensState>()(
       },
     }),
     {
-      name: 'lens-store-v4', // Changed name to reset persisted state with new structure
-      version: 4,
-      // Persist editable data along with custom settings
+      name: 'lens-store-v5', // Changed to v5 - removed large data from persistence
+      version: 5,
+      // Persist ONLY lightweight settings - catalog data is reloaded from JSON
       partialize: (state) => ({
-        // Custom settings
+        // Custom settings only (small data)
         supplierPriorities: state.supplierPriorities,
         currentCustomer: state.currentCustomer,
         currentPrescription: state.currentPrescription,
         currentFrame: state.currentFrame,
         selectedAddons: state.selectedAddons,
-        // Editable catalog data (for persisting active toggles)
-        schemaVersion: state.schemaVersion,
-        families: state.families,
-        addons: state.addons,
-        prices: state.prices,
-        rawLensData: state.rawLensData,
-        isDataLoaded: state.isDataLoaded,
+        // NOTE: families, addons, prices, rawLensData are NOT persisted 
+        // to avoid localStorage quota errors with large catalogs
       }),
+      // Handle storage errors gracefully
+      storage: {
+        getItem: (name) => {
+          try {
+            const str = localStorage.getItem(name);
+            return str ? JSON.parse(str) : null;
+          } catch (e) {
+            console.warn('Failed to read from localStorage:', e);
+            return null;
+          }
+        },
+        setItem: (name, value) => {
+          try {
+            localStorage.setItem(name, JSON.stringify(value));
+          } catch (e) {
+            console.warn('Failed to write to localStorage (quota exceeded?):', e);
+            // Silently fail - data won't persist but app will work
+          }
+        },
+        removeItem: (name) => {
+          try {
+            localStorage.removeItem(name);
+          } catch (e) {
+            console.warn('Failed to remove from localStorage:', e);
+          }
+        },
+      },
     }
   )
 );
