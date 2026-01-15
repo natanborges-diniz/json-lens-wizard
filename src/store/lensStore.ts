@@ -10,17 +10,32 @@ import type {
   CustomerProfile,
   Prescription,
   FrameMeasurements,
-  AttributeDef
+  AttributeDef,
+  Scale
 } from '@/types/lens';
+import type {
+  TechnologyLibrary,
+  BenefitRules,
+  QuoteExplainer,
+  IndexDisplay,
+  CatalogEvent
+} from '@/types/catalog';
 
 interface LensState {
   // Data from JSON
   schemaVersion: string;
+  scales: Record<string, Scale>;
   attributeDefs: AttributeDef[];
   macros: Macro[];
   families: Family[];
   addons: Addon[];
   prices: Price[];
+  
+  // Extended catalog data (from JSON when available)
+  technologyLibrary: TechnologyLibrary | null;
+  benefitRules: BenefitRules | null;
+  quoteExplainer: QuoteExplainer | null;
+  indexDisplay: IndexDisplay[];
   
   // Custom settings (not from JSON)
   supplierPriorities: SupplierPriority[];
@@ -54,6 +69,9 @@ interface LensState {
   getFamiliesByMacro: (macroId: string) => Family[];
   getCompatiblePrices: (familyId: string, prescription: Prescription | null, frame: FrameMeasurements | null) => Price[];
   getBestPriceForFamily: (familyId: string, prescription: Prescription | null, frame: FrameMeasurements | null) => Price | null;
+  
+  // Catalog events
+  emitCatalogEvent: (eventType: CatalogEvent['type']) => void;
 }
 
 export const useLensStore = create<LensState>()(
@@ -61,12 +79,19 @@ export const useLensStore = create<LensState>()(
     (set, get) => ({
       // Initial state
       schemaVersion: '',
+      scales: {},
       attributeDefs: [],
       macros: [],
       families: [],
       addons: [],
       prices: [],
       supplierPriorities: [],
+      
+      // Extended catalog data
+      technologyLibrary: null,
+      benefitRules: null,
+      quoteExplainer: null,
+      indexDisplay: [],
       
       currentCustomer: null,
       currentPrescription: null,
@@ -93,28 +118,55 @@ export const useLensStore = create<LensState>()(
           )]
         }));
         
+        // Cast to extended data type to access optional fields
+        const extendedData = data as any;
+        
         set({
           schemaVersion: data.meta?.schema_version || '1.0',
+          scales: data.scales || {},
           attributeDefs: data.attribute_defs || [],
           macros: data.macros || [],
           families: data.families || [],
           addons: data.addons || [],
           prices: data.prices || [],
           supplierPriorities: newPriorities,
+          // Extended catalog data (optional in JSON)
+          technologyLibrary: extendedData.technology_library || null,
+          benefitRules: extendedData.benefit_rules || null,
+          quoteExplainer: extendedData.quote_explainer || null,
+          indexDisplay: extendedData.index_display || [],
           isDataLoaded: true,
         });
+        
+        // Emit catalog update event
+        get().emitCatalogEvent('catalog_updated');
       },
       
       clearAllData: () => set({
         schemaVersion: '',
+        scales: {},
         attributeDefs: [],
         macros: [],
         families: [],
         addons: [],
         prices: [],
         supplierPriorities: [],
+        technologyLibrary: null,
+        benefitRules: null,
+        quoteExplainer: null,
+        indexDisplay: [],
         isDataLoaded: false,
       }),
+      
+      // Emit catalog events for cache invalidation
+      emitCatalogEvent: (eventType: CatalogEvent['type']) => {
+        const event: CatalogEvent = {
+          type: eventType,
+          timestamp: Date.now(),
+        };
+        window.dispatchEvent(new CustomEvent('catalog-event', { detail: event }));
+        console.log('[LensStore] Catalog event emitted:', eventType);
+      },
       
       // Toggles
       toggleFamilyActive: (id) => set((state) => ({
