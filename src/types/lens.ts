@@ -166,6 +166,34 @@ export type Tier = 'essential' | 'comfort' | 'advanced' | 'top';
 
 export type ImportMode = 'increment' | 'replace';
 
+// Individual addon options for selection
+export interface AddonOption {
+  id: string;
+  type: 'treatment' | 'index' | 'photochromic' | 'polarized';
+  name: string;
+  description: string;
+  priceAdd: number; // Additional price for this addon
+  commercialName?: string; // Supplier-specific name
+}
+
+// Index options with prices
+export interface IndexOption {
+  value: string; // "1.50", "1.60", "1.67", "1.74"
+  name: string;
+  priceAdd: number;
+  recommended?: boolean;
+}
+
+// Selected configuration for a lens
+export interface LensConfiguration {
+  familyId: string;
+  selectedPriceErpCode: string;
+  selectedIndex: string;
+  selectedTreatments: string[]; // addon IDs
+  basePrice: number;
+  totalPrice: number;
+}
+
 // Recommendation with selected SKU
 export interface LensRecommendation {
   family: Family;
@@ -174,3 +202,45 @@ export interface LensRecommendation {
   totalPrice: number;
   tier: Tier;
 }
+
+// Budget/Quote types
+export interface BudgetItem {
+  family: Family;
+  price: Price;
+  selectedAddons: string[];
+  configuration: LensConfiguration;
+  finalPrice: number;
+}
+
+export interface Budget {
+  id: string;
+  customerName: string;
+  items: BudgetItem[];
+  subtotal: number;
+  discount: number;
+  discountType: 'percentage' | 'fixed';
+  total: number;
+  paymentMethod: string;
+  secondPair?: {
+    enabled: boolean;
+    price: number;
+    description: string;
+  };
+  createdAt: Date;
+  notes?: string;
+}
+
+// Payment methods
+export type PaymentMethod = 
+  | 'cash' 
+  | 'credit_1x' 
+  | 'credit_2x' 
+  | 'credit_3x' 
+  | 'credit_4x' 
+  | 'credit_5x' 
+  | 'credit_6x'
+  | 'credit_10x'
+  | 'credit_12x'
+  | 'debit' 
+  | 'pix' 
+  | 'installment';

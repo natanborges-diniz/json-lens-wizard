@@ -2,13 +2,14 @@ import { useState, useMemo, useCallback } from 'react';
 import { SlidersHorizontal, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { LensCard } from './LensCard';
+import { LensCard, LensCardConfiguration } from './LensCard';
 import { SmartSearch } from '@/components/search/SmartSearch';
 import type { Family, Price, Addon, Tier, AttributeDef, AnamnesisData, LensData } from '@/types/lens';
 
 interface FamilyWithPrice {
   family: Family;
   bestPrice: Price | null;
+  allPrices: Price[];
   tier: Tier;
   score: number;
 }
@@ -16,9 +17,8 @@ interface FamilyWithPrice {
 interface RecommendationsGridProps {
   recommendations: Record<Tier, FamilyWithPrice[]>;
   addons: Addon[];
-  selectedAddons: string[];
-  onToggleAddon: (addonId: string) => void;
-  onSelectLens: (family: Family, price: Price | null) => void;
+  onSelectLens: (configuration: LensCardConfiguration) => void;
+  selectedFamilyId?: string;
   mostRecommendedId?: string;
   lensCategory: 'PROGRESSIVA' | 'MONOFOCAL';
   attributeDefs: AttributeDef[];
@@ -31,9 +31,8 @@ const suppliers = ['ZEISS', 'ESSILOR', 'HOYA'];
 export const RecommendationsGrid = ({
   recommendations,
   addons,
-  selectedAddons,
-  onToggleAddon,
   onSelectLens,
+  selectedFamilyId,
   mostRecommendedId,
   lensCategory,
   attributeDefs,
@@ -112,13 +111,7 @@ export const RecommendationsGrid = ({
 
   const handleSuggestAddons = useCallback((addonIds: string[]) => {
     setSuggestedAddons(addonIds);
-    // Auto-select suggested addons
-    addonIds.forEach(addonId => {
-      if (!selectedAddons.includes(addonId)) {
-        onToggleAddon(addonId);
-      }
-    });
-  }, [selectedAddons, onToggleAddon]);
+  }, []);
 
   const hasFilters = searchQuery || supplierFilter || highlightedFamilies.length > 0;
 
@@ -182,9 +175,9 @@ export const RecommendationsGrid = ({
             ✨ {highlightedFamilies.length} recomendação(ões) IA
           </Badge>
         )}
-        {selectedAddons.length > 0 && (
-          <Badge variant="outline" className="text-sm">
-            +{selectedAddons.length} complemento{selectedAddons.length > 1 ? 's' : ''}
+        {selectedFamilyId && (
+          <Badge className="text-sm bg-success text-success-foreground gap-1">
+            ✓ Lente selecionada
           </Badge>
         )}
       </div>
@@ -197,18 +190,19 @@ export const RecommendationsGrid = ({
             
             const { tier, primary, alternatives } = option;
             const isRecommended = primary.family.id === mostRecommendedId;
+            const isSelected = primary.family.id === selectedFamilyId;
             
             return (
               <LensCard
                 key={tier}
                 family={primary.family}
                 bestPrice={primary.bestPrice}
+                allPrices={primary.allPrices}
                 tier={tier}
                 isRecommended={isRecommended}
+                isSelected={isSelected}
                 addons={addons}
-                selectedAddons={selectedAddons}
-                onToggleAddon={onToggleAddon}
-                onSelect={() => onSelectLens(primary.family, primary.bestPrice)}
+                onSelect={onSelectLens}
                 alternativeFamilies={alternatives.map(a => ({
                   family: a.family,
                   bestPrice: a.bestPrice,
