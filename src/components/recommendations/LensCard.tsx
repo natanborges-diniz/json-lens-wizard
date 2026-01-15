@@ -33,7 +33,8 @@ interface LensCardProps {
   isSelected?: boolean;
   addons: Addon[];
   onSelect: (configuration: LensCardConfiguration) => void;
-  alternativeFamilies?: { family: Family; bestPrice: Price | null }[];
+  onSelectAlternative?: (family: Family, allPrices: Price[]) => void;
+  alternativeFamilies?: { family: Family; bestPrice: Price | null; allPrices?: Price[] }[];
   attributeDefs?: { id: string; name_common: string }[];
 }
 
@@ -112,6 +113,7 @@ export const LensCard = ({
   isSelected,
   addons,
   onSelect,
+  onSelectAlternative,
   alternativeFamilies = [],
   attributeDefs = [],
 }: LensCardProps) => {
@@ -433,22 +435,32 @@ export const LensCard = ({
             {showAlternatives && (
               <div className="mt-3 space-y-2">
                 {alternativeFamilies.map(alt => (
-                  <div 
+                  <button
                     key={alt.family.id}
-                    className="p-2 bg-muted/30 rounded-lg flex items-center justify-between"
+                    onClick={() => {
+                      if (onSelectAlternative && alt.allPrices) {
+                        onSelectAlternative(alt.family, alt.allPrices);
+                      }
+                    }}
+                    className="w-full p-2 bg-muted/30 rounded-lg flex items-center justify-between hover:bg-primary/10 hover:border-primary border border-transparent transition-all group text-left"
                   >
                     <div>
-                      <div className="text-sm font-medium">{alt.family.name_original}</div>
+                      <div className="text-sm font-medium group-hover:text-primary transition-colors">
+                        {alt.family.name_original}
+                      </div>
                       <div className="text-xs text-muted-foreground">{alt.family.supplier}</div>
                     </div>
-                    {alt.bestPrice && (
-                      <div className="text-right">
-                        <div className="text-sm font-bold">
-                          R$ {(alt.bestPrice.price_sale_half_pair * 2).toLocaleString('pt-BR')}
+                    <div className="flex items-center gap-2">
+                      {alt.bestPrice && (
+                        <div className="text-right">
+                          <div className="text-sm font-bold">
+                            R$ {(alt.bestPrice.price_sale_half_pair * 2).toLocaleString('pt-BR')}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                      <ChevronDown className="w-4 h-4 text-muted-foreground group-hover:text-primary rotate-[-90deg]" />
+                    </div>
+                  </button>
                 ))}
               </div>
             )}
