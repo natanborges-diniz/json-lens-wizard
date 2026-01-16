@@ -39,8 +39,11 @@ import { useLensStore } from '@/store/lensStore';
 import { FamilyCard } from '@/components/audit/FamilyCard';
 import { BatchActionBar } from '@/components/audit/BatchActionBar';
 import { TechnologyCard } from '@/components/audit/TechnologyCard';
+import { MacroCard } from '@/components/audit/MacroCard';
+import { SupplierCard } from '@/components/audit/SupplierCard';
 import { AddFamilyDialog } from '@/components/audit/AddFamilyDialog';
 import { ExportDialog } from '@/components/audit/ExportDialog';
+import { IntegrityExportButton } from '@/components/audit/IntegrityExportButton';
 import { ClassificationReportDialog } from '@/components/audit/ClassificationReportDialog';
 import { CatalogVersionBadge } from '@/components/audit/CatalogVersionBadge';
 import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
@@ -555,6 +558,38 @@ const CatalogAudit = () => {
     } as PendingChange]);
     
     toast.success('Tecnologia atualizada', { duration: 1500 });
+  }, []);
+
+  // Macro update handler
+  const handleMacroUpdate = useCallback((macroId: string, updates: Partial<MacroExtended>, affectedFamilies: FamilyExtended[]) => {
+    // Update macros in rawLensData would require store update
+    // For now, track as pending change
+    setPendingChanges(prev => [...prev, { 
+      type: 'macro' as const, 
+      familyId: `macro_${macroId}`, 
+      oldValue: 'original', 
+      newValue: JSON.stringify(updates)
+    } as PendingChange]);
+    
+    toast.success(`Macro atualizado - ${affectedFamilies.length} famílias afetadas`, { duration: 2000 });
+  }, []);
+
+  // Supplier rename handler
+  const handleSupplierRename = useCallback((oldName: string, newName: string, affectedFamilies: FamilyExtended[], affectedPrices: Price[]) => {
+    // Update families
+    setLocalFamilies(prev => prev.map(f => 
+      f.supplier === oldName ? { ...f, supplier: newName } : f
+    ));
+    
+    // Track as pending change
+    setPendingChanges(prev => [...prev, { 
+      type: 'supplier' as const, 
+      familyId: `supplier_rename_${oldName}`, 
+      oldValue: oldName, 
+      newValue: newName
+    } as PendingChange]);
+    
+    toast.success(`Fornecedor renomeado: ${affectedFamilies.length} famílias e ${affectedPrices.length} SKUs afetados`, { duration: 2500 });
   }, []);
 
   // Technologies data
@@ -1145,69 +1180,35 @@ const CatalogAudit = () => {
 
           {/* Macros Tab */}
           <TabsContent value="macros" className="mt-0">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {macros.map((macro) => {
-                const familyCount = localFamilies.filter(f => f.macro === macro.id).length;
-                const activeCount = localFamilies.filter(f => f.macro === macro.id && f.active).length;
-                const tierColors: Record<string, string> = {
-                  'essential': 'border-muted-foreground/30',
-                  'comfort': 'border-primary/30',
-                  'advanced': 'border-info/30',
-                  'top': 'border-secondary/30',
-                };
-                
-                return (
-                  <Card key={macro.id} className={`border-2 ${tierColors[macro.tier_key || 'essential']}`}>
-                    <CardHeader className="p-4 pb-2">
-                      <CardTitle className="text-sm flex items-center justify-between">
-                        <span>{macro.name_client}</span>
-                        <Badge variant="outline" className="text-xs">{macro.category}</Badge>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-4 pt-0">
-                      <p className="text-xs text-muted-foreground mb-3">{macro.description_client}</p>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Famílias:</span>
-                        <span className="font-medium">{activeCount}/{familyCount}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+            <ScrollArea className="h-[calc(100vh-320px)]">
+              <div className="grid gap-3 md:grid-cols-2 pr-4 pb-4">
+                {macros.map((macro) => (
+                  <MacroCard
+                    key={macro.id}
+                    macro={macro}
+                    families={localFamilies}
+                    onUpdate={handleMacroUpdate}
+                  />
+                ))}
+              </div>
+            </ScrollArea>
           </TabsContent>
 
           {/* Suppliers Tab */}
           <TabsContent value="suppliers" className="mt-0">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {uniqueSuppliers.map((supplier) => {
-                const supplierFamilies = localFamilies.filter(f => f.supplier === supplier);
-                const activeCount = supplierFamilies.filter(f => f.active).length;
-                const categories = [...new Set(supplierFamilies.map(f => f.category))];
-                
-                return (
-                  <Card key={supplier}>
-                    <CardHeader className="p-4 pb-2">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <Building className="w-4 h-4 text-muted-foreground" />
-                        {supplier}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-4 pt-0 space-y-2">
-                      <div className="flex gap-1">
-                        {categories.map(c => (
-                          <Badge key={c} variant="secondary" className="text-xs">{c}</Badge>
-                        ))}
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Famílias ativas:</span>
-                        <span className="font-medium">{activeCount}/{supplierFamilies.length}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
+            <ScrollArea className="h-[calc(100vh-320px)]">
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 pr-4 pb-4">
+                {uniqueSuppliers.map((supplier) => (
+                  <SupplierCard
+                    key={supplier}
+                    supplier={supplier}
+                    families={localFamilies}
+                    prices={prices}
+                    onRename={handleSupplierRename}
+                  />
+                ))}
+              </div>
+            </ScrollArea>
           </TabsContent>
 
           {/* Technologies Tab */}
@@ -1284,6 +1285,11 @@ const CatalogAudit = () => {
 
           {/* Integrity Tab */}
           <TabsContent value="integrity" className="mt-0 space-y-4">
+            {/* Export Button */}
+            <div className="flex justify-end">
+              <IntegrityExportButton integrityIssues={integrityIssues} />
+            </div>
+            
             {integrityIssues.total === 0 ? (
               <Card className="bg-success/5 border-success/30">
                 <CardContent className="p-6 text-center">
