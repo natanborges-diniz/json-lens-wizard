@@ -18,7 +18,8 @@ import {
   X,
   CheckSquare,
   Square,
-  Cpu
+  Cpu,
+  Wand2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,7 +41,14 @@ import { BatchActionBar } from '@/components/audit/BatchActionBar';
 import { TechnologyCard } from '@/components/audit/TechnologyCard';
 import { AddFamilyDialog } from '@/components/audit/AddFamilyDialog';
 import { ExportDialog } from '@/components/audit/ExportDialog';
+import { ClassificationReportDialog } from '@/components/audit/ClassificationReportDialog';
 import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
+import { 
+  runClassificationEngine, 
+  getEngineFromLensData,
+  type ClassificationReport,
+  type ClassificationEngineResult
+} from '@/lib/skuClassificationEngine';
 import { toast } from 'sonner';
 
 interface FamilyWithPrices extends FamilyExtended {
@@ -71,6 +79,13 @@ const CatalogAudit = () => {
   const [activeTab, setActiveTab] = useState('families');
   const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  
+  // Classification Engine state
+  const [isClassifying, setIsClassifying] = useState(false);
+  const [classificationReport, setClassificationReport] = useState<ClassificationReport | null>(null);
+  const [classificationResult, setClassificationResult] = useState<ClassificationEngineResult | null>(null);
+  const [showClassificationDialog, setShowClassificationDialog] = useState(false);
+  const [isApplyingClassification, setIsApplyingClassification] = useState(false);
 
   const { 
     families, 
@@ -661,6 +676,63 @@ const CatalogAudit = () => {
     }]);
   }, []);
 
+  // Classification Engine handler
+  const runClassification = useCallback(async () => {
+    if (!rawLensData) {
+      toast.error('Nenhum catálogo carregado');
+      return;
+    }
+    
+    setIsClassifying(true);
+    try {
+      const engine = getEngineFromLensData(rawLensData);
+      const result = runClassificationEngine(rawLensData, engine || undefined);
+      
+      setClassificationResult(result);
+      setClassificationReport(result.report);
+      setShowClassificationDialog(true);
+      
+      if (result.success) {
+        toast.success('Classificação concluída');
+      } else {
+        toast.warning('Classificação com erros - verifique o relatório');
+      }
+    } catch (error) {
+      console.error('Classification error:', error);
+      toast.error('Erro ao executar classificação');
+    } finally {
+      setIsClassifying(false);
+    }
+  }, [rawLensData]);
+
+  const applyClassificationChanges = useCallback(async () => {
+    if (!classificationResult || !rawLensData) return;
+    
+    setIsApplyingClassification(true);
+    try {
+      const updatedData: LensData = {
+        ...rawLensData,
+        prices: classificationResult.updated_prices,
+        families: classificationResult.updated_families
+      };
+      
+      loadLensData(updatedData);
+      setLocalFamilies(classificationResult.updated_families);
+      
+      // Save to cloud
+      await saveCatalogToCloud();
+      
+      toast.success('Alterações de classificação aplicadas');
+      setShowClassificationDialog(false);
+      setClassificationResult(null);
+      setClassificationReport(null);
+    } catch (error) {
+      toast.error('Erro ao aplicar alterações');
+    } finally {
+      setIsApplyingClassification(false);
+    }
+  }, [classificationResult, rawLensData, loadLensData, saveCatalogToCloud]);
+
   // Clear filters
   const clearFilters = () => {
     setSearchTerm('');
@@ -768,6 +840,20 @@ const CatalogAudit = () => {
                 </Button>
               </>
             )}
+            <Button 
+              variant="outline"
+              size="sm"
+              onClick={runClassification}
+              disabled={isClassifying || !rawLensData}
+              className="gap-1.5 text-xs"
+            >
+              {isClassifying ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Wand2 className="w-3.5 h-3.5" />
+              )}
+              Classificar SKUs
+            </Button>
             <Button 
               onClick={saveAllChanges}
               disabled={pendingChanges.length === 0 || isSavingToCloud}
@@ -1276,6 +1362,15 @@ const CatalogAudit = () => {
           onSelectAll={handleSelectAll}
         />
       </main>
+      
+      {/* Classification Report Dialog */}
+      <ClassificationReportDialog
+        open={showClassificationDialog}
+        onOpenChange={setShowClassificationDialog}
+        report={classificationReport}
+        onApplyChanges={applyClassificationChanges}
+        isApplying={isApplyingClassification}
+      />
     </div>
   );
 };
