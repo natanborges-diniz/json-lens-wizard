@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Check, Layers, Tag, Building, Power, PowerOff, RotateCcw } from 'lucide-react';
+import { X, Check, Layers, Tag, Building, Power, PowerOff, RotateCcw, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -34,6 +34,7 @@ interface PendingBatchChanges {
   category?: string;
   supplier?: string;
   active?: boolean;
+  delete?: boolean;
 }
 
 interface BatchActionBarProps {
@@ -46,6 +47,7 @@ interface BatchActionBarProps {
   onApplySupplier: (supplier: string) => void;
   onActivateAll: () => void;
   onDeactivateAll: () => void;
+  onDeleteSelected: () => void;
   onClearSelection: () => void;
   onSelectAll: () => void;
 }
@@ -60,6 +62,7 @@ export const BatchActionBar = ({
   onApplySupplier,
   onActivateAll,
   onDeactivateAll,
+  onDeleteSelected,
   onClearSelection,
   onSelectAll,
 }: BatchActionBarProps) => {
@@ -81,11 +84,15 @@ export const BatchActionBar = ({
   };
 
   const handleActivate = () => {
-    setPendingChanges(prev => ({ ...prev, active: true }));
+    setPendingChanges(prev => ({ ...prev, active: true, delete: undefined }));
   };
 
   const handleDeactivate = () => {
-    setPendingChanges(prev => ({ ...prev, active: false }));
+    setPendingChanges(prev => ({ ...prev, active: false, delete: undefined }));
+  };
+
+  const handleDelete = () => {
+    setPendingChanges({ delete: true });
   };
 
   const clearPendingChanges = () => {
@@ -93,6 +100,12 @@ export const BatchActionBar = ({
   };
 
   const applyAllChanges = () => {
+    if (pendingChanges.delete) {
+      onDeleteSelected();
+      setPendingChanges({});
+      setShowConfirmDialog(false);
+      return;
+    }
     if (pendingChanges.tier) {
       onApplyTier(pendingChanges.tier);
     }
@@ -112,7 +125,8 @@ export const BatchActionBar = ({
   };
 
   const handleApplyClick = () => {
-    if (selectedCount > 10 || Object.keys(pendingChanges).length > 1) {
+    // Always confirm for delete or multiple selections
+    if (pendingChanges.delete || selectedCount > 10 || Object.keys(pendingChanges).length > 1) {
       setShowConfirmDialog(true);
     } else {
       applyAllChanges();
@@ -121,6 +135,10 @@ export const BatchActionBar = ({
 
   const getChangeSummary = () => {
     const changes: string[] = [];
+    if (pendingChanges.delete) {
+      changes.push('🗑️ Excluir permanentemente');
+      return changes;
+    }
     if (pendingChanges.tier) {
       const tierLabel = tierOptions.find(t => t.value === pendingChanges.tier)?.label;
       changes.push(`Tier: ${tierLabel}`);
@@ -265,6 +283,20 @@ export const BatchActionBar = ({
             <PowerOff className="w-3.5 h-3.5" />
             Desativar
           </Button>
+          <Button 
+            variant={pendingChanges.delete ? "default" : "ghost"}
+            size="sm" 
+            className={cn(
+              "h-8 gap-1.5 text-xs",
+              pendingChanges.delete 
+                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" 
+                : "text-destructive hover:text-destructive hover:bg-destructive/10"
+            )}
+            onClick={handleDelete}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Excluir
+          </Button>
         </div>
 
         {/* Action Buttons */}
@@ -308,11 +340,17 @@ export const BatchActionBar = ({
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar alterações em lote</AlertDialogTitle>
+            <AlertDialogTitle>
+              {pendingChanges.delete ? 'Confirmar exclusão em lote' : 'Confirmar alterações em lote'}
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div>
                 <p className="mb-3">
-                  Aplicar as seguintes alterações a <strong>{selectedCount} famílias</strong>?
+                  {pendingChanges.delete ? (
+                    <>Excluir permanentemente <strong>{selectedCount} famílias</strong>? Esta ação não pode ser desfeita.</>
+                  ) : (
+                    <>Aplicar as seguintes alterações a <strong>{selectedCount} famílias</strong>?</>
+                  )}
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-sm">
                   {getChangeSummary().map((change, i) => (
@@ -324,9 +362,16 @@ export const BatchActionBar = ({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={applyAllChanges}>
-              <Check className="w-4 h-4 mr-2" />
-              Confirmar
+            <AlertDialogAction 
+              onClick={applyAllChanges}
+              className={pendingChanges.delete ? "bg-destructive hover:bg-destructive/90" : ""}
+            >
+              {pendingChanges.delete ? (
+                <Trash2 className="w-4 h-4 mr-2" />
+              ) : (
+                <Check className="w-4 h-4 mr-2" />
+              )}
+              {pendingChanges.delete ? 'Excluir' : 'Confirmar'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
