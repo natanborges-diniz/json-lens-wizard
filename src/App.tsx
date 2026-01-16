@@ -7,6 +7,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import AdminDashboard from "./pages/AdminDashboard";
+import CatalogAudit from "./pages/CatalogAudit";
 import SellerFlow from "./pages/SellerFlow";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -56,6 +57,11 @@ const App = () => (
             <Route path="/admin" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <AdminDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/audit" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <CatalogAudit />
               </ProtectedRoute>
             } />
             <Route path="/seller" element={
