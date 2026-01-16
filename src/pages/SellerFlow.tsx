@@ -100,40 +100,58 @@ const SellerFlow = () => {
     getCompatiblePrices,
   } = useLensStore();
 
-  // Load data on mount - try cloud first, then fallback to lenses.json
+  // Load data on mount - ALWAYS try cloud first for fresh data
   useEffect(() => {
     const loadData = async () => {
-      if (families.length === 0) {
-        setIsLoading(true);
-        try {
-          // Try to load from cloud first
-          const cloudLoaded = await loadCatalogFromCloud();
-          
-          if (!cloudLoaded) {
-            // Fallback to local lenses.json
-            console.log('No cloud catalog found, loading from lenses.json...');
-            const response = await fetch('/data/lenses.json');
-            const data: LensData = await response.json();
-            loadLensData(data);
-          }
-        } catch (error) {
-          console.error('Error loading lens data:', error);
-          // Final fallback
+      setIsLoading(true);
+      try {
+        // Always try to load fresh data from cloud
+        const cloudLoaded = await loadCatalogFromCloud();
+        console.log('[SellerFlow] Cloud catalog loaded:', cloudLoaded);
+        
+        if (!cloudLoaded && families.length === 0) {
+          // Only fallback to local if cloud failed AND we have no data
+          console.log('[SellerFlow] No cloud catalog found, loading from lenses.json...');
+          const response = await fetch('/data/lenses.json');
+          const data: LensData = await response.json();
+          loadLensData(data);
+        }
+      } catch (error) {
+        console.error('[SellerFlow] Error loading lens data:', error);
+        if (families.length === 0) {
+          // Only fallback if we truly have no data
           try {
             const response = await fetch('/data/lenses.json');
             const data: LensData = await response.json();
             loadLensData(data);
           } catch (e) {
-            console.error('Failed to load fallback data:', e);
+            console.error('[SellerFlow] Failed to load fallback data:', e);
             toast.error('Erro ao carregar dados das lentes');
           }
-        } finally {
-          setIsLoading(false);
         }
+      } finally {
+        setIsLoading(false);
       }
     };
     loadData();
-  }, [families.length, loadLensData, loadCatalogFromCloud]);
+  }, [loadLensData, loadCatalogFromCloud]);
+
+  // Debug: verificar integridade dos dados carregados
+  useEffect(() => {
+    if (families.length > 0 && prices.length > 0) {
+      const familyIds = new Set(families.map(f => f.id));
+      const pricesWithoutFamily = prices.filter(p => !familyIds.has(p.family_id));
+      
+      if (pricesWithoutFamily.length > 0) {
+        console.warn(`[SellerFlow] ${pricesWithoutFamily.length} preços sem família correspondente`);
+      }
+      
+      const familiesWithPrices = families.filter(f => 
+        prices.some(p => p.family_id === f.id && p.active && !p.blocked)
+      );
+      console.log(`[SellerFlow] ${familiesWithPrices.length}/${families.length} famílias têm preços ativos`);
+    }
+  }, [families, prices]);
 
   // Determine if prescription requires progressive lenses
   useEffect(() => {
