@@ -14,13 +14,15 @@ import {
   Boxes,
   Save,
   RotateCcw,
-  Filter,
-  X
+  X,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Select,
   SelectContent,
@@ -32,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useLensStore } from '@/store/lensStore';
 import { FamilyCard } from '@/components/audit/FamilyCard';
+import { BatchActionBar } from '@/components/audit/BatchActionBar';
 import type { LensData, FamilyExtended, Price, MacroExtended } from '@/types/lens';
 import { toast } from 'sonner';
 
@@ -60,6 +63,7 @@ const CatalogAudit = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [activeTab, setActiveTab] = useState('families');
   const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const { 
     families, 
@@ -249,6 +253,170 @@ const CatalogAudit = () => {
   const handlePriceActiveToggle = useCallback((erpCode: string) => {
     togglePriceActive(erpCode);
   }, [togglePriceActive]);
+
+  // Selection handlers
+  const handleSelectionChange = useCallback((familyId: string, selected: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(familyId);
+      } else {
+        next.delete(familyId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    const allFilteredIds = filteredFamilies.map(f => f.id);
+    setSelectedIds(new Set(allFilteredIds));
+  }, [filteredFamilies]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    const allFilteredIds = filteredFamilies.map(f => f.id);
+    const allSelected = allFilteredIds.every(id => selectedIds.has(id));
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allFilteredIds));
+    }
+  }, [filteredFamilies, selectedIds]);
+
+  // Batch action handlers
+  const handleBatchMacroChange = useCallback((newMacro: string) => {
+    const selectedFamilies = localFamilies.filter(f => selectedIds.has(f.id));
+    
+    setLocalFamilies(prev => prev.map(f => 
+      selectedIds.has(f.id) ? { ...f, macro: newMacro } : f
+    ));
+    
+    selectedFamilies.forEach(family => {
+      if (family.macro !== newMacro) {
+        setPendingChanges(prev => {
+          const existing = prev.findIndex(c => c.familyId === family.id && c.type === 'macro');
+          if (existing >= 0) {
+            const updated = [...prev];
+            updated[existing] = { ...updated[existing], newValue: newMacro };
+            return updated;
+          }
+          return [...prev, { type: 'macro', familyId: family.id, oldValue: family.macro, newValue: newMacro }];
+        });
+      }
+    });
+    
+    toast.success(`Macro alterado em ${selectedFamilies.length} famílias`, { duration: 2000 });
+    setSelectedIds(new Set());
+  }, [localFamilies, selectedIds]);
+
+  const handleBatchCategoryChange = useCallback((newCategory: string) => {
+    const selectedFamilies = localFamilies.filter(f => selectedIds.has(f.id));
+    
+    setLocalFamilies(prev => prev.map(f => 
+      selectedIds.has(f.id) ? { ...f, category: newCategory as any } : f
+    ));
+    
+    selectedFamilies.forEach(family => {
+      if (family.category !== newCategory) {
+        setPendingChanges(prev => {
+          const existing = prev.findIndex(c => c.familyId === family.id && c.type === 'category');
+          if (existing >= 0) {
+            const updated = [...prev];
+            updated[existing] = { ...updated[existing], newValue: newCategory };
+            return updated;
+          }
+          return [...prev, { type: 'category', familyId: family.id, oldValue: family.category, newValue: newCategory }];
+        });
+      }
+    });
+    
+    toast.success(`Categoria alterada em ${selectedFamilies.length} famílias`, { duration: 2000 });
+    setSelectedIds(new Set());
+  }, [localFamilies, selectedIds]);
+
+  const handleBatchSupplierChange = useCallback((newSupplier: string) => {
+    const selectedFamilies = localFamilies.filter(f => selectedIds.has(f.id));
+    
+    setLocalFamilies(prev => prev.map(f => 
+      selectedIds.has(f.id) ? { ...f, supplier: newSupplier } : f
+    ));
+    
+    selectedFamilies.forEach(family => {
+      if (family.supplier !== newSupplier) {
+        setPendingChanges(prev => {
+          const existing = prev.findIndex(c => c.familyId === family.id && c.type === 'supplier');
+          if (existing >= 0) {
+            const updated = [...prev];
+            updated[existing] = { ...updated[existing], newValue: newSupplier };
+            return updated;
+          }
+          return [...prev, { type: 'supplier', familyId: family.id, oldValue: family.supplier, newValue: newSupplier }];
+        });
+      }
+    });
+    
+    toast.success(`Fornecedor alterado em ${selectedFamilies.length} famílias`, { duration: 2000 });
+    setSelectedIds(new Set());
+  }, [localFamilies, selectedIds]);
+
+  const handleBatchActivate = useCallback(() => {
+    const selectedFamilies = localFamilies.filter(f => selectedIds.has(f.id) && !f.active);
+    
+    setLocalFamilies(prev => prev.map(f => 
+      selectedIds.has(f.id) ? { ...f, active: true } : f
+    ));
+    
+    selectedFamilies.forEach(family => {
+      setPendingChanges(prev => {
+        const existing = prev.findIndex(c => c.familyId === family.id && c.type === 'active');
+        if (existing >= 0) {
+          const updated = [...prev];
+          updated[existing] = { ...updated[existing], newValue: true };
+          return updated;
+        }
+        return [...prev, { type: 'active', familyId: family.id, oldValue: false, newValue: true }];
+      });
+    });
+    
+    toast.success(`${selectedFamilies.length} famílias ativadas`, { duration: 2000 });
+    setSelectedIds(new Set());
+  }, [localFamilies, selectedIds]);
+
+  const handleBatchDeactivate = useCallback(() => {
+    const selectedFamilies = localFamilies.filter(f => selectedIds.has(f.id) && f.active);
+    
+    setLocalFamilies(prev => prev.map(f => 
+      selectedIds.has(f.id) ? { ...f, active: false } : f
+    ));
+    
+    selectedFamilies.forEach(family => {
+      setPendingChanges(prev => {
+        const existing = prev.findIndex(c => c.familyId === family.id && c.type === 'active');
+        if (existing >= 0) {
+          const updated = [...prev];
+          updated[existing] = { ...updated[existing], newValue: false };
+          return updated;
+        }
+        return [...prev, { type: 'active', familyId: family.id, oldValue: true, newValue: false }];
+      });
+    });
+    
+    toast.success(`${selectedFamilies.length} famílias desativadas`, { duration: 2000 });
+    setSelectedIds(new Set());
+  }, [localFamilies, selectedIds]);
+
+  // Check if all filtered are selected
+  const allFilteredSelected = useMemo(() => {
+    if (filteredFamilies.length === 0) return false;
+    return filteredFamilies.every(f => selectedIds.has(f.id));
+  }, [filteredFamilies, selectedIds]);
+
+  const someFilteredSelected = useMemo(() => {
+    return filteredFamilies.some(f => selectedIds.has(f.id)) && !allFilteredSelected;
+  }, [filteredFamilies, selectedIds, allFilteredSelected]);
 
   // Save all changes
   const saveAllChanges = async () => {
@@ -488,6 +656,22 @@ const CatalogAudit = () => {
             <Card className="bg-card/50">
               <CardContent className="p-3">
                 <div className="flex flex-wrap gap-2 items-center">
+                  {/* Select All Checkbox */}
+                  <div className="flex items-center gap-2 pr-3 border-r border-border">
+                    <Checkbox
+                      checked={allFilteredSelected}
+                      ref={(el) => {
+                        if (el) {
+                          (el as any).indeterminate = someFilteredSelected;
+                        }
+                      }}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {selectedIds.size > 0 ? `${selectedIds.size} sel.` : 'Todos'}
+                    </span>
+                  </div>
+
                   <div className="flex-1 min-w-[200px] relative">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
@@ -557,7 +741,7 @@ const CatalogAudit = () => {
 
             {/* Family Cards */}
             <ScrollArea className="h-[calc(100vh-320px)]">
-              <div className="space-y-2 pr-4">
+              <div className="space-y-2 pr-4 pb-20">
                 {filteredFamilies.map((family) => (
                   <FamilyCard
                     key={family.id}
@@ -570,6 +754,8 @@ const CatalogAudit = () => {
                     onSupplierChange={handleSupplierChange}
                     onActiveToggle={handleActiveToggle}
                     onPriceActiveToggle={handlePriceActiveToggle}
+                    isSelected={selectedIds.has(family.id)}
+                    onSelectionChange={handleSelectionChange}
                   />
                 ))}
                 
@@ -728,6 +914,22 @@ const CatalogAudit = () => {
             )}
           </TabsContent>
         </Tabs>
+
+        {/* Batch Action Bar */}
+        <BatchActionBar
+          selectedCount={selectedIds.size}
+          totalFiltered={filteredFamilies.length}
+          macros={macros}
+          categories={uniqueCategories}
+          suppliers={uniqueSuppliers}
+          onApplyMacro={handleBatchMacroChange}
+          onApplyCategory={handleBatchCategoryChange}
+          onApplySupplier={handleBatchSupplierChange}
+          onActivateAll={handleBatchActivate}
+          onDeactivateAll={handleBatchDeactivate}
+          onClearSelection={handleClearSelection}
+          onSelectAll={handleSelectAll}
+        />
       </main>
     </div>
   );
