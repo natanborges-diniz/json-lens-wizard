@@ -302,15 +302,32 @@ const CatalogAudit = () => {
   }, [filteredFamilies, selectedIds]);
 
   // Batch action handlers
-  const handleBatchMacroChange = useCallback((newMacro: string) => {
+  // Map tier to macro based on family's category
+  const getMacroForTier = useCallback((category: string, tierKey: string) => {
+    // Find macro that matches both category and tier
+    const matchingMacro = macros.find(m => 
+      m.category === category && m.tier_key === tierKey
+    );
+    return matchingMacro?.id || null;
+  }, [macros]);
+
+  const handleBatchTierChange = useCallback((newTier: string) => {
     const selectedFamilies = localFamilies.filter(f => selectedIds.has(f.id));
+    let changedCount = 0;
     
-    setLocalFamilies(prev => prev.map(f => 
-      selectedIds.has(f.id) ? { ...f, macro: newMacro } : f
-    ));
+    setLocalFamilies(prev => prev.map(f => {
+      if (!selectedIds.has(f.id)) return f;
+      const newMacro = getMacroForTier(f.category, newTier);
+      if (newMacro && newMacro !== f.macro) {
+        changedCount++;
+        return { ...f, macro: newMacro };
+      }
+      return f;
+    }));
     
     selectedFamilies.forEach(family => {
-      if (family.macro !== newMacro) {
+      const newMacro = getMacroForTier(family.category, newTier);
+      if (newMacro && family.macro !== newMacro) {
         setPendingChanges(prev => {
           const existing = prev.findIndex(c => c.familyId === family.id && c.type === 'macro');
           if (existing >= 0) {
@@ -323,9 +340,10 @@ const CatalogAudit = () => {
       }
     });
     
-    toast.success(`Macro alterado em ${selectedFamilies.length} famílias`, { duration: 2000 });
+    const tierLabel = tierOptions.find(t => t.value === newTier)?.label || newTier;
+    toast.success(`Tier alterado para "${tierLabel}" em ${changedCount} famílias`, { duration: 2000 });
     setSelectedIds(new Set());
-  }, [localFamilies, selectedIds]);
+  }, [localFamilies, selectedIds, getMacroForTier, tierOptions]);
 
   const handleBatchCategoryChange = useCallback((newCategory: string) => {
     const selectedFamilies = localFamilies.filter(f => selectedIds.has(f.id));
@@ -934,10 +952,9 @@ const CatalogAudit = () => {
         <BatchActionBar
           selectedCount={selectedIds.size}
           totalFiltered={filteredFamilies.length}
-          macros={macros}
           categories={uniqueCategories}
           suppliers={uniqueSuppliers}
-          onApplyMacro={handleBatchMacroChange}
+          onApplyTier={handleBatchTierChange}
           onApplyCategory={handleBatchCategoryChange}
           onApplySupplier={handleBatchSupplierChange}
           onActivateAll={handleBatchActivate}
