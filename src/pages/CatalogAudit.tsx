@@ -282,6 +282,29 @@ const CatalogAudit = () => {
     togglePriceActive(erpCode);
   }, [togglePriceActive]);
 
+  const handleTechnologyChange = useCallback((familyId: string, techRefs: string[]) => {
+    const family = localFamilies.find(f => f.id === familyId);
+    if (!family) return;
+    
+    setLocalFamilies(prev => prev.map(f => 
+      f.id === familyId ? { ...f, technology_refs: techRefs } : f
+    ));
+    
+    // Track as a generic change
+    setPendingChanges(prev => {
+      const existing = prev.findIndex(c => c.familyId === familyId && c.type === 'active' && c.oldValue === 'tech_change');
+      if (existing >= 0) {
+        return prev;
+      }
+      return [...prev, { 
+        type: 'active', 
+        familyId, 
+        oldValue: 'tech_change' as any, 
+        newValue: `${techRefs.length} tecnologias` as any 
+      }];
+    });
+  }, [localFamilies]);
+
   // Selection handlers
   const handleSelectionChange = useCallback((familyId: string, selected: boolean) => {
     setSelectedIds(prev => {
@@ -936,12 +959,14 @@ const CatalogAudit = () => {
                     macros={macros}
                     categories={uniqueCategories}
                     suppliers={uniqueSuppliers}
+                    technologies={localTechnologies}
                     onMacroChange={handleMacroChange}
                     onCategoryChange={handleCategoryChange}
                     onSupplierChange={handleSupplierChange}
                     onActiveToggle={handleActiveToggle}
                     onPriceActiveToggle={handlePriceActiveToggle}
                     onDeleteFamily={handleDeleteFamily}
+                    onTechnologyChange={handleTechnologyChange}
                     isSelected={selectedIds.has(family.id)}
                     onSelectionChange={handleSelectionChange}
                   />
