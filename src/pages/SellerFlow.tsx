@@ -95,29 +95,45 @@ const SellerFlow = () => {
     attributeDefs = [],
     isDataLoaded,
     loadLensData,
+    loadCatalogFromCloud,
     getBestPriceForFamily,
     getCompatiblePrices,
   } = useLensStore();
 
-  // Load data on mount if not loaded
+  // Load data on mount - try cloud first, then fallback to lenses.json
   useEffect(() => {
     const loadData = async () => {
-      if (!isDataLoaded) {
+      if (families.length === 0) {
         setIsLoading(true);
         try {
-          const response = await fetch('/data/lenses.json');
-          const data: LensData = await response.json();
-          loadLensData(data);
+          // Try to load from cloud first
+          const cloudLoaded = await loadCatalogFromCloud();
+          
+          if (!cloudLoaded) {
+            // Fallback to local lenses.json
+            console.log('No cloud catalog found, loading from lenses.json...');
+            const response = await fetch('/data/lenses.json');
+            const data: LensData = await response.json();
+            loadLensData(data);
+          }
         } catch (error) {
           console.error('Error loading lens data:', error);
-          toast.error('Erro ao carregar dados das lentes');
+          // Final fallback
+          try {
+            const response = await fetch('/data/lenses.json');
+            const data: LensData = await response.json();
+            loadLensData(data);
+          } catch (e) {
+            console.error('Failed to load fallback data:', e);
+            toast.error('Erro ao carregar dados das lentes');
+          }
         } finally {
           setIsLoading(false);
         }
       }
     };
     loadData();
-  }, [isDataLoaded, loadLensData]);
+  }, [families.length, loadLensData, loadCatalogFromCloud]);
 
   // Determine if prescription requires progressive lenses
   useEffect(() => {
