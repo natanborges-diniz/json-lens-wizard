@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, GripVertical, DollarSign } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { InlineSelect } from './InlineSelect';
 import { InlineToggle } from './InlineToggle';
 import { cn } from '@/lib/utils';
@@ -46,6 +47,8 @@ interface FamilyCardProps {
   onActiveToggle: (familyId: string) => void;
   onPriceActiveToggle: (erpCode: string) => void;
   isDragging?: boolean;
+  isSelected?: boolean;
+  onSelectionChange?: (familyId: string, selected: boolean) => void;
 }
 
 export const FamilyCard = ({
@@ -58,7 +61,9 @@ export const FamilyCard = ({
   onSupplierChange,
   onActiveToggle,
   onPriceActiveToggle,
-  isDragging
+  isDragging,
+  isSelected = false,
+  onSelectionChange
 }: FamilyCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
@@ -93,11 +98,19 @@ export const FamilyCard = ({
       className={cn(
         "border rounded-lg bg-card transition-all duration-200",
         isDragging && "shadow-lg ring-2 ring-primary/30 opacity-90",
-        !family.active && "opacity-60"
+        !family.active && "opacity-60",
+        isSelected && "ring-2 ring-primary border-primary bg-primary/5"
       )}
     >
       {/* Main Row */}
       <div className="flex items-center gap-3 p-3">
+        {/* Selection Checkbox */}
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={(checked) => onSelectionChange?.(family.id, !!checked)}
+          className="shrink-0"
+        />
+        
         {/* Drag Handle */}
         <div className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground">
           <GripVertical className="w-4 h-4" />
