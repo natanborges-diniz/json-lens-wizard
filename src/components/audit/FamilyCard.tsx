@@ -11,8 +11,8 @@ import type { FamilyExtended, Price, MacroExtended } from '@/types/lens';
 const tierDisplayNames: Record<string, string> = {
   'essential': 'Essencial',
   'comfort': 'Conforto',
-  'advanced': 'Avançada',
-  'top': 'Top de Mercado',
+  'advanced': 'Avançado',
+  'top': 'Premium',
 };
 
 const tierColors: Record<string, { bg: string; text: string; dot: string }> = {
