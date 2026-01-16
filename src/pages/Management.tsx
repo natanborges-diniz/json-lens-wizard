@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -14,7 +14,9 @@ import {
   TrendingUp,
   Loader2,
   Download,
-  RefreshCw
+  RefreshCw,
+  MessageCircle,
+  Copy
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,8 +29,11 @@ import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { BudgetDocument, BudgetDocumentData, CompanySettings } from '@/components/budget/BudgetDocument';
+import { useCompanySettings } from '@/hooks/useCompanySettings';
+import html2pdf from 'html2pdf.js';
 
 interface Service {
   id: string;
@@ -53,11 +58,22 @@ interface Service {
 interface Budget {
   id: string;
   service_id: string;
+  family_id: string;
   family_name: string;
   supplier: string;
   selected_index: string;
   selected_treatments: string[];
+  base_price: number;
+  subtotal: number;
+  payment_method: string | null;
+  payment_discount_percent: number | null;
+  extra_discount_type: string | null;
+  extra_discount_value: number | null;
+  total_discount: number | null;
+  second_pair_enabled: boolean | null;
+  second_pair_price: number | null;
   final_total: number;
+  notes: string | null;
   is_finalized: boolean;
   ai_description: string | null;
   created_at: string;
@@ -104,6 +120,10 @@ const Management = () => {
   // Dialog states
   const [selectedBudget, setSelectedBudget] = useState<Budget | null>(null);
   const [showBudgetPreview, setShowBudgetPreview] = useState(false);
+  const [budgetDocumentData, setBudgetDocumentData] = useState<BudgetDocumentData | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const documentRef = useRef<HTMLDivElement>(null);
+  const { settings: companySettings } = useCompanySettings();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -242,9 +262,144 @@ const Management = () => {
     );
   });
 
-  const handleViewBudget = (budget: Budget) => {
+  const handleViewBudget = async (budget: Budget) => {
     setSelectedBudget(budget);
     setShowBudgetPreview(true);
+    setIsLoadingPreview(true);
+
+    try {
+      // Build document data from budget
+      const createdAt = new Date(budget.created_at);
+      const validUntil = addDays(createdAt, 14);
+
+      const documentData: BudgetDocumentData = {
+        customerName: budget.service?.customer?.name || 'Cliente',
+        customerPhone: budget.service?.customer?.phone || undefined,
+        budgetId: budget.id,
+        createdAt,
+        validUntil,
+        familyName: budget.family_name,
+        supplier: budget.supplier,
+        lensCategory: (budget.service?.lens_category as 'PROGRESSIVA' | 'MONOFOCAL') || 'PROGRESSIVA',
+        selectedIndex: budget.selected_index,
+        selectedTreatments: budget.selected_treatments || [],
+        basePrice: budget.base_price || budget.final_total,
+        secondPairEnabled: budget.second_pair_enabled || false,
+        secondPairPrice: budget.second_pair_price || 0,
+        paymentMethod: budget.payment_method || 'credit_1x',
+        paymentDiscount: budget.payment_discount_percent || 0,
+        extraDiscount: budget.extra_discount_value || 0,
+        totalDiscount: budget.total_discount || 0,
+        finalTotal: budget.final_total,
+        technologies: [],
+        benefits: [],
+        attributes: [],
+        aiDescription: budget.ai_description || undefined,
+        notes: budget.notes || undefined,
+      };
+
+      setBudgetDocumentData(documentData);
+    } catch (error) {
+      console.error('Error loading budget preview:', error);
+      toast.error('Erro ao carregar preview do orçamento');
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (!documentRef.current || !selectedBudget) return;
+    
+    try {
+      const element = documentRef.current;
+      const customerName = selectedBudget.service?.customer?.name || 'cliente';
+      const date = format(new Date(selectedBudget.created_at), 'dd-MM-yyyy');
+      
+      const opt = {
+        margin: 10,
+        filename: `orcamento-${customerName.toLowerCase().replace(/\s+/g, '-')}-${date}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const }
+      };
+      
+      await html2pdf().set(opt).from(element).save();
+      toast.success('PDF exportado com sucesso!');
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      toast.error('Erro ao exportar PDF');
+    }
+  };
+
+  const handleSendWhatsApp = async () => {
+    if (!selectedBudget || !budgetDocumentData) return;
+
+    const phone = budgetDocumentData.customerPhone?.replace(/\D/g, '');
+    
+    const text = generateWhatsAppText();
+    
+    if (phone && phone.length >= 10) {
+      const whatsappUrl = `https://wa.me/55${phone}?text=${encodeURIComponent(text)}`;
+      window.open(whatsappUrl, '_blank');
+      
+      // Update service status
+      if (selectedBudget.service_id) {
+        await supabase
+          .from('services')
+          .update({ status: 'budget_sent' })
+          .eq('id', selectedBudget.service_id);
+        fetchData();
+      }
+      
+      toast.success('Orçamento enviado por WhatsApp!');
+    } else {
+      navigator.clipboard.writeText(text);
+      toast.info('Telefone não informado. Texto copiado para a área de transferência.');
+    }
+  };
+
+  const generateWhatsAppText = () => {
+    if (!budgetDocumentData || !companySettings) return '';
+
+    let text = `👓 *ORÇAMENTO - ${companySettings.company_name.toUpperCase()}*\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    text += `Olá *${budgetDocumentData.customerName}*! Aqui está seu orçamento personalizado:\n\n`;
+    text += `📋 *Produto:* ${budgetDocumentData.familyName} (${budgetDocumentData.supplier})\n`;
+    text += `📐 *Índice:* ${budgetDocumentData.selectedIndex}\n`;
+    
+    if (budgetDocumentData.selectedTreatments.length > 0) {
+      text += `✨ *Tratamentos:* ${budgetDocumentData.selectedTreatments.join(', ')}\n`;
+    }
+    
+    if (budgetDocumentData.aiDescription) {
+      text += `\n💡 *Por que esta lente?*\n`;
+      const shortDesc = budgetDocumentData.aiDescription.substring(0, 300).replace(/\*\*/g, '*');
+      text += `${shortDesc}...\n`;
+    }
+    
+    text += `\n💰 *Valores:*\n`;
+    text += `Lentes: R$ ${budgetDocumentData.basePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+    
+    if (budgetDocumentData.totalDiscount > 0) {
+      text += `Desconto: -R$ ${budgetDocumentData.totalDiscount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n`;
+    }
+    
+    text += `*TOTAL: R$ ${budgetDocumentData.finalTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}*\n\n`;
+    text += `📅 Orçamento válido por 14 dias\n\n`;
+    text += `Ficou com alguma dúvida? Estou à disposição! 😊\n\n`;
+    text += `_${companySettings.company_name}_`;
+    
+    if (companySettings.phone) {
+      text += `\n📞 ${companySettings.phone}`;
+    }
+    
+    return text;
+  };
+
+  const handleCopyText = () => {
+    const text = generateWhatsAppText();
+    navigator.clipboard.writeText(text);
+    toast.success('Texto copiado!');
   };
 
   const handleFinalizeSale = async (budget: Budget) => {
@@ -605,68 +760,37 @@ const Management = () => {
 
       {/* Budget Preview Dialog */}
       <Dialog open={showBudgetPreview} onOpenChange={setShowBudgetPreview}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Visualização do Orçamento</DialogTitle>
             <DialogDescription>
-              {selectedBudget?.service?.customer?.name || 'Cliente'}
+              {selectedBudget?.service?.customer?.name || 'Cliente'} - {selectedBudget?.family_name}
             </DialogDescription>
           </DialogHeader>
           
-          {selectedBudget && (
+          {isLoadingPreview ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : budgetDocumentData && companySettings ? (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-sm text-muted-foreground">Produto</span>
-                  <p className="font-medium">{selectedBudget.family_name}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-muted-foreground">Fornecedor</span>
-                  <p className="font-medium">{selectedBudget.supplier}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-muted-foreground">Índice</span>
-                  <p className="font-medium">{selectedBudget.selected_index}</p>
-                </div>
-                <div>
-                  <span className="text-sm text-muted-foreground">Valor Final</span>
-                  <p className="font-medium text-success text-lg">
-                    R$ {selectedBudget.final_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </p>
-                </div>
-              </div>
-
-              {selectedBudget.selected_treatments.length > 0 && (
-                <div>
-                  <span className="text-sm text-muted-foreground">Tratamentos</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {selectedBudget.selected_treatments.map((treatment, i) => (
-                      <Badge key={i} variant="secondary">{treatment}</Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {selectedBudget.ai_description && (
-                <>
-                  <Separator />
-                  <div>
-                    <span className="text-sm text-muted-foreground mb-2 block">Descrição Personalizada</span>
-                    <div className="prose prose-sm max-w-none bg-muted/50 p-4 rounded-lg">
-                      {selectedBudget.ai_description}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" className="gap-2">
+              {/* Action Buttons - Top */}
+              <div className="flex flex-wrap gap-2 pb-4 border-b">
+                <Button variant="outline" className="gap-2" onClick={handleSendWhatsApp}>
+                  <MessageCircle className="w-4 h-4" />
+                  Enviar WhatsApp
+                </Button>
+                <Button variant="outline" className="gap-2" onClick={handleExportPDF}>
                   <Download className="w-4 h-4" />
                   Exportar PDF
                 </Button>
-                {!selectedBudget.is_finalized && (
+                <Button variant="outline" className="gap-2" onClick={handleCopyText}>
+                  <Copy className="w-4 h-4" />
+                  Copiar Texto
+                </Button>
+                {selectedBudget && !selectedBudget.is_finalized && (
                   <Button 
-                    className="gap-2"
+                    className="gap-2 ml-auto"
                     onClick={() => {
                       handleFinalizeSale(selectedBudget);
                       setShowBudgetPreview(false);
@@ -677,6 +801,19 @@ const Management = () => {
                   </Button>
                 )}
               </div>
+
+              {/* Budget Document */}
+              <div className="border rounded-lg overflow-hidden">
+                <BudgetDocument 
+                  ref={documentRef}
+                  data={budgetDocumentData} 
+                  companySettings={companySettings}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              Erro ao carregar dados do orçamento
             </div>
           )}
         </DialogContent>
