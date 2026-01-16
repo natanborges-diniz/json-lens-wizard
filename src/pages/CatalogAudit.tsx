@@ -59,7 +59,7 @@ const CatalogAudit = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSupplier, setFilterSupplier] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
-  const [filterMacro, setFilterMacro] = useState<string>('all');
+  const [filterTier, setFilterTier] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [activeTab, setActiveTab] = useState('families');
   const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
@@ -147,6 +147,20 @@ const CatalogAudit = () => {
     });
   }, [localFamilies, prices]);
 
+  // Tier options for filter
+  const tierOptions = [
+    { value: 'essential', label: 'Essencial' },
+    { value: 'comfort', label: 'Conforto' },
+    { value: 'advanced', label: 'Avançado' },
+    { value: 'top', label: 'Premium' },
+  ];
+
+  // Get tier_key for a family based on its macro
+  const getFamilyTier = useCallback((family: FamilyExtended) => {
+    const macro = macros.find(m => m.id === family.macro);
+    return macro?.tier_key || 'essential';
+  }, [macros]);
+
   // Filter families
   const filteredFamilies = useMemo(() => {
     return familiesWithPrices.filter(family => {
@@ -157,15 +171,16 @@ const CatalogAudit = () => {
       
       const matchesSupplier = filterSupplier === 'all' || family.supplier === filterSupplier;
       const matchesCategory = filterCategory === 'all' || family.category === filterCategory;
-      const matchesMacro = filterMacro === 'all' || family.macro === filterMacro;
+      const familyTier = getFamilyTier(family);
+      const matchesTier = filterTier === 'all' || familyTier === filterTier;
       const matchesStatus = filterStatus === 'all' || 
         (filterStatus === 'active' && family.active) ||
         (filterStatus === 'inactive' && !family.active) ||
         (filterStatus === 'no_prices' && family.activePriceCount === 0);
       
-      return matchesSearch && matchesSupplier && matchesCategory && matchesMacro && matchesStatus;
+      return matchesSearch && matchesSupplier && matchesCategory && matchesTier && matchesStatus;
     });
-  }, [familiesWithPrices, searchTerm, filterSupplier, filterCategory, filterMacro, filterStatus]);
+  }, [familiesWithPrices, searchTerm, filterSupplier, filterCategory, filterTier, filterStatus, getFamilyTier]);
 
   // Handle changes
   const handleMacroChange = useCallback((familyId: string, newMacro: string) => {
@@ -453,12 +468,12 @@ const CatalogAudit = () => {
     setSearchTerm('');
     setFilterSupplier('all');
     setFilterCategory('all');
-    setFilterMacro('all');
+    setFilterTier('all');
     setFilterStatus('all');
   };
 
   const hasActiveFilters = searchTerm || filterSupplier !== 'all' || 
-    filterCategory !== 'all' || filterMacro !== 'all' || filterStatus !== 'all';
+    filterCategory !== 'all' || filterTier !== 'all' || filterStatus !== 'all';
 
   // Statistics
   const stats = useMemo(() => {
@@ -706,14 +721,14 @@ const CatalogAudit = () => {
                     </SelectContent>
                   </Select>
                   
-                  <Select value={filterMacro} onValueChange={setFilterMacro}>
-                    <SelectTrigger className="w-36 h-8 text-xs">
-                      <SelectValue placeholder="Macro" />
+                  <Select value={filterTier} onValueChange={setFilterTier}>
+                    <SelectTrigger className="w-32 h-8 text-xs">
+                      <SelectValue placeholder="Tier" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos</SelectItem>
-                      {macros.map(m => (
-                        <SelectItem key={m.id} value={m.id}>{m.name_client}</SelectItem>
+                      {tierOptions.map(t => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
