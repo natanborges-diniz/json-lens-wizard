@@ -16,7 +16,8 @@ import {
   RotateCcw,
   X,
   CheckSquare,
-  Square
+  Square,
+  Cpu
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,7 +36,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useLensStore } from '@/store/lensStore';
 import { FamilyCard } from '@/components/audit/FamilyCard';
 import { BatchActionBar } from '@/components/audit/BatchActionBar';
-import type { LensData, FamilyExtended, Price, MacroExtended } from '@/types/lens';
+import { TechnologyCard } from '@/components/audit/TechnologyCard';
+import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import { toast } from 'sonner';
 
 interface FamilyWithPrices extends FamilyExtended {
@@ -69,6 +71,7 @@ const CatalogAudit = () => {
     families, 
     prices,
     macros,
+    technologyLibrary,
     loadLensData,
     loadCatalogFromCloud,
     saveCatalogToCloud,
@@ -80,10 +83,19 @@ const CatalogAudit = () => {
 
   // Local state for unsaved changes
   const [localFamilies, setLocalFamilies] = useState<FamilyExtended[]>([]);
+  const [localTechnologies, setLocalTechnologies] = useState<Record<string, Technology>>({});
+  const [techSearchTerm, setTechSearchTerm] = useState('');
+  const [filterTechSupplier, setFilterTechSupplier] = useState<string>('all');
   
   useEffect(() => {
     setLocalFamilies(families);
   }, [families]);
+
+  useEffect(() => {
+    if (technologyLibrary?.items) {
+      setLocalTechnologies(technologyLibrary.items);
+    }
+  }, [technologyLibrary]);
 
   // Load data on mount
   useEffect(() => {
@@ -475,6 +487,56 @@ const CatalogAudit = () => {
     toast.success('Família excluída', { duration: 1500 });
   }, []);
 
+  // Technology update handler
+  const handleTechnologyUpdate = useCallback((techId: string, updates: Partial<Technology>) => {
+    setLocalTechnologies(prev => ({
+      ...prev,
+      [techId]: { ...prev[techId], ...updates }
+    }));
+    
+    setPendingChanges(prev => [...prev, { 
+      type: 'active' as const, // Using 'active' type for simplicity 
+      familyId: `tech_${techId}`, 
+      oldValue: 'original', 
+      newValue: 'updated' 
+    } as PendingChange]);
+    
+    toast.success('Tecnologia atualizada', { duration: 1500 });
+  }, []);
+
+  // Technologies data
+  const technologiesArray = useMemo(() => {
+    return Object.values(localTechnologies);
+  }, [localTechnologies]);
+
+  const techSuppliers = useMemo(() => {
+    const suppliers = new Set<string>();
+    technologiesArray.forEach(tech => {
+      Object.keys(tech.name_commercial || {}).forEach(s => suppliers.add(s));
+    });
+    return [...suppliers].sort();
+  }, [technologiesArray]);
+
+  const getTechUsageCount = useCallback((techId: string) => {
+    return localFamilies.filter(f => 
+      f.technology_refs?.includes(techId)
+    ).length;
+  }, [localFamilies]);
+
+  const filteredTechnologies = useMemo(() => {
+    return technologiesArray.filter(tech => {
+      const matchesSearch = techSearchTerm === '' ||
+        tech.name_common.toLowerCase().includes(techSearchTerm.toLowerCase()) ||
+        tech.id.toLowerCase().includes(techSearchTerm.toLowerCase()) ||
+        tech.description_short.toLowerCase().includes(techSearchTerm.toLowerCase());
+      
+      const matchesSupplier = filterTechSupplier === 'all' ||
+        Object.keys(tech.name_commercial || {}).includes(filterTechSupplier);
+      
+      return matchesSearch && matchesSupplier;
+    });
+  }, [technologiesArray, techSearchTerm, filterTechSupplier]);
+
   // Check if all filtered are selected
   const allFilteredSelected = useMemo(() => {
     if (filteredFamilies.length === 0) return false;
@@ -494,6 +556,9 @@ const CatalogAudit = () => {
       const updatedData: LensData = {
         ...rawLensData,
         families: localFamilies,
+        technology_library: Object.keys(localTechnologies).length > 0 
+          ? { items: localTechnologies } 
+          : rawLensData.technology_library,
       };
       loadLensData(updatedData);
     }
@@ -511,6 +576,9 @@ const CatalogAudit = () => {
   // Discard changes
   const discardChanges = () => {
     setLocalFamilies(families);
+    if (technologyLibrary?.items) {
+      setLocalTechnologies(technologyLibrary.items);
+    }
     setPendingChanges([]);
     toast.info('Alterações descartadas');
   };
@@ -705,6 +773,10 @@ const CatalogAudit = () => {
             <TabsTrigger value="suppliers" className="gap-1.5 text-xs py-1.5">
               <Building className="w-3.5 h-3.5" />
               Fornecedores
+            </TabsTrigger>
+            <TabsTrigger value="technologies" className="gap-1.5 text-xs py-1.5">
+              <Cpu className="w-3.5 h-3.5" />
+              Tecnologias ({technologiesArray.length})
             </TabsTrigger>
             <TabsTrigger value="integrity" className="gap-1.5 text-xs py-1.5">
               <AlertTriangle className="w-3.5 h-3.5" />
@@ -907,6 +979,78 @@ const CatalogAudit = () => {
                 );
               })}
             </div>
+          </TabsContent>
+
+          {/* Technologies Tab */}
+          <TabsContent value="technologies" className="space-y-3 mt-0">
+            {/* Filters */}
+            <Card className="bg-card/50">
+              <CardContent className="p-3">
+                <div className="flex flex-wrap gap-2 items-center">
+                  <div className="flex-1 min-w-[200px] relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar tecnologias..."
+                      value={techSearchTerm}
+                      onChange={(e) => setTechSearchTerm(e.target.value)}
+                      className="pl-8 h-8 text-sm"
+                    />
+                  </div>
+                  
+                  <Select value={filterTechSupplier} onValueChange={setFilterTechSupplier}>
+                    <SelectTrigger className="w-32 h-8 text-xs">
+                      <SelectValue placeholder="Fornecedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {techSuppliers.map(s => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {(techSearchTerm || filterTechSupplier !== 'all') && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => {
+                        setTechSearchTerm('');
+                        setFilterTechSupplier('all');
+                      }} 
+                      className="h-8 px-2"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Technology Cards */}
+            <ScrollArea className="h-[calc(100vh-320px)]">
+              <div className="space-y-2 pr-4 pb-4">
+                {filteredTechnologies.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Cpu className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                    <p>Nenhuma tecnologia encontrada</p>
+                    {technologiesArray.length === 0 && (
+                      <p className="text-xs mt-2">
+                        O catálogo não possui biblioteca de tecnologias configurada
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  filteredTechnologies.map((tech) => (
+                    <TechnologyCard
+                      key={tech.id}
+                      technology={tech}
+                      usageCount={getTechUsageCount(tech.id)}
+                      onUpdate={handleTechnologyUpdate}
+                    />
+                  ))
+                )}
+              </div>
+            </ScrollArea>
           </TabsContent>
 
           {/* Integrity Tab */}
