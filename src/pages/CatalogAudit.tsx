@@ -39,6 +39,7 @@ import { FamilyCard } from '@/components/audit/FamilyCard';
 import { BatchActionBar } from '@/components/audit/BatchActionBar';
 import { TechnologyCard } from '@/components/audit/TechnologyCard';
 import { AddFamilyDialog } from '@/components/audit/AddFamilyDialog';
+import { ExportDialog } from '@/components/audit/ExportDialog';
 import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import { toast } from 'sonner';
 
@@ -991,12 +992,17 @@ const CatalogAudit = () => {
                   )}
                   
                   {/* Add Family Button */}
-                  <div className="pl-2 border-l border-border">
+                  <div className="pl-2 border-l border-border flex gap-2">
                     <AddFamilyDialog
                       macros={macros}
                       categories={uniqueCategories}
                       suppliers={uniqueSuppliers}
                       onAddFamily={handleAddFamily}
+                    />
+                    <ExportDialog
+                      families={filteredFamilies}
+                      macros={macros}
+                      technologies={localTechnologies}
                     />
                   </div>
                 </div>
