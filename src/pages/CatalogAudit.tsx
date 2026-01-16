@@ -44,6 +44,7 @@ import { ExportDialog } from '@/components/audit/ExportDialog';
 import { ClassificationReportDialog } from '@/components/audit/ClassificationReportDialog';
 import { CatalogVersionBadge } from '@/components/audit/CatalogVersionBadge';
 import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
+import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
 import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import { 
   runClassificationEngine, 
@@ -812,6 +813,9 @@ const CatalogAudit = () => {
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Sync Status Indicator */}
+            <CloudSyncIndicator />
+            
             {/* Version Badge */}
             <CatalogVersionBadge onViewHistory={() => setShowVersionHistory(true)} />
             

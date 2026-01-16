@@ -21,8 +21,7 @@ import {
   RotateCcw,
   FileText,
   AlertCircle,
-  Info,
-  Cloud
+  Info
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,6 +58,7 @@ import type { ImportMode, LensData } from '@/types/lens';
 import { formatImportReceipt, type ImportResult, type ImportSummary } from '@/lib/catalogImporter';
 import { CatalogVersionBadge, saveCatalogVersion } from '@/components/audit/CatalogVersionBadge';
 import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
+import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
 import { toast } from 'sonner';
 
 // Tier mapping for display (fallback, prefer JSON data)
@@ -118,10 +118,7 @@ const AdminDashboard = () => {
     updateSupplierPriority,
     isDataLoaded,
     // Cloud functions
-    saveCatalogToCloud,
-    loadCatalogFromCloud,
-    isSavingToCloud,
-    isLoadingFromCloud
+    loadCatalogFromCloud
   } = useLensStore();
 
   // Load data on mount - try cloud first, then fallback to lenses.json
@@ -160,19 +157,6 @@ const AdminDashboard = () => {
     loadData();
   }, [families.length, loadLensData, loadCatalogFromCloud]);
 
-  // Manual save to cloud handler
-  const handleSaveToCloud = async () => {
-    try {
-      const success = await saveCatalogToCloud();
-      if (success) {
-        toast.success('Catálogo salvo na nuvem!');
-      } else {
-        toast.error('Erro ao salvar. Verifique se está logado.');
-      }
-    } catch (e) {
-      toast.error('Erro ao salvar: ' + (e as Error).message);
-    }
-  };
 
   // Sanitize JSON string BEFORE parsing - replace NaN, Infinity, -Infinity with null
   const sanitizeJsonString = (jsonString: string): string => {
@@ -434,20 +418,7 @@ const AdminDashboard = () => {
               </Button>
             </Link>
             
-            <Button 
-              onClick={handleSaveToCloud}
-              variant="outline"
-              size="sm"
-              disabled={isSavingToCloud || families.length === 0}
-              className="gap-2"
-            >
-              {isSavingToCloud ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Cloud className="w-4 h-4" />
-              )}
-              Salvar na Nuvem
-            </Button>
+            <CloudSyncIndicator />
           </div>
         </div>
       </header>

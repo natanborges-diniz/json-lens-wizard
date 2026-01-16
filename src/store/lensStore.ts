@@ -37,6 +37,9 @@ export interface CatalogEvent {
   payload?: any;
 }
 
+// Sync status type
+export type SyncStatus = 'synced' | 'syncing' | 'pending' | 'error';
+
 interface LensState {
   // Data from JSON
   schemaVersion: string;
@@ -76,6 +79,11 @@ interface LensState {
   // Cloud save state
   isSavingToCloud: boolean;
   isLoadingFromCloud: boolean;
+  
+  // Sync status tracking
+  syncStatus: SyncStatus;
+  lastSyncedAt: string | null;
+  lastSyncError: string | null;
   
   // Actions
   loadLensData: (data: LensData) => void;
@@ -148,6 +156,11 @@ export const useLensStore = create<LensState>()(
       // Cloud save state
       isSavingToCloud: false,
       isLoadingFromCloud: false,
+      
+      // Sync status tracking
+      syncStatus: 'synced' as SyncStatus,
+      lastSyncedAt: null,
+      lastSyncError: null,
       
       // Validate imported data - checks for required fields (legacy method, kept for compatibility)
       validateImportedData: (data: LensData) => {
@@ -370,7 +383,7 @@ export const useLensStore = create<LensState>()(
             ...state.rawLensData,
             families: newFamilies
           } : null;
-          return { families: newFamilies, rawLensData: newRawData };
+          return { families: newFamilies, rawLensData: newRawData, syncStatus: 'pending' as SyncStatus };
         });
         // Debounced auto-save to cloud
         if (saveTimeout) clearTimeout(saveTimeout);
@@ -388,7 +401,7 @@ export const useLensStore = create<LensState>()(
             ...state.rawLensData,
             addons: newAddons
           } : null;
-          return { addons: newAddons, rawLensData: newRawData };
+          return { addons: newAddons, rawLensData: newRawData, syncStatus: 'pending' as SyncStatus };
         });
         // Debounced auto-save to cloud
         if (saveTimeout) clearTimeout(saveTimeout);
@@ -406,7 +419,7 @@ export const useLensStore = create<LensState>()(
             ...state.rawLensData,
             prices: newPrices
           } : null;
-          return { prices: newPrices, rawLensData: newRawData };
+          return { prices: newPrices, rawLensData: newRawData, syncStatus: 'pending' as SyncStatus };
         });
         // Debounced auto-save to cloud
         if (saveTimeout) clearTimeout(saveTimeout);
@@ -524,7 +537,7 @@ export const useLensStore = create<LensState>()(
       // Cloud persistence functions
       saveCatalogToCloud: async () => {
         const state = get();
-        set({ isSavingToCloud: true });
+        set({ isSavingToCloud: true, syncStatus: 'syncing' as SyncStatus });
         
         try {
           // Build catalog data from current state
@@ -576,9 +589,18 @@ export const useLensStore = create<LensState>()(
           }
           
           console.log('[LensStore] Catalog saved to cloud successfully');
+          set({ 
+            syncStatus: 'synced' as SyncStatus, 
+            lastSyncedAt: new Date().toISOString(),
+            lastSyncError: null 
+          });
           return true;
         } catch (e) {
           console.error('[LensStore] Error saving to cloud:', e);
+          set({ 
+            syncStatus: 'error' as SyncStatus, 
+            lastSyncError: (e as Error).message || 'Erro desconhecido' 
+          });
           return false;
         } finally {
           set({ isSavingToCloud: false });
@@ -611,6 +633,11 @@ export const useLensStore = create<LensState>()(
           });
           
           get().loadLensData(catalogData);
+          set({ 
+            syncStatus: 'synced' as SyncStatus, 
+            lastSyncedAt: new Date().toISOString(),
+            lastSyncError: null 
+          });
           return true;
         } catch (e) {
           console.error('[LensStore] Error loading from cloud:', e);
