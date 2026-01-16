@@ -205,7 +205,16 @@ export const useLensStore = create<LensState>()(
           // Emit catalog update event for cache invalidation (Seção 6)
           state.emitCatalogEvent('catalog_updated');
           
-          console.log('[LensStore] Import successful. Catalog event emitted.');
+          console.log('[LensStore] Import successful. Auto-saving to cloud...');
+          
+          // AUTO-SAVE: Automatically persist to cloud after successful import
+          get().saveCatalogToCloud().then(success => {
+            if (success) {
+              console.log('[LensStore] Catalog auto-saved to cloud after import');
+            } else {
+              console.error('[LensStore] Auto-save failed after import');
+            }
+          });
         } else {
           console.error('[LensStore] Import failed:', result.validation);
         }

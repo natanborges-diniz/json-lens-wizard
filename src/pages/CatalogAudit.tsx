@@ -42,6 +42,8 @@ import { TechnologyCard } from '@/components/audit/TechnologyCard';
 import { AddFamilyDialog } from '@/components/audit/AddFamilyDialog';
 import { ExportDialog } from '@/components/audit/ExportDialog';
 import { ClassificationReportDialog } from '@/components/audit/ClassificationReportDialog';
+import { CatalogVersionBadge } from '@/components/audit/CatalogVersionBadge';
+import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
 import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import { 
   runClassificationEngine, 
@@ -79,6 +81,7 @@ const CatalogAudit = () => {
   const [activeTab, setActiveTab] = useState('families');
   const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
   
   // Classification Engine state
   const [isClassifying, setIsClassifying] = useState(false);
@@ -809,6 +812,9 @@ const CatalogAudit = () => {
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Version Badge */}
+            <CatalogVersionBadge onViewHistory={() => setShowVersionHistory(true)} />
+            
             <Button 
               variant="ghost" 
               size="sm"
@@ -1370,6 +1376,12 @@ const CatalogAudit = () => {
         report={classificationReport}
         onApplyChanges={applyClassificationChanges}
         isApplying={isApplyingClassification}
+      />
+      
+      {/* Version History Dialog */}
+      <CatalogVersionHistory 
+        open={showVersionHistory} 
+        onOpenChange={setShowVersionHistory} 
       />
     </div>
   );
