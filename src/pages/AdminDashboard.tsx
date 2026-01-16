@@ -400,7 +400,7 @@ const AdminDashboard = () => {
             <Link to="/audit">
               <Button variant="outline" size="sm" className="gap-2">
                 <FileText className="w-4 h-4" />
-                Auditoria
+                Edição Manual
               </Button>
             </Link>
             

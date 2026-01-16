@@ -38,6 +38,7 @@ import { useLensStore } from '@/store/lensStore';
 import { FamilyCard } from '@/components/audit/FamilyCard';
 import { BatchActionBar } from '@/components/audit/BatchActionBar';
 import { TechnologyCard } from '@/components/audit/TechnologyCard';
+import { AddFamilyDialog } from '@/components/audit/AddFamilyDialog';
 import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import { toast } from 'sonner';
 
@@ -64,6 +65,8 @@ const CatalogAudit = () => {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterTier, setFilterTier] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterPriceMin, setFilterPriceMin] = useState<string>('');
+  const [filterPriceMax, setFilterPriceMax] = useState<string>('');
   const [activeTab, setActiveTab] = useState('families');
   const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -191,9 +194,15 @@ const CatalogAudit = () => {
         (filterStatus === 'inactive' && !family.active) ||
         (filterStatus === 'no_prices' && family.activePriceCount === 0);
       
-      return matchesSearch && matchesSupplier && matchesCategory && matchesTier && matchesStatus;
+      // Price filters
+      const minPrice = filterPriceMin ? parseFloat(filterPriceMin) : 0;
+      const maxPrice = filterPriceMax ? parseFloat(filterPriceMax) : Infinity;
+      const matchesPrice = family.minPrice >= minPrice && 
+        (family.maxPrice <= maxPrice || (!filterPriceMax && family.minPrice > 0));
+      
+      return matchesSearch && matchesSupplier && matchesCategory && matchesTier && matchesStatus && matchesPrice;
     });
-  }, [familiesWithPrices, searchTerm, filterSupplier, filterCategory, filterTier, filterStatus, getFamilyTier]);
+  }, [familiesWithPrices, searchTerm, filterSupplier, filterCategory, filterTier, filterStatus, filterPriceMin, filterPriceMax, getFamilyTier]);
 
   // Handle changes
   const handleMacroChange = useCallback((familyId: string, newMacro: string) => {
@@ -639,6 +648,18 @@ const CatalogAudit = () => {
     }
   };
 
+  // Add new family handler
+  const handleAddFamily = useCallback((newFamily: FamilyExtended) => {
+    setLocalFamilies(prev => [newFamily, ...prev]);
+    
+    setPendingChanges(prev => [...prev, { 
+      type: 'active', 
+      familyId: newFamily.id, 
+      oldValue: 'new' as any, 
+      newValue: 'added' as any 
+    }]);
+  }, []);
+
   // Clear filters
   const clearFilters = () => {
     setSearchTerm('');
@@ -646,10 +667,13 @@ const CatalogAudit = () => {
     setFilterCategory('all');
     setFilterTier('all');
     setFilterStatus('all');
+    setFilterPriceMin('');
+    setFilterPriceMax('');
   };
 
   const hasActiveFilters = searchTerm || filterSupplier !== 'all' || 
-    filterCategory !== 'all' || filterTier !== 'all' || filterStatus !== 'all';
+    filterCategory !== 'all' || filterTier !== 'all' || filterStatus !== 'all' ||
+    filterPriceMin || filterPriceMax;
 
   // Statistics
   const stats = useMemo(() => {
@@ -705,7 +729,7 @@ const CatalogAudit = () => {
                 <Layers className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <h1 className="text-base font-bold text-foreground">Auditoria do Catálogo</h1>
+                <h1 className="text-base font-bold text-foreground">Edição Manual do Catálogo</h1>
                 <p className="text-xs text-muted-foreground">Modo de edição ativo</p>
               </div>
             </div>
@@ -940,11 +964,41 @@ const CatalogAudit = () => {
                     </SelectContent>
                   </Select>
                   
+                  {/* Price Filters */}
+                  <div className="flex items-center gap-1 pl-2 border-l border-border">
+                    <DollarSign className="w-3.5 h-3.5 text-muted-foreground" />
+                    <Input
+                      type="number"
+                      placeholder="Mín"
+                      value={filterPriceMin}
+                      onChange={(e) => setFilterPriceMin(e.target.value)}
+                      className="w-20 h-8 text-xs"
+                    />
+                    <span className="text-muted-foreground text-xs">-</span>
+                    <Input
+                      type="number"
+                      placeholder="Máx"
+                      value={filterPriceMax}
+                      onChange={(e) => setFilterPriceMax(e.target.value)}
+                      className="w-20 h-8 text-xs"
+                    />
+                  </div>
+                  
                   {hasActiveFilters && (
                     <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 px-2">
                       <X className="w-4 h-4" />
                     </Button>
                   )}
+                  
+                  {/* Add Family Button */}
+                  <div className="pl-2 border-l border-border">
+                    <AddFamilyDialog
+                      macros={macros}
+                      categories={uniqueCategories}
+                      suppliers={uniqueSuppliers}
+                      onAddFamily={handleAddFamily}
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>
