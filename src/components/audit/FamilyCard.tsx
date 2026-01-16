@@ -130,7 +130,9 @@ export const FamilyCard = ({
         
         {/* Family Info */}
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-foreground truncate">{family.name_original}</p>
+          <p className="font-medium text-foreground truncate capitalize-first">
+            {family.name_original.charAt(0).toUpperCase() + family.name_original.slice(1).toLowerCase()}
+          </p>
           <p className="text-xs text-muted-foreground font-mono">{family.id}</p>
         </div>
         

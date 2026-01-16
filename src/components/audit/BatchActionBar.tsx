@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Check, Layers, Tag, Building, Power, PowerOff } from 'lucide-react';
+import { X, Check, Layers, Tag, Building, Power, PowerOff, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import type { MacroExtended } from '@/types/lens';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,13 +21,27 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
+// Tier options (instead of individual macros)
+const tierOptions = [
+  { value: 'essential', label: 'Essencial' },
+  { value: 'comfort', label: 'Conforto' },
+  { value: 'advanced', label: 'Avançado' },
+  { value: 'top', label: 'Premium' },
+];
+
+interface PendingBatchChanges {
+  tier?: string;
+  category?: string;
+  supplier?: string;
+  active?: boolean;
+}
+
 interface BatchActionBarProps {
   selectedCount: number;
   totalFiltered: number;
-  macros: MacroExtended[];
   categories: string[];
   suppliers: string[];
-  onApplyMacro: (macro: string) => void;
+  onApplyTier: (tier: string) => void;
   onApplyCategory: (category: string) => void;
   onApplySupplier: (supplier: string) => void;
   onActivateAll: () => void;
@@ -40,10 +53,9 @@ interface BatchActionBarProps {
 export const BatchActionBar = ({
   selectedCount,
   totalFiltered,
-  macros,
   categories,
   suppliers,
-  onApplyMacro,
+  onApplyTier,
   onApplyCategory,
   onApplySupplier,
   onActivateAll,
@@ -51,93 +63,80 @@ export const BatchActionBar = ({
   onClearSelection,
   onSelectAll,
 }: BatchActionBarProps) => {
-  const [confirmAction, setConfirmAction] = useState<{
-    type: 'macro' | 'category' | 'supplier' | 'activate' | 'deactivate';
-    value?: string;
-    label?: string;
-  } | null>(null);
+  const [pendingChanges, setPendingChanges] = useState<PendingBatchChanges>({});
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
-  const handleMacroChange = (value: string) => {
-    const macro = macros.find(m => m.id === value);
-    if (selectedCount > 10) {
-      setConfirmAction({ type: 'macro', value, label: macro?.name_client || value });
-    } else {
-      onApplyMacro(value);
-    }
+  const hasChanges = Object.keys(pendingChanges).length > 0;
+
+  const handleTierChange = (value: string) => {
+    setPendingChanges(prev => ({ ...prev, tier: value }));
   };
 
   const handleCategoryChange = (value: string) => {
-    if (selectedCount > 10) {
-      setConfirmAction({ type: 'category', value, label: value });
-    } else {
-      onApplyCategory(value);
-    }
+    setPendingChanges(prev => ({ ...prev, category: value }));
   };
 
   const handleSupplierChange = (value: string) => {
-    if (selectedCount > 10) {
-      setConfirmAction({ type: 'supplier', value, label: value });
-    } else {
-      onApplySupplier(value);
-    }
+    setPendingChanges(prev => ({ ...prev, supplier: value }));
   };
 
   const handleActivate = () => {
-    if (selectedCount > 10) {
-      setConfirmAction({ type: 'activate' });
-    } else {
-      onActivateAll();
-    }
+    setPendingChanges(prev => ({ ...prev, active: true }));
   };
 
   const handleDeactivate = () => {
-    if (selectedCount > 10) {
-      setConfirmAction({ type: 'deactivate' });
-    } else {
+    setPendingChanges(prev => ({ ...prev, active: false }));
+  };
+
+  const clearPendingChanges = () => {
+    setPendingChanges({});
+  };
+
+  const applyAllChanges = () => {
+    if (pendingChanges.tier) {
+      onApplyTier(pendingChanges.tier);
+    }
+    if (pendingChanges.category) {
+      onApplyCategory(pendingChanges.category);
+    }
+    if (pendingChanges.supplier) {
+      onApplySupplier(pendingChanges.supplier);
+    }
+    if (pendingChanges.active === true) {
+      onActivateAll();
+    } else if (pendingChanges.active === false) {
       onDeactivateAll();
     }
+    setPendingChanges({});
+    setShowConfirmDialog(false);
   };
 
-  const confirmActionHandler = () => {
-    if (!confirmAction) return;
-    
-    switch (confirmAction.type) {
-      case 'macro':
-        onApplyMacro(confirmAction.value!);
-        break;
-      case 'category':
-        onApplyCategory(confirmAction.value!);
-        break;
-      case 'supplier':
-        onApplySupplier(confirmAction.value!);
-        break;
-      case 'activate':
-        onActivateAll();
-        break;
-      case 'deactivate':
-        onDeactivateAll();
-        break;
+  const handleApplyClick = () => {
+    if (selectedCount > 10 || Object.keys(pendingChanges).length > 1) {
+      setShowConfirmDialog(true);
+    } else {
+      applyAllChanges();
     }
-    setConfirmAction(null);
   };
 
-  const getConfirmMessage = () => {
-    if (!confirmAction) return '';
-    
-    switch (confirmAction.type) {
-      case 'macro':
-        return `Alterar macro de ${selectedCount} famílias para "${confirmAction.label}"?`;
-      case 'category':
-        return `Alterar categoria de ${selectedCount} famílias para "${confirmAction.label}"?`;
-      case 'supplier':
-        return `Alterar fornecedor de ${selectedCount} famílias para "${confirmAction.label}"?`;
-      case 'activate':
-        return `Ativar ${selectedCount} famílias?`;
-      case 'deactivate':
-        return `Desativar ${selectedCount} famílias?`;
-      default:
-        return '';
+  const getChangeSummary = () => {
+    const changes: string[] = [];
+    if (pendingChanges.tier) {
+      const tierLabel = tierOptions.find(t => t.value === pendingChanges.tier)?.label;
+      changes.push(`Tier: ${tierLabel}`);
     }
+    if (pendingChanges.category) {
+      changes.push(`Categoria: ${pendingChanges.category}`);
+    }
+    if (pendingChanges.supplier) {
+      changes.push(`Fornecedor: ${pendingChanges.supplier}`);
+    }
+    if (pendingChanges.active === true) {
+      changes.push('Ativar');
+    } else if (pendingChanges.active === false) {
+      changes.push('Desativar');
+    }
+    return changes;
   };
 
   if (selectedCount === 0) return null;
@@ -167,17 +166,23 @@ export const BatchActionBar = ({
           )}
         </div>
 
-        {/* Macro Action */}
+        {/* Tier Action */}
         <div className="flex items-center gap-1.5">
           <Layers className="w-4 h-4 text-muted-foreground" />
-          <Select onValueChange={handleMacroChange}>
-            <SelectTrigger className="h-8 w-[140px] text-xs bg-background">
-              <SelectValue placeholder="Macro" />
+          <Select 
+            value={pendingChanges.tier || ''} 
+            onValueChange={handleTierChange}
+          >
+            <SelectTrigger className={cn(
+              "h-8 w-[120px] text-xs bg-background",
+              pendingChanges.tier && "ring-2 ring-primary border-primary"
+            )}>
+              <SelectValue placeholder="Tier" />
             </SelectTrigger>
             <SelectContent>
-              {macros.map((macro) => (
-                <SelectItem key={macro.id} value={macro.id} className="text-xs">
-                  {macro.name_client}
+              {tierOptions.map((tier) => (
+                <SelectItem key={tier.value} value={tier.value} className="text-xs">
+                  {tier.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -187,8 +192,14 @@ export const BatchActionBar = ({
         {/* Category Action */}
         <div className="flex items-center gap-1.5">
           <Tag className="w-4 h-4 text-muted-foreground" />
-          <Select onValueChange={handleCategoryChange}>
-            <SelectTrigger className="h-8 w-[130px] text-xs bg-background">
+          <Select 
+            value={pendingChanges.category || ''} 
+            onValueChange={handleCategoryChange}
+          >
+            <SelectTrigger className={cn(
+              "h-8 w-[130px] text-xs bg-background",
+              pendingChanges.category && "ring-2 ring-primary border-primary"
+            )}>
               <SelectValue placeholder="Categoria" />
             </SelectTrigger>
             <SelectContent>
@@ -204,8 +215,14 @@ export const BatchActionBar = ({
         {/* Supplier Action */}
         <div className="flex items-center gap-1.5">
           <Building className="w-4 h-4 text-muted-foreground" />
-          <Select onValueChange={handleSupplierChange}>
-            <SelectTrigger className="h-8 w-[120px] text-xs bg-background">
+          <Select 
+            value={pendingChanges.supplier || ''} 
+            onValueChange={handleSupplierChange}
+          >
+            <SelectTrigger className={cn(
+              "h-8 w-[120px] text-xs bg-background",
+              pendingChanges.supplier && "ring-2 ring-primary border-primary"
+            )}>
               <SelectValue placeholder="Fornecedor" />
             </SelectTrigger>
             <SelectContent>
@@ -221,23 +238,59 @@ export const BatchActionBar = ({
         {/* Status Actions */}
         <div className="flex items-center gap-1 pl-2 border-l border-border">
           <Button 
-            variant="ghost" 
+            variant={pendingChanges.active === true ? "default" : "ghost"}
             size="sm" 
-            className="h-8 gap-1.5 text-xs text-success hover:text-success hover:bg-success/10"
+            className={cn(
+              "h-8 gap-1.5 text-xs",
+              pendingChanges.active === true 
+                ? "bg-success text-success-foreground hover:bg-success/90" 
+                : "text-success hover:text-success hover:bg-success/10"
+            )}
             onClick={handleActivate}
           >
             <Power className="w-3.5 h-3.5" />
             Ativar
           </Button>
           <Button 
-            variant="ghost" 
+            variant={pendingChanges.active === false ? "default" : "ghost"}
             size="sm" 
-            className="h-8 gap-1.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+            className={cn(
+              "h-8 gap-1.5 text-xs",
+              pendingChanges.active === false 
+                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" 
+                : "text-destructive hover:text-destructive hover:bg-destructive/10"
+            )}
             onClick={handleDeactivate}
           >
             <PowerOff className="w-3.5 h-3.5" />
             Desativar
           </Button>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-1 pl-2 border-l border-border">
+          {hasChanges && (
+            <>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                className="h-8 gap-1.5 text-xs"
+                onClick={clearPendingChanges}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Limpar
+              </Button>
+              <Button 
+                variant="default" 
+                size="sm"
+                className="h-8 gap-1.5 text-xs"
+                onClick={handleApplyClick}
+              >
+                <Check className="w-3.5 h-3.5" />
+                Aplicar ({getChangeSummary().length})
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Clear Selection */}
@@ -252,21 +305,26 @@ export const BatchActionBar = ({
       </div>
 
       {/* Confirmation Dialog */}
-      <AlertDialog open={!!confirmAction} onOpenChange={() => setConfirmAction(null)}>
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar ação em lote</AlertDialogTitle>
-            <AlertDialogDescription>
-              {getConfirmMessage()}
-              <br />
-              <span className="text-muted-foreground text-sm">
-                Esta ação será aplicada a todos os itens selecionados.
-              </span>
+            <AlertDialogTitle>Confirmar alterações em lote</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                <p className="mb-3">
+                  Aplicar as seguintes alterações a <strong>{selectedCount} famílias</strong>?
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  {getChangeSummary().map((change, i) => (
+                    <li key={i}>{change}</li>
+                  ))}
+                </ul>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmActionHandler}>
+            <AlertDialogAction onClick={applyAllChanges}>
               <Check className="w-4 h-4 mr-2" />
               Confirmar
             </AlertDialogAction>
