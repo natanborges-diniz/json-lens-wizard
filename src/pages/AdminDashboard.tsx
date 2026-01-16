@@ -57,6 +57,8 @@ import {
 import { useLensStore } from '@/store/lensStore';
 import type { ImportMode, LensData } from '@/types/lens';
 import { formatImportReceipt, type ImportResult, type ImportSummary } from '@/lib/catalogImporter';
+import { CatalogVersionBadge, saveCatalogVersion } from '@/components/audit/CatalogVersionBadge';
+import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
 import { toast } from 'sonner';
 
 // Tier mapping for display (fallback, prefer JSON data)
@@ -89,6 +91,7 @@ const AdminDashboard = () => {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [showReceipt, setShowReceipt] = useState(false);
   const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
   const { 
@@ -183,7 +186,7 @@ const AdminDashboard = () => {
   };
 
   // Policy-compliant validation and import
-  const validateAndPreviewImport = () => {
+  const validateAndPreviewImport = async () => {
     try {
       // Sanitize JSON string before parsing to handle NaN, Infinity
       const sanitizedInput = sanitizeJsonString(jsonInput);
@@ -204,6 +207,30 @@ const AdminDashboard = () => {
           : '';
         toast.success(`Importação ${importMode === 'replace' ? 'substituição' : 'incremento'} realizada com sucesso!${warningMsg}`);
         setJsonInput('');
+        
+        // Save version record to database
+        const mergedData = result.mergedData;
+        if (mergedData) {
+          const version = await saveCatalogVersion({
+            schemaVersion: mergedData.meta?.schema_version || '1.0',
+            datasetName: mergedData.meta?.dataset_name,
+            importMode: importMode,
+            familiesCount: mergedData.families?.length || 0,
+            pricesCount: mergedData.prices?.length || 0,
+            addonsCount: mergedData.addons?.length || 0,
+            technologiesCount: Object.keys(mergedData.technology_library?.items || {}).length,
+            changesSummary: result.summary ? {
+              mode: result.summary.mode,
+              changes: result.summary.changes,
+              totals: result.summary.totals,
+            } : undefined,
+            notes: mergedData.meta?.notes,
+          });
+          
+          if (version) {
+            toast.success(`Versão v${version.version_number} registrada`);
+          }
+        }
       } else {
         const allErrors = [...result.validation.errors, ...result.validation.integrityErrors];
         toast.error(`Falha na importação: ${allErrors.length} erro(s) encontrado(s)`);
@@ -382,6 +409,9 @@ const AdminDashboard = () => {
           </div>
           
           <div className="flex items-center gap-4">
+            {/* Version Badge */}
+            <CatalogVersionBadge onViewHistory={() => setShowVersionHistory(true)} />
+            
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
                 <Package className="w-4 h-4" />
@@ -871,6 +901,12 @@ const AdminDashboard = () => {
           </TabsContent>
         </Tabs>
       </main>
+      
+      {/* Version History Dialog */}
+      <CatalogVersionHistory 
+        open={showVersionHistory} 
+        onOpenChange={setShowVersionHistory} 
+      />
     </div>
   );
 };

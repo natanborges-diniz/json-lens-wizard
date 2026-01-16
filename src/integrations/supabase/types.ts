@@ -103,6 +103,60 @@ export type Database = {
           },
         ]
       }
+      catalog_versions: {
+        Row: {
+          addons_count: number | null
+          changes_summary: Json | null
+          created_at: string | null
+          dataset_name: string | null
+          families_count: number | null
+          file_size_bytes: number | null
+          id: string
+          import_mode: string
+          imported_at: string | null
+          imported_by: string | null
+          notes: string[] | null
+          prices_count: number | null
+          schema_version: string
+          technologies_count: number | null
+          version_number: string
+        }
+        Insert: {
+          addons_count?: number | null
+          changes_summary?: Json | null
+          created_at?: string | null
+          dataset_name?: string | null
+          families_count?: number | null
+          file_size_bytes?: number | null
+          id?: string
+          import_mode: string
+          imported_at?: string | null
+          imported_by?: string | null
+          notes?: string[] | null
+          prices_count?: number | null
+          schema_version: string
+          technologies_count?: number | null
+          version_number: string
+        }
+        Update: {
+          addons_count?: number | null
+          changes_summary?: Json | null
+          created_at?: string | null
+          dataset_name?: string | null
+          families_count?: number | null
+          file_size_bytes?: number | null
+          id?: string
+          import_mode?: string
+          imported_at?: string | null
+          imported_by?: string | null
+          notes?: string[] | null
+          prices_count?: number | null
+          schema_version?: string
+          technologies_count?: number | null
+          version_number?: string
+        }
+        Relationships: []
+      }
       company_settings: {
         Row: {
           address: string | null
