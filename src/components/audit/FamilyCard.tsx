@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, GripVertical, DollarSign, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, GripVertical, DollarSign, Trash2, Cpu, Plus, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { InlineSelect } from './InlineSelect';
 import { InlineToggle } from './InlineToggle';
 import { cn } from '@/lib/utils';
-import type { FamilyExtended, Price, MacroExtended } from '@/types/lens';
+import type { FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +18,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
 
 // Tier display mapping
 const tierDisplayNames: Record<string, string> = {
@@ -53,12 +60,14 @@ interface FamilyCardProps {
   macros: MacroExtended[];
   categories: string[];
   suppliers: string[];
+  technologies?: Record<string, Technology>;
   onMacroChange: (familyId: string, macro: string) => void;
   onCategoryChange: (familyId: string, category: string) => void;
   onSupplierChange: (familyId: string, supplier: string) => void;
   onActiveToggle: (familyId: string) => void;
   onPriceActiveToggle: (erpCode: string) => void;
   onDeleteFamily: (familyId: string) => void;
+  onTechnologyChange?: (familyId: string, techRefs: string[]) => void;
   isDragging?: boolean;
   isSelected?: boolean;
   onSelectionChange?: (familyId: string, selected: boolean) => void;
@@ -69,21 +78,57 @@ export const FamilyCard = ({
   macros,
   categories,
   suppliers,
+  technologies = {},
   onMacroChange,
   onCategoryChange,
   onSupplierChange,
   onActiveToggle,
   onPriceActiveToggle,
   onDeleteFamily,
+  onTechnologyChange,
   isDragging,
   isSelected = false,
   onSelectionChange
 }: FamilyCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [techSearch, setTechSearch] = useState('');
+  const [isAddingTech, setIsAddingTech] = useState(false);
   
   const macroInfo = macros.find(m => m.id === family.macro);
   const tierKey = macroInfo?.tier_key || 'essential';
   const tierColor = tierColors[tierKey];
+  
+  // Get current technology refs
+  const currentTechRefs = family.technology_refs || [];
+  
+  // Get technology names for display
+  const getTechName = (techId: string) => {
+    return technologies[techId]?.name_common || techId;
+  };
+  
+  // Filter available technologies for adding
+  const availableTechnologies = Object.entries(technologies)
+    .filter(([id]) => !currentTechRefs.includes(id))
+    .filter(([id, tech]) => 
+      techSearch === '' || 
+      tech.name_common.toLowerCase().includes(techSearch.toLowerCase()) ||
+      id.toLowerCase().includes(techSearch.toLowerCase())
+    )
+    .slice(0, 20);
+  
+  // Add technology
+  const handleAddTechnology = (techId: string) => {
+    const newRefs = [...currentTechRefs, techId];
+    onTechnologyChange?.(family.id, newRefs);
+    setTechSearch('');
+    setIsAddingTech(false);
+  };
+  
+  // Remove technology
+  const handleRemoveTechnology = (techId: string) => {
+    const newRefs = currentTechRefs.filter(id => id !== techId);
+    onTechnologyChange?.(family.id, newRefs);
+  };
   
   const macroOptions = macros
     .filter(m => m.category === family.category)
@@ -256,6 +301,76 @@ export const FamilyCard = ({
       {/* Expanded Content */}
       {isExpanded && (
         <div className="border-t bg-muted/30 p-4 space-y-4">
+          {/* Technologies */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                <Cpu className="w-3 h-3" />
+                Tecnologias ({currentTechRefs.length}):
+              </p>
+              <Popover open={isAddingTech} onOpenChange={setIsAddingTech}>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-6 text-xs gap-1">
+                    <Plus className="w-3 h-3" />
+                    Adicionar
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-2" align="end">
+                  <Input
+                    placeholder="Buscar tecnologia..."
+                    value={techSearch}
+                    onChange={(e) => setTechSearch(e.target.value)}
+                    className="h-8 text-xs mb-2"
+                    autoFocus
+                  />
+                  <ScrollArea className="h-48">
+                    {availableTechnologies.length === 0 ? (
+                      <p className="text-xs text-muted-foreground p-2 text-center">
+                        {techSearch ? 'Nenhuma tecnologia encontrada' : 'Todas já adicionadas'}
+                      </p>
+                    ) : (
+                      <div className="space-y-1">
+                        {availableTechnologies.map(([id, tech]) => (
+                          <button
+                            key={id}
+                            onClick={() => handleAddTechnology(id)}
+                            className="w-full text-left p-2 rounded hover:bg-accent text-xs transition-colors"
+                          >
+                            <p className="font-medium">{tech.name_common}</p>
+                            <p className="text-muted-foreground text-[10px] truncate">{tech.description_short}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </PopoverContent>
+              </Popover>
+            </div>
+            {currentTechRefs.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">Nenhuma tecnologia associada</p>
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {currentTechRefs.map((techId) => (
+                  <Badge 
+                    key={techId} 
+                    variant="outline" 
+                    className="text-xs gap-1 pr-1 bg-info/5 border-info/30 text-info"
+                  >
+                    <Cpu className="w-3 h-3" />
+                    {getTechName(techId)}
+                    <button
+                      onClick={() => handleRemoveTechnology(techId)}
+                      className="ml-1 hover:bg-destructive/20 rounded p-0.5 transition-colors"
+                      title="Remover tecnologia"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Attributes */}
           {family.attributes_display_base.length > 0 && (
             <div>
