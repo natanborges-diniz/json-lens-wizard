@@ -14,6 +14,7 @@ import {
   Boxes,
   Save,
   RotateCcw,
+  RefreshCw,
   X,
   CheckSquare,
   Square,
@@ -583,6 +584,38 @@ const CatalogAudit = () => {
     toast.info('Alterações descartadas');
   };
 
+  // Reload original catalog from JSON (fixes encoding issues)
+  const reloadOriginalCatalog = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/data/lenses.json');
+      const arrayBuffer = await response.arrayBuffer();
+      const decoder = new TextDecoder('utf-8');
+      const text = decoder.decode(arrayBuffer);
+      const data: LensData = JSON.parse(text);
+      
+      loadLensData(data);
+      setLocalFamilies(data.families || []);
+      if (data.technology_library?.items) {
+        setLocalTechnologies(data.technology_library.items);
+      }
+      setPendingChanges([]);
+      
+      // Force save to cloud with correct encoding
+      const success = await saveCatalogToCloud();
+      if (success) {
+        toast.success('Catálogo original recarregado e salvo com encoding correto!');
+      } else {
+        toast.success('Catálogo recarregado (erro ao salvar na nuvem)');
+      }
+    } catch (error) {
+      console.error('Error reloading catalog:', error);
+      toast.error('Erro ao recarregar catálogo');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Clear filters
   const clearFilters = () => {
     setSearchTerm('');
@@ -656,6 +689,21 @@ const CatalogAudit = () => {
           </div>
           
           <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={reloadOriginalCatalog}
+              disabled={isLoading}
+              className="gap-1.5 text-xs"
+              title="Recarregar catálogo original (corrige encoding)"
+            >
+              {isLoading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5" />
+              )}
+              Recarregar
+            </Button>
             {pendingChanges.length > 0 && (
               <>
                 <Badge variant="secondary" className="gap-1 text-xs">
