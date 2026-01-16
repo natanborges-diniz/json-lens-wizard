@@ -1,11 +1,23 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, GripVertical, DollarSign } from 'lucide-react';
+import { ChevronDown, ChevronRight, GripVertical, DollarSign, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { InlineSelect } from './InlineSelect';
 import { InlineToggle } from './InlineToggle';
 import { cn } from '@/lib/utils';
 import type { FamilyExtended, Price, MacroExtended } from '@/types/lens';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 // Tier display mapping
 const tierDisplayNames: Record<string, string> = {
@@ -46,6 +58,7 @@ interface FamilyCardProps {
   onSupplierChange: (familyId: string, supplier: string) => void;
   onActiveToggle: (familyId: string) => void;
   onPriceActiveToggle: (erpCode: string) => void;
+  onDeleteFamily: (familyId: string) => void;
   isDragging?: boolean;
   isSelected?: boolean;
   onSelectionChange?: (familyId: string, selected: boolean) => void;
@@ -61,6 +74,7 @@ export const FamilyCard = ({
   onSupplierChange,
   onActiveToggle,
   onPriceActiveToggle,
+  onDeleteFamily,
   isDragging,
   isSelected = false,
   onSelectionChange
@@ -205,6 +219,38 @@ export const FamilyCard = ({
           active={family.active} 
           onToggle={() => onActiveToggle(family.id)} 
         />
+
+        {/* Delete Button */}
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir família</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir a família "<strong>{family.name_original}</strong>"? 
+                Esta ação removerá a família e seus {family.priceCount} SKUs associados.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => onDeleteFamily(family.id)}
+                className="bg-destructive hover:bg-destructive/90"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
       
       {/* Expanded Content */}

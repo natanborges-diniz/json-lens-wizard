@@ -441,6 +441,40 @@ const CatalogAudit = () => {
     setSelectedIds(new Set());
   }, [localFamilies, selectedIds]);
 
+  // Batch delete handler
+  const handleBatchDelete = useCallback(() => {
+    const selectedFamilyIds = [...selectedIds];
+    
+    setLocalFamilies(prev => prev.filter(f => !selectedIds.has(f.id)));
+    
+    // Add pending changes for deletion tracking
+    selectedFamilyIds.forEach(familyId => {
+      setPendingChanges(prev => [...prev, { 
+        type: 'active', 
+        familyId, 
+        oldValue: true, 
+        newValue: 'deleted' as any 
+      }]);
+    });
+    
+    toast.success(`${selectedFamilyIds.length} famílias excluídas`, { duration: 2000 });
+    setSelectedIds(new Set());
+  }, [selectedIds]);
+
+  // Individual delete handler
+  const handleDeleteFamily = useCallback((familyId: string) => {
+    setLocalFamilies(prev => prev.filter(f => f.id !== familyId));
+    
+    setPendingChanges(prev => [...prev, { 
+      type: 'active', 
+      familyId, 
+      oldValue: true, 
+      newValue: 'deleted' as any 
+    }]);
+    
+    toast.success('Família excluída', { duration: 1500 });
+  }, []);
+
   // Check if all filtered are selected
   const allFilteredSelected = useMemo(() => {
     if (filteredFamilies.length === 0) return false;
@@ -787,6 +821,7 @@ const CatalogAudit = () => {
                     onSupplierChange={handleSupplierChange}
                     onActiveToggle={handleActiveToggle}
                     onPriceActiveToggle={handlePriceActiveToggle}
+                    onDeleteFamily={handleDeleteFamily}
                     isSelected={selectedIds.has(family.id)}
                     onSelectionChange={handleSelectionChange}
                   />
@@ -959,6 +994,7 @@ const CatalogAudit = () => {
           onApplySupplier={handleBatchSupplierChange}
           onActivateAll={handleBatchActivate}
           onDeactivateAll={handleBatchDeactivate}
+          onDeleteSelected={handleBatchDelete}
           onClearSelection={handleClearSelection}
           onSelectAll={handleSelectAll}
         />
