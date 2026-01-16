@@ -128,7 +128,7 @@
     {
       "id": "PROG_AVANCADO",
       "category": "PROGRESSIVA",
-      "name_client": "Avançada",
+      "name_client": "Avançado",
       "description_client": "Ideal para uso intenso e telas.",
       "tier_key": "advanced",
       "display": {
@@ -142,7 +142,7 @@
     {
       "id": "PROG_TOP",
       "category": "PROGRESSIVA",
-      "name_client": "Top de Mercado",
+      "name_client": "Premium",
       "description_client": "Máxima personalização e conforto.",
       "tier_key": "top",
       "display": {
@@ -184,7 +184,7 @@
     {
       "id": "MONO_INTER",
       "category": "MONOFOCAL",
-      "name_client": "Avançada",
+      "name_client": "Avançado",
       "description_client": "Ideal para quem usa bastante celular e computador.",
       "tier_key": "advanced",
       "display": {
@@ -198,7 +198,7 @@
     {
       "id": "MONO_TOP",
       "category": "MONOFOCAL",
-      "name_client": "Top de Mercado",
+      "name_client": "Premium",
       "description_client": "Máximo conforto, proteção e durabilidade.",
       "tier_key": "top",
       "display": {
