@@ -554,7 +554,8 @@ export const useLensStore = create<LensState>()(
             })
           );
           
-          const jsonBlob = new Blob([JSON.stringify(sanitizedData)], { type: 'application/json' });
+          // Ensure UTF-8 encoding for special characters (ç, ã, é, etc.)
+          const jsonBlob = new Blob([JSON.stringify(sanitizedData)], { type: 'application/json; charset=utf-8' });
           
           const { error } = await supabase.storage
             .from('catalogs')
@@ -588,7 +589,10 @@ export const useLensStore = create<LensState>()(
             return false;
           }
           
-          const text = await data.text();
+          // Decode as UTF-8 explicitly to fix encoding issues (ç, ã, é, etc.)
+          const arrayBuffer = await data.arrayBuffer();
+          const decoder = new TextDecoder('utf-8');
+          const text = decoder.decode(arrayBuffer);
           const catalogData = JSON.parse(text) as LensData;
           
           console.log('[LensStore] Loaded catalog from cloud:', {
