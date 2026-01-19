@@ -19,7 +19,8 @@ import {
   CheckSquare,
   Square,
   Cpu,
-  Wand2
+  Wand2,
+  Settings2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,6 +46,7 @@ import { AddFamilyDialog } from '@/components/audit/AddFamilyDialog';
 import { ExportDialog } from '@/components/audit/ExportDialog';
 import { IntegrityExportButton } from '@/components/audit/IntegrityExportButton';
 import { ClassificationReportDialog } from '@/components/audit/ClassificationReportDialog';
+import { MatchingRulesEditor } from '@/components/audit/MatchingRulesEditor';
 import { CatalogVersionBadge } from '@/components/audit/CatalogVersionBadge';
 import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
 import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
@@ -53,7 +55,8 @@ import {
   runClassificationEngine, 
   getEngineFromLensData,
   type ClassificationReport,
-  type ClassificationEngineResult
+  type ClassificationEngineResult,
+  type FamilyMatchingEngine
 } from '@/lib/skuClassificationEngine';
 import { toast } from 'sonner';
 
@@ -772,6 +775,28 @@ const CatalogAudit = () => {
     }
   }, [classificationResult, rawLensData, loadLensData, saveCatalogToCloud]);
 
+  // Save matching engine handler
+  const handleSaveMatchingEngine = useCallback(async (engine: FamilyMatchingEngine) => {
+    if (!rawLensData) {
+      toast.error('Nenhum catálogo carregado');
+      return;
+    }
+    
+    try {
+      const updatedData: LensData = {
+        ...rawLensData,
+        family_matching_engine: engine
+      } as LensData & { family_matching_engine: FamilyMatchingEngine };
+      
+      loadLensData(updatedData);
+      await saveCatalogToCloud();
+      toast.success('Regras de classificação salvas');
+    } catch (error) {
+      console.error('Error saving matching engine:', error);
+      toast.error('Erro ao salvar regras');
+    }
+  }, [rawLensData, loadLensData, saveCatalogToCloud]);
+
   // Clear filters
   const clearFilters = () => {
     setSearchTerm('');
@@ -1004,6 +1029,10 @@ const CatalogAudit = () => {
             <TabsTrigger value="technologies" className="gap-1.5 text-xs py-1.5">
               <Cpu className="w-3.5 h-3.5" />
               Tecnologias ({technologiesArray.length})
+            </TabsTrigger>
+            <TabsTrigger value="matching" className="gap-1.5 text-xs py-1.5">
+              <Settings2 className="w-3.5 h-3.5" />
+              Regras de Match
             </TabsTrigger>
             <TabsTrigger value="integrity" className="gap-1.5 text-xs py-1.5">
               <AlertTriangle className="w-3.5 h-3.5" />
@@ -1359,6 +1388,16 @@ const CatalogAudit = () => {
                 )}
               </>
             )}
+          </TabsContent>
+
+          {/* Matching Rules Tab */}
+          <TabsContent value="matching" className="mt-0">
+            <MatchingRulesEditor
+              engine={rawLensData ? getEngineFromLensData(rawLensData) : null}
+              families={localFamilies}
+              prices={prices}
+              onSaveEngine={handleSaveMatchingEngine}
+            />
           </TabsContent>
         </Tabs>
 
