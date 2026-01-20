@@ -37,6 +37,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useLensStore } from '@/store/lensStore';
+import { useCatalogLoader } from '@/hooks/useCatalogLoader';
 import { FamilyCard } from '@/components/audit/FamilyCard';
 import { BatchActionBar } from '@/components/audit/BatchActionBar';
 import { TechnologyCard } from '@/components/audit/TechnologyCard';
@@ -128,36 +129,25 @@ const CatalogAudit = () => {
     }
   }, [technologyLibrary]);
 
-  // Load data on mount
+  // Load data on mount - usando hook centralizado
+  const { isLoading: catalogLoading, loadSource, loadCatalog, reloadFromLocal } = useCatalogLoader();
+
   useEffect(() => {
-    const loadData = async () => {
-      if (families.length === 0) {
-        setIsLoading(true);
-        try {
-          const cloudLoaded = await loadCatalogFromCloud();
-          
-          if (!cloudLoaded) {
-            const response = await fetch('/data/lenses.json');
-            const data: LensData = await response.json();
-            loadLensData(data);
-          }
-        } catch (error) {
-          console.error('Error loading data:', error);
-          try {
-            const response = await fetch('/data/lenses.json');
-            const data: LensData = await response.json();
-            loadLensData(data);
-          } catch (e) {
-            console.error('Failed to load fallback data:', e);
-            toast.error('Erro ao carregar dados');
-          }
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    };
-    loadData();
-  }, [families.length, loadLensData, loadCatalogFromCloud]);
+    if (families.length === 0) {
+      setIsLoading(true);
+      loadCatalog().finally(() => setIsLoading(false));
+    }
+  }, [families.length, loadCatalog]);
+
+  // Handler para forçar reload do arquivo local (sobrescreve nuvem)
+  const handleForceLocalReload = async () => {
+    setIsLoading(true);
+    const success = await reloadFromLocal();
+    if (success) {
+      toast.success('Catálogo recarregado do arquivo local e sincronizado com a nuvem');
+    }
+    setIsLoading(false);
+  };
 
   // Get unique values for filters
   const uniqueSuppliers = useMemo(() => 
