@@ -5,7 +5,17 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { LensCard, LensCardConfiguration } from './LensCard';
 import { SmartSearch, AIRecommendation, AIResponse } from '@/components/search/SmartSearch';
-import type { Family, Price, Addon, Tier, AttributeDef, AnamnesisData, LensData } from '@/types/lens';
+import { ProductSuggestionCards } from './ProductSuggestionCards';
+import { ProductCart } from './ProductCart';
+import { AdditionalProductModal } from './AdditionalProductModal';
+import type { Family, Price, Addon, Tier, AttributeDef, AnamnesisData, LensData, Prescription } from '@/types/lens';
+import type { SelectedProduct, ProductSuggestion } from '@/lib/productSuggestionEngine';
+import { 
+  generateProductSuggestions, 
+  generateProductId, 
+  hasProductType,
+  getProductTypeLabel 
+} from '@/lib/productSuggestionEngine';
 
 interface FamilyWithPrice {
   family: Family;
@@ -17,17 +27,18 @@ interface FamilyWithPrice {
 
 interface RecommendationsGridProps {
   recommendations: Record<Tier, FamilyWithPrice[]>;
+  occupationalRecommendations?: Record<Tier, FamilyWithPrice[]>;
   addons: Addon[];
   onSelectLens: (configuration: LensCardConfiguration) => void;
+  onSelectProducts?: (products: SelectedProduct[]) => void;
   selectedFamilyId?: string;
   mostRecommendedId?: string;
   lensCategory: 'PROGRESSIVA' | 'MONOFOCAL' | 'OCUPACIONAL';
   attributeDefs: AttributeDef[];
   anamnesisData?: AnamnesisData;
+  prescriptionData?: Partial<Prescription>;
   lensData?: LensData | null;
 }
-
-const suppliers = ['ZEISS', 'ESSILOR', 'HOYA'];
 
 type ViewMode = 'system' | 'ai' | 'single';
 
@@ -45,13 +56,16 @@ interface SingleViewState {
 
 export const RecommendationsGrid = ({
   recommendations,
+  occupationalRecommendations,
   addons,
   onSelectLens,
+  onSelectProducts,
   selectedFamilyId,
   mostRecommendedId,
   lensCategory,
   attributeDefs,
   anamnesisData,
+  prescriptionData,
   lensData,
 }: RecommendationsGridProps) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -64,10 +78,39 @@ export const RecommendationsGrid = ({
   const [aiViewState, setAiViewState] = useState<AIViewState | null>(null);
   const [singleViewState, setSingleViewState] = useState<SingleViewState | null>(null);
 
+  // Product cart state
+  const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
+  const [showOccupationalModal, setShowOccupationalModal] = useState(false);
+  const [showSolarModal, setShowSolarModal] = useState(false);
+
   // Get all families flat
   const allFamilies = useMemo(() => {
     return Object.values(recommendations).flat();
   }, [recommendations]);
+
+  // Generate product suggestions based on anamnesis
+  const productSuggestions = useMemo((): ProductSuggestion[] => {
+    if (!anamnesisData || !lensData) return [];
+    
+    const ocFamilies = lensData.families.filter(f => 
+      f.category === 'OCUPACIONAL' && f.active
+    );
+    
+    return generateProductSuggestions(anamnesisData, prescriptionData || {}, ocFamilies);
+  }, [anamnesisData, prescriptionData, lensData]);
+
+  // Get occupational families for modal
+  const occupationalFamiliesForModal = useMemo((): FamilyWithPrice[] => {
+    if (occupationalRecommendations) {
+      return Object.values(occupationalRecommendations).flat().filter(f => f.bestPrice !== null);
+    }
+    return [];
+  }, [occupationalRecommendations]);
+
+  // Get primary product from cart
+  const primaryProduct = useMemo(() => {
+    return selectedProducts.find(p => p.type === 'primary');
+  }, [selectedProducts]);
 
   // Get family data by id
   const getFamilyData = useCallback((familyId: string) => {
@@ -116,6 +159,51 @@ export const RecommendationsGrid = ({
     }
     setSingleViewState(null);
   }, [singleViewState, aiViewState, returnToSystemView]);
+
+  // Handle lens selection - add to cart as primary
+  const handleLensSelect = useCallback((config: LensCardConfiguration) => {
+    const family = allFamilies.find(f => f.family.id === config.familyId);
+    if (!family) return;
+
+    const primaryProduct: SelectedProduct = {
+      id: generateProductId(),
+      type: 'primary',
+      familyId: config.familyId,
+      familyName: family.family.name_original,
+      supplier: family.family.supplier,
+      selectedIndex: config.selectedIndex,
+      selectedTreatments: config.selectedTreatments,
+      unitPrice: config.totalPrice,
+      label: getProductTypeLabel('primary'),
+      selectedPriceErpCode: config.selectedPrice?.erp_code,
+    };
+
+    // Replace any existing primary product
+    setSelectedProducts(prev => {
+      const filtered = prev.filter(p => p.type !== 'primary');
+      return [primaryProduct, ...filtered];
+    });
+
+    // Also call the original handler for backward compatibility
+    onSelectLens(config);
+  }, [allFamilies, onSelectLens]);
+
+  // Add additional product to cart
+  const handleAddProduct = useCallback((product: SelectedProduct) => {
+    setSelectedProducts(prev => [...prev, product]);
+  }, []);
+
+  // Remove product from cart
+  const handleRemoveProduct = useCallback((productId: string) => {
+    setSelectedProducts(prev => prev.filter(p => p.id !== productId));
+  }, []);
+
+  // Handle finalize - send all products
+  const handleFinalize = useCallback(() => {
+    if (onSelectProducts) {
+      onSelectProducts(selectedProducts);
+    }
+  }, [selectedProducts, onSelectProducts]);
 
   // Get one option per tier (the best one) + alternatives
   const tierOptions = useMemo(() => {
@@ -404,7 +492,11 @@ export const RecommendationsGrid = ({
       {/* Category and Status badges */}
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="secondary" className="text-sm">
-          {lensCategory === 'PROGRESSIVA' ? 'Lentes Progressivas' : 'Lentes Monofocais'}
+          {lensCategory === 'PROGRESSIVA' 
+            ? 'Lentes Progressivas' 
+            : lensCategory === 'OCUPACIONAL'
+              ? 'Lentes Ocupacionais'
+              : 'Lentes Monofocais'}
         </Badge>
         
         {highlightedFamilies.length > 0 && (
@@ -412,76 +504,126 @@ export const RecommendationsGrid = ({
             ✨ {highlightedFamilies.length} recomendação(ões) IA
           </Badge>
         )}
-        {selectedFamilyId && (
+        {selectedProducts.length > 0 && (
           <Badge className="text-sm bg-success text-success-foreground gap-1">
-            ✓ Lente selecionada
+            ✓ {selectedProducts.length} produto(s) selecionado(s)
           </Badge>
         )}
       </div>
 
-      {/* Grid of cards */}
-      {tierOptions.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {tierOptions.map(option => {
-            if (!option) return null;
-            
-            const { tier, primary, alternatives } = option;
-            const isRecommended = primary.family.id === mostRecommendedId;
-            const isSelected = primary.family.id === selectedFamilyId;
-            
-            return (
-              <LensCard
-                key={tier}
-                family={primary.family}
-                bestPrice={primary.bestPrice}
-                allPrices={primary.allPrices}
-                tier={tier}
-                isRecommended={isRecommended}
-                isSelected={isSelected}
-                addons={addons}
-                onSelect={onSelectLens}
-                onSelectAlternative={handleSelectAlternative}
-                alternativeFamilies={alternatives.map(a => ({
-                  family: a.family,
-                  bestPrice: a.bestPrice,
-                  allPrices: a.allPrices,
-                }))}
-                attributeDefs={attributeDefs}
-              />
-            );
-          })}
-        </div>
-      ) : (
-        <div className="text-center py-12 text-muted-foreground">
-          <SlidersHorizontal className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p className="text-lg font-medium">Nenhuma lente encontrada</p>
-          <p className="text-sm">Tente ajustar os filtros ou a busca</p>
-          {hasFilters && (
-            <Button variant="link" onClick={clearFilters} className="mt-2">
-              Limpar filtros
-            </Button>
+      {/* Main content grid with cart */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Left: Lens cards */}
+        <div className="lg:col-span-3 space-y-6">
+          {/* Grid of cards */}
+          {tierOptions.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {tierOptions.map(option => {
+                if (!option) return null;
+                
+                const { tier, primary, alternatives } = option;
+                const isRecommended = primary.family.id === mostRecommendedId;
+                const isSelected = selectedProducts.some(p => p.familyId === primary.family.id && p.type === 'primary');
+                
+                return (
+                  <LensCard
+                    key={tier}
+                    family={primary.family}
+                    bestPrice={primary.bestPrice}
+                    allPrices={primary.allPrices}
+                    tier={tier}
+                    isRecommended={isRecommended}
+                    isSelected={isSelected}
+                    addons={addons}
+                    onSelect={handleLensSelect}
+                    onSelectAlternative={handleSelectAlternative}
+                    alternativeFamilies={alternatives.map(a => ({
+                      family: a.family,
+                      bestPrice: a.bestPrice,
+                      allPrices: a.allPrices,
+                    }))}
+                    attributeDefs={attributeDefs}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              <SlidersHorizontal className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">Nenhuma lente encontrada</p>
+              <p className="text-sm">Tente ajustar os filtros ou a busca</p>
+              {hasFilters && (
+                <Button variant="link" onClick={clearFilters} className="mt-2">
+                  Limpar filtros
+                </Button>
+              )}
+            </div>
           )}
-        </div>
-      )}
 
-      {/* Legend */}
-      <div className="p-4 bg-muted/30 rounded-lg">
-        <h4 className="text-sm font-medium mb-2">O que significam os níveis?</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-muted-foreground">
-          <div>
-            <span className="font-medium text-foreground">Essencial:</span> Solução básica com boa correção visual
+          {/* Product Suggestions - only show after primary is selected */}
+          {selectedProducts.length > 0 && productSuggestions.length > 0 && (
+            <ProductSuggestionCards
+              suggestions={productSuggestions}
+              onSelectOccupational={() => setShowOccupationalModal(true)}
+              onSelectSolar={() => setShowSolarModal(true)}
+              hasOccupational={hasProductType(selectedProducts, 'occupational')}
+              hasSolar={hasProductType(selectedProducts, 'solar')}
+            />
+          )}
+
+          {/* Legend */}
+          <div className="p-4 bg-muted/30 rounded-lg">
+            <h4 className="text-sm font-medium mb-2">O que significam os níveis?</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-muted-foreground">
+              <div>
+                <span className="font-medium text-foreground">Essencial:</span> Solução básica com boa correção visual
+              </div>
+              <div>
+                <span className="font-medium text-foreground">Conforto:</span> Equilíbrio entre qualidade e custo
+              </div>
+              <div>
+                <span className="font-medium text-foreground">Avançada:</span> Tecnologia de ponta para alta performance
+              </div>
+              <div>
+                <span className="font-medium text-foreground">Top:</span> O melhor disponível em tecnologia
+              </div>
+            </div>
           </div>
-          <div>
-            <span className="font-medium text-foreground">Conforto:</span> Equilíbrio entre qualidade e custo
-          </div>
-          <div>
-            <span className="font-medium text-foreground">Avançada:</span> Tecnologia de ponta para alta performance
-          </div>
-          <div>
-            <span className="font-medium text-foreground">Top:</span> O melhor disponível em tecnologia
+        </div>
+
+        {/* Right: Product Cart */}
+        <div className="lg:col-span-1">
+          <div className="sticky top-24">
+            <ProductCart
+              products={selectedProducts}
+              onRemoveProduct={handleRemoveProduct}
+              onFinalize={handleFinalize}
+            />
           </div>
         </div>
       </div>
+
+      {/* Modals for additional products */}
+      <AdditionalProductModal
+        open={showOccupationalModal}
+        onOpenChange={setShowOccupationalModal}
+        productType="occupational"
+        families={occupationalFamiliesForModal}
+        addons={addons}
+        attributeDefs={attributeDefs}
+        onAddProduct={handleAddProduct}
+      />
+
+      <AdditionalProductModal
+        open={showSolarModal}
+        onOpenChange={setShowSolarModal}
+        productType="solar"
+        families={[]}
+        addons={addons}
+        attributeDefs={attributeDefs}
+        onAddProduct={handleAddProduct}
+        primaryProduct={primaryProduct}
+      />
     </div>
   );
 
