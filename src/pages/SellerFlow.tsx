@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { useLensStore } from '@/store/lensStore';
+import { useCatalogLoader } from '@/hooks/useCatalogLoader';
 import { useCatalogResolver } from '@/hooks/useCatalogResolver';
 import type { 
   Prescription, 
@@ -89,6 +90,9 @@ const SellerFlow = () => {
   // Use catalog resolver for dynamic tier mapping (no hardcode)
   const { getTierKey } = useCatalogResolver();
 
+  // Use centralized catalog loader - ALWAYS prioritizes cloud
+  const { loadCatalog, loadSource, isLoading: catalogLoading } = useCatalogLoader();
+
   const { 
     families = [], 
     addons = [],
@@ -98,46 +102,35 @@ const SellerFlow = () => {
     attributeDefs = [],
     isDataLoaded,
     loadLensData,
-    loadCatalogFromCloud,
     getBestPriceForFamily,
     getCompatiblePrices,
+    rawLensData,
   } = useLensStore();
 
-  // Load data on mount - ALWAYS try cloud first for fresh data
+  // Load data on mount using centralized loader - ALWAYS prioritizes cloud
   useEffect(() => {
     const loadData = async () => {
-      setIsLoading(true);
-      try {
-        // Always try to load fresh data from cloud
-        const cloudLoaded = await loadCatalogFromCloud();
-        console.log('[SellerFlow] Cloud catalog loaded:', cloudLoaded);
-        
-        if (!cloudLoaded && families.length === 0) {
-          // Only fallback to local if cloud failed AND we have no data
-          console.log('[SellerFlow] No cloud catalog found, loading from lenses.json...');
-          const response = await fetch('/data/lenses.json');
-          const data: LensData = await response.json();
-          loadLensData(data);
-        }
-      } catch (error) {
-        console.error('[SellerFlow] Error loading lens data:', error);
-        if (families.length === 0) {
-          // Only fallback if we truly have no data
-          try {
-            const response = await fetch('/data/lenses.json');
-            const data: LensData = await response.json();
-            loadLensData(data);
-          } catch (e) {
-            console.error('[SellerFlow] Failed to load fallback data:', e);
+      // Only load if we don't have data yet
+      if (families.length === 0) {
+        setIsLoading(true);
+        try {
+          // Use centralized loader - tries cloud first, fallback to local
+          const success = await loadCatalog(false); // false = don't force local
+          console.log('[SellerFlow] Catalog loaded:', success, 'source:', loadSource);
+          
+          if (!success) {
             toast.error('Erro ao carregar dados das lentes');
           }
+        } catch (error) {
+          console.error('[SellerFlow] Error loading lens data:', error);
+          toast.error('Erro ao carregar dados das lentes');
+        } finally {
+          setIsLoading(false);
         }
-      } finally {
-        setIsLoading(false);
       }
     };
     loadData();
-  }, [loadLensData, loadCatalogFromCloud]);
+  }, [loadCatalog, loadSource, families.length]);
 
   // Debug: verificar integridade dos dados carregados
   useEffect(() => {

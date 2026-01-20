@@ -51,6 +51,7 @@ import { CatalogVersionBadge } from '@/components/audit/CatalogVersionBadge';
 import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
 import { CatalogRestoreDialog } from '@/components/audit/CatalogRestoreDialog';
 import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
+import { DataSourceDiagnostic } from '@/components/audit/DataSourceDiagnostic';
 import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import { 
   runClassificationEngine, 
@@ -1297,9 +1298,12 @@ const CatalogAudit = () => {
 
           {/* Integrity Tab */}
           <TabsContent value="integrity" className="mt-0 space-y-4">
-            {/* Export Button */}
-            <div className="flex justify-end">
-              <IntegrityExportButton integrityIssues={integrityIssues} />
+            {/* Data Source Diagnostic + Export */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <DataSourceDiagnostic />
+              <div className="flex items-start justify-end">
+                <IntegrityExportButton integrityIssues={integrityIssues} />
+              </div>
             </div>
             
             {integrityIssues.total === 0 ? (
