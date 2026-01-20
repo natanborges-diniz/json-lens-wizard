@@ -42,7 +42,6 @@ import { BatchActionBar } from '@/components/audit/BatchActionBar';
 import { TechnologyCard } from '@/components/audit/TechnologyCard';
 import { MacroCard } from '@/components/audit/MacroCard';
 import { SupplierCard } from '@/components/audit/SupplierCard';
-import { AddFamilyDialog } from '@/components/audit/AddFamilyDialog';
 import { ExportDialog } from '@/components/audit/ExportDialog';
 import { IntegrityExportButton } from '@/components/audit/IntegrityExportButton';
 import { ClassificationReportDialog } from '@/components/audit/ClassificationReportDialog';
@@ -708,18 +707,6 @@ const CatalogAudit = () => {
     }
   };
 
-  // Add new family handler
-  const handleAddFamily = useCallback((newFamily: FamilyExtended) => {
-    setLocalFamilies(prev => [newFamily, ...prev]);
-    
-    setPendingChanges(prev => [...prev, { 
-      type: 'active', 
-      familyId: newFamily.id, 
-      oldValue: 'new' as any, 
-      newValue: 'added' as any 
-    }]);
-  }, []);
-
   // Classification Engine handler
   const runClassification = useCallback(async () => {
     if (!rawLensData) {
@@ -1163,14 +1150,8 @@ const CatalogAudit = () => {
                     </Button>
                   )}
                   
-                  {/* Add Family Button */}
+                  {/* Export Button */}
                   <div className="pl-2 border-l border-border flex gap-2">
-                    <AddFamilyDialog
-                      macros={macros}
-                      categories={uniqueCategories}
-                      suppliers={uniqueSuppliers}
-                      onAddFamily={handleAddFamily}
-                    />
                     <ExportDialog
                       families={filteredFamilies}
                       macros={macros}
