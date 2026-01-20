@@ -4,7 +4,7 @@
     "dataset_name": "Base Lentes - Unificada (V1.2) com Extended Catalog",
     "generated_at": "2026-01-15",
     "counts": {
-      "families": 27,
+      "families": 36,
       "addons": 6,
       "skus_prices": 2689,
       "technologies": 20
@@ -207,6 +207,48 @@
         "bg_header_class": "bg-gradient-to-r from-violet-50 to-purple-100",
         "border_class": "border-violet-200",
         "dot_color_class": "bg-violet-500"
+      }
+    },
+    {
+      "id": "OC_BASICO",
+      "category": "OCUPACIONAL",
+      "name_client": "Ocupacional Essencial",
+      "description_client": "Lente para trabalho em distâncias intermediárias e perto.",
+      "tier_key": "essential",
+      "display": {
+        "icon": "Monitor",
+        "color_class": "text-cyan-600",
+        "bg_header_class": "bg-gradient-to-r from-cyan-50 to-teal-100",
+        "border_class": "border-cyan-200",
+        "dot_color_class": "bg-cyan-500"
+      }
+    },
+    {
+      "id": "OC_CONFORTO",
+      "category": "OCUPACIONAL",
+      "name_client": "Ocupacional Conforto",
+      "description_client": "Conforto otimizado para uso prolongado de telas.",
+      "tier_key": "comfort",
+      "display": {
+        "icon": "MonitorSmartphone",
+        "color_class": "text-teal-600",
+        "bg_header_class": "bg-gradient-to-r from-teal-50 to-emerald-100",
+        "border_class": "border-teal-200",
+        "dot_color_class": "bg-teal-500"
+      }
+    },
+    {
+      "id": "OC_AVANCADO",
+      "category": "OCUPACIONAL",
+      "name_client": "Ocupacional Avançado",
+      "description_client": "Máximo conforto e personalização para profissionais.",
+      "tier_key": "advanced",
+      "display": {
+        "icon": "Laptop",
+        "color_class": "text-emerald-600",
+        "bg_header_class": "bg-gradient-to-r from-emerald-50 to-green-100",
+        "border_class": "border-emerald-200",
+        "dot_color_class": "bg-emerald-500"
       }
     }
   ],
@@ -851,6 +893,227 @@
         "Controle de luz azul (BlueControl)",
         "Personalização avançada (iD Technology)",
         "Proteção UV (UVControl)"
+      ],
+      "technology_refs": ["HOYA_UVCONTROL", "HOYA_LONGLIFE_PREMIUM", "HOYA_BLUECONTROL", "HOYA_ID_TECHNOLOGY"],
+      "active": true
+    },
+    {
+      "id": "ESSILOR_EYEZEN_OC_BASICO",
+      "supplier": "ESSILOR",
+      "name_original": "Eyezen Start Ocupacional",
+      "category": "OCUPACIONAL",
+      "macro": "OC_BASICO",
+      "attributes_base": {
+        "MONO_NITIDEZ": 2,
+        "MONO_CONFORTO": 2,
+        "MONO_DIGITAL": 2,
+        "MONO_ESTETICA": 1,
+        "AR_QUALIDADE": 2,
+        "BLUE": 0,
+        "DURABILIDADE": 2,
+        "UV": true
+      },
+      "attributes_display_base": [
+        "Antirreflexo premium (Crizal Sapphire HR)",
+        "Proteção UV (UV Filter Essilor)",
+        "Suporte para trabalho em perto e meia-distância (Eyezen Focus)"
+      ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_SAPPHIRE", "ESSILOR_EYEZEN_FOCUS"],
+      "active": true
+    },
+    {
+      "id": "ESSILOR_EYEZEN_OC_CONFORTO",
+      "supplier": "ESSILOR",
+      "name_original": "Eyezen Boost Ocupacional",
+      "category": "OCUPACIONAL",
+      "macro": "OC_CONFORTO",
+      "attributes_base": {
+        "MONO_NITIDEZ": 2,
+        "MONO_CONFORTO": 2,
+        "MONO_DIGITAL": 3,
+        "MONO_ESTETICA": 2,
+        "AR_QUALIDADE": 3,
+        "BLUE": 1,
+        "DURABILIDADE": 3,
+        "UV": true
+      },
+      "attributes_display_base": [
+        "Antirreflexo topo (Crizal Rock)",
+        "Proteção UV (UV Filter Essilor)",
+        "Conforto otimizado para telas (Eyezen Focus Boost)"
+      ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_ROCK", "ESSILOR_EYEZEN_FOCUS"],
+      "active": true
+    },
+    {
+      "id": "ESSILOR_EYEZEN_OC_AVANCADO",
+      "supplier": "ESSILOR",
+      "name_original": "Eyezen Boost Plus Ocupacional",
+      "category": "OCUPACIONAL",
+      "macro": "OC_AVANCADO",
+      "attributes_base": {
+        "MONO_NITIDEZ": 3,
+        "MONO_CONFORTO": 3,
+        "MONO_DIGITAL": 3,
+        "MONO_ESTETICA": 3,
+        "AR_QUALIDADE": 3,
+        "BLUE": 2,
+        "DURABILIDADE": 3,
+        "UV": true
+      },
+      "attributes_display_base": [
+        "Antirreflexo topo (Crizal Rock)",
+        "Proteção UV (UV Filter Essilor)",
+        "Controle de luz azul (Blue UV Filter)",
+        "Máximo conforto para uso profissional (Eyezen Focus Premium)"
+      ],
+      "technology_refs": ["ESSILOR_UV_FILTER", "ESSILOR_CRIZAL_ROCK", "ESSILOR_BLUE_UV_FILTER", "ESSILOR_EYEZEN_FOCUS"],
+      "active": true
+    },
+    {
+      "id": "ZEISS_OFFICE_OC_BASICO",
+      "supplier": "ZEISS",
+      "name_original": "ZEISS Office Lens",
+      "category": "OCUPACIONAL",
+      "macro": "OC_BASICO",
+      "attributes_base": {
+        "MONO_NITIDEZ": 2,
+        "MONO_CONFORTO": 2,
+        "MONO_DIGITAL": 2,
+        "MONO_ESTETICA": 1,
+        "AR_QUALIDADE": 2,
+        "BLUE": 0,
+        "DURABILIDADE": 2,
+        "UV": true
+      },
+      "attributes_display_base": [
+        "Proteção UV (UVProtect)",
+        "Antirreflexo básico (DuraVision Silver UV)",
+        "Design para trabalho em escritório"
+      ],
+      "technology_refs": ["ZEISS_UVPROTECT", "ZEISS_DURAVISION_SILVER"],
+      "active": true
+    },
+    {
+      "id": "ZEISS_OFFICELENS_OC_CONFORTO",
+      "supplier": "ZEISS",
+      "name_original": "ZEISS OfficeLens Plus",
+      "category": "OCUPACIONAL",
+      "macro": "OC_CONFORTO",
+      "attributes_base": {
+        "MONO_NITIDEZ": 2,
+        "MONO_CONFORTO": 2,
+        "MONO_DIGITAL": 3,
+        "MONO_ESTETICA": 2,
+        "AR_QUALIDADE": 3,
+        "BLUE": 1,
+        "DURABILIDADE": 2,
+        "UV": true
+      },
+      "attributes_display_base": [
+        "Proteção UV (UVProtect)",
+        "Antirreflexo premium (DuraVision Platinum UV)",
+        "Design otimizado para longas horas de tela"
+      ],
+      "technology_refs": ["ZEISS_UVPROTECT", "ZEISS_DURAVISION_PLATINUM"],
+      "active": true
+    },
+    {
+      "id": "ZEISS_OFFICELENS_OC_AVANCADO",
+      "supplier": "ZEISS",
+      "name_original": "ZEISS OfficeLens Individual",
+      "category": "OCUPACIONAL",
+      "macro": "OC_AVANCADO",
+      "attributes_base": {
+        "MONO_NITIDEZ": 3,
+        "MONO_CONFORTO": 3,
+        "MONO_DIGITAL": 3,
+        "MONO_ESTETICA": 3,
+        "AR_QUALIDADE": 3,
+        "BLUE": 2,
+        "DURABILIDADE": 3,
+        "UV": true
+      },
+      "attributes_display_base": [
+        "Proteção UV (UVProtect)",
+        "Antirreflexo premium (DuraVision Platinum UV)",
+        "Controle de luz azul (BlueGuard)",
+        "Personalização individual para seu ambiente de trabalho"
+      ],
+      "technology_refs": ["ZEISS_UVPROTECT", "ZEISS_DURAVISION_PLATINUM", "ZEISS_BLUEGUARD", "ZEISS_INDIVIDUALFIT"],
+      "active": true
+    },
+    {
+      "id": "HOYA_WORKSTYLE_OC_BASICO",
+      "supplier": "HOYA",
+      "name_original": "Hoya WorkStyle",
+      "category": "OCUPACIONAL",
+      "macro": "OC_BASICO",
+      "attributes_base": {
+        "MONO_NITIDEZ": 2,
+        "MONO_CONFORTO": 2,
+        "MONO_DIGITAL": 2,
+        "MONO_ESTETICA": 1,
+        "AR_QUALIDADE": 2,
+        "BLUE": 0,
+        "DURABILIDADE": 2,
+        "UV": true
+      },
+      "attributes_display_base": [
+        "Proteção UV (UVControl)",
+        "Antirreflexo resistente (LongLife)",
+        "Design para trabalho em escritório"
+      ],
+      "technology_refs": ["HOYA_UVCONTROL", "HOYA_LONGLIFE"],
+      "active": true
+    },
+    {
+      "id": "HOYA_SYNC_III_OC_CONFORTO",
+      "supplier": "HOYA",
+      "name_original": "Hoya Sync III",
+      "category": "OCUPACIONAL",
+      "macro": "OC_CONFORTO",
+      "attributes_base": {
+        "MONO_NITIDEZ": 2,
+        "MONO_CONFORTO": 3,
+        "MONO_DIGITAL": 3,
+        "MONO_ESTETICA": 2,
+        "AR_QUALIDADE": 2,
+        "BLUE": 1,
+        "DURABILIDADE": 2,
+        "UV": true
+      },
+      "attributes_display_base": [
+        "Proteção UV (UVControl)",
+        "Antirreflexo resistente (LongLife)",
+        "Controle de luz azul (BlueControl)",
+        "Tecnologia Sync para conforto digital"
+      ],
+      "technology_refs": ["HOYA_UVCONTROL", "HOYA_LONGLIFE", "HOYA_BLUECONTROL"],
+      "active": true
+    },
+    {
+      "id": "HOYA_SYNC_III_OC_AVANCADO",
+      "supplier": "HOYA",
+      "name_original": "Hoya Sync III Premium",
+      "category": "OCUPACIONAL",
+      "macro": "OC_AVANCADO",
+      "attributes_base": {
+        "MONO_NITIDEZ": 3,
+        "MONO_CONFORTO": 3,
+        "MONO_DIGITAL": 3,
+        "MONO_ESTETICA": 3,
+        "AR_QUALIDADE": 3,
+        "BLUE": 2,
+        "DURABILIDADE": 3,
+        "UV": true
+      },
+      "attributes_display_base": [
+        "Proteção UV (UVControl)",
+        "Antirreflexo topo (LongLife Premium)",
+        "Controle de luz azul (BlueControl)",
+        "Personalização avançada (iD Technology)",
+        "Máximo conforto para profissionais"
       ],
       "technology_refs": ["HOYA_UVCONTROL", "HOYA_LONGLIFE_PREMIUM", "HOYA_BLUECONTROL", "HOYA_ID_TECHNOLOGY"],
       "active": true
