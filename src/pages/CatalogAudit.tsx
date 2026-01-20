@@ -49,6 +49,7 @@ import { ClassificationReportDialog } from '@/components/audit/ClassificationRep
 import { MatchingRulesEditor } from '@/components/audit/MatchingRulesEditor';
 import { CatalogVersionBadge } from '@/components/audit/CatalogVersionBadge';
 import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
+import { CatalogRestoreDialog } from '@/components/audit/CatalogRestoreDialog';
 import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
 import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import { 
@@ -89,6 +90,7 @@ const CatalogAudit = () => {
   const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showRestoreDialog, setShowRestoreDialog] = useState(false);
   
   // Classification Engine state
   const [isClassifying, setIsClassifying] = useState(false);
@@ -882,6 +884,16 @@ const CatalogAudit = () => {
             <Button 
               variant="ghost" 
               size="sm"
+              onClick={() => setShowRestoreDialog(true)}
+              className="gap-1.5 text-xs"
+              title="Restaurar catálogo para versão anterior ou resetar"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Restaurar
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm"
               onClick={reloadOriginalCatalog}
               disabled={isLoading}
               className="gap-1.5 text-xs"
@@ -1431,6 +1443,23 @@ const CatalogAudit = () => {
       <CatalogVersionHistory 
         open={showVersionHistory} 
         onOpenChange={setShowVersionHistory} 
+      />
+      
+      {/* Restore Dialog */}
+      <CatalogRestoreDialog
+        open={showRestoreDialog}
+        onOpenChange={setShowRestoreDialog}
+        onRestore={(data) => {
+          loadLensData(data);
+          setLocalFamilies(data.families || []);
+          if (data.technology_library?.items) {
+            setLocalTechnologies(data.technology_library.items);
+          }
+          saveCatalogToCloud();
+        }}
+        onReset={() => {
+          setPendingChanges([]);
+        }}
       />
     </div>
   );

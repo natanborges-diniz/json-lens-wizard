@@ -6,7 +6,8 @@ import {
   Check, 
   X,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  Barcode
 } from 'lucide-react';
 import {
   Dialog,
@@ -15,8 +16,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { BudgetDocument, BudgetDocumentData, CompanySettings } from './BudgetDocument';
+import { SellerBudgetView } from './SellerBudgetView';
 import html2pdf from 'html2pdf.js';
 
 interface BudgetSummaryDialogProps {
@@ -181,6 +184,14 @@ ${companySettings.phone ? `📞 ${companySettings.phone}` : ''}`;
             </Button>
           )}
         </div>
+
+        {/* Seller-only ERP Info */}
+        {data.erpCode && (
+          <>
+            <Separator className="my-2" />
+            <SellerBudgetView data={data} erpCode={data.erpCode} />
+          </>
+        )}
 
         {/* Document Preview */}
         <div className="flex-1 overflow-y-auto bg-gray-100 rounded-lg p-4">
