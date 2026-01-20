@@ -1,0 +1,527 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://lentes.app/schemas/catalog-v1.2.json",
+  "title": "Lens Catalog Schema",
+  "description": "Schema para validação de catálogos de lentes oftálmicas v1.2",
+  "type": "object",
+  "required": ["meta", "scales", "attribute_defs", "macros", "families", "addons", "prices"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "description": "Metadados do catálogo",
+      "required": ["schema_version", "dataset_name", "generated_at", "counts"],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "pattern": "^1\\.[0-9]+$",
+          "description": "Versão do schema (ex: 1.2)"
+        },
+        "dataset_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Nome identificador do dataset"
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date",
+          "description": "Data de geração (YYYY-MM-DD)"
+        },
+        "counts": {
+          "type": "object",
+          "required": ["families", "addons", "skus_prices"],
+          "properties": {
+            "families": { "type": "integer", "minimum": 0 },
+            "addons": { "type": "integer", "minimum": 0 },
+            "skus_prices": { "type": "integer", "minimum": 0 },
+            "technologies": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Notas de versão opcionais"
+        }
+      }
+    },
+    "scales": {
+      "type": "object",
+      "description": "Escalas de atributos",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "type": "string" }
+      }
+    },
+    "attribute_defs": {
+      "type": "array",
+      "description": "Definições de atributos",
+      "items": {
+        "$ref": "#/definitions/AttributeDef"
+      }
+    },
+    "macros": {
+      "type": "array",
+      "description": "Categorias/Tiers de produtos",
+      "items": {
+        "$ref": "#/definitions/Macro"
+      },
+      "minItems": 1
+    },
+    "families": {
+      "type": "array",
+      "description": "Famílias de produtos",
+      "items": {
+        "$ref": "#/definitions/Family"
+      }
+    },
+    "addons": {
+      "type": "array",
+      "description": "Complementos opcionais",
+      "items": {
+        "$ref": "#/definitions/Addon"
+      }
+    },
+    "prices": {
+      "type": "array",
+      "description": "SKUs com preços",
+      "items": {
+        "$ref": "#/definitions/Price"
+      }
+    },
+    "products_avulsos": {
+      "type": "array",
+      "description": "Produtos avulsos (não-lentes)"
+    },
+    "technology_library": {
+      "$ref": "#/definitions/TechnologyLibrary",
+      "description": "Biblioteca de tecnologias (opcional)"
+    },
+    "benefit_rules": {
+      "$ref": "#/definitions/BenefitRules",
+      "description": "Regras de exibição de benefícios (opcional)"
+    },
+    "quote_explainer": {
+      "$ref": "#/definitions/QuoteExplainer",
+      "description": "Templates de texto para orçamentos (opcional)"
+    },
+    "index_display": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/IndexDisplay"
+      },
+      "description": "Configuração de exibição de índices (opcional)"
+    },
+    "family_matching_engine": {
+      "$ref": "#/definitions/FamilyMatchingEngine",
+      "description": "Motor de classificação de SKUs (opcional)"
+    }
+  },
+  "definitions": {
+    "AttributeDef": {
+      "type": "object",
+      "required": ["id", "group", "name_common", "scale"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z_]+$",
+          "description": "ID único do atributo"
+        },
+        "group": {
+          "type": "string",
+          "enum": ["PROGRESSIVA", "MONOFOCAL", "OCUPACIONAL", "COMUM"],
+          "description": "Grupo do atributo"
+        },
+        "name_common": {
+          "type": "string",
+          "description": "Nome legível"
+        },
+        "scale": {
+          "type": "string",
+          "description": "Referência à escala em scales"
+        }
+      }
+    },
+    "Macro": {
+      "type": "object",
+      "required": ["id", "category", "name_client", "description_client"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(PROG|MONO|OC)_[A-Z]+$",
+          "description": "ID único do macro"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["PROGRESSIVA", "MONOFOCAL", "OCUPACIONAL"],
+          "description": "Categoria do macro"
+        },
+        "name_client": {
+          "type": "string",
+          "description": "Nome para exibição ao cliente"
+        },
+        "description_client": {
+          "type": "string",
+          "description": "Descrição para o cliente"
+        },
+        "tier_key": {
+          "type": "string",
+          "enum": ["essential", "comfort", "advanced", "top"],
+          "description": "Chave do tier"
+        },
+        "display": {
+          "type": "object",
+          "properties": {
+            "icon": { "type": "string" },
+            "color_class": { "type": "string" },
+            "bg_header_class": { "type": "string" },
+            "border_class": { "type": "string" },
+            "dot_color_class": { "type": "string" }
+          }
+        }
+      }
+    },
+    "Family": {
+      "type": "object",
+      "required": ["id", "supplier", "name_original", "category", "macro", "active"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z_]+$",
+          "description": "ID único (FORNECEDOR_NOME)"
+        },
+        "supplier": {
+          "type": "string",
+          "enum": ["ESSILOR", "ZEISS", "HOYA"],
+          "description": "Fornecedor"
+        },
+        "name_original": {
+          "type": "string",
+          "description": "Nome comercial original"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["PROGRESSIVA", "MONOFOCAL", "OCUPACIONAL"],
+          "description": "Categoria da família"
+        },
+        "macro": {
+          "type": "string",
+          "description": "Referência ao macro (deve existir em macros[])"
+        },
+        "attributes_base": {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "integer", "minimum": 0, "maximum": 3 },
+              { "type": "boolean" }
+            ]
+          },
+          "description": "Atributos base da família"
+        },
+        "attributes_display_base": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Textos para exibição"
+        },
+        "technology_refs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Referências a tecnologias"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Se a família está ativa"
+        },
+        "availability_status": {
+          "type": "string",
+          "description": "Status de disponibilidade"
+        }
+      }
+    },
+    "Addon": {
+      "type": "object",
+      "required": ["id", "name_common", "description_client", "rules", "active"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID único do addon"
+        },
+        "name_common": {
+          "type": "string",
+          "description": "Nome comum"
+        },
+        "description_client": {
+          "type": "string",
+          "description": "Descrição para cliente"
+        },
+        "impact": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" },
+          "description": "Impacto em atributos"
+        },
+        "name_commercial": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Nomes comerciais por fornecedor"
+        },
+        "rules": {
+          "type": "object",
+          "required": ["categories"],
+          "properties": {
+            "categories": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "only_if": { "type": "string" }
+          }
+        },
+        "active": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Price": {
+      "type": "object",
+      "required": ["family_id", "erp_code", "description", "supplier", "index", "price_sale_half_pair", "active", "blocked", "specs"],
+      "properties": {
+        "family_id": {
+          "type": "string",
+          "description": "Referência à família (deve existir em families[])"
+        },
+        "erp_code": {
+          "type": "string",
+          "description": "Código ERP único"
+        },
+        "description": {
+          "type": "string",
+          "description": "Descrição do SKU"
+        },
+        "supplier": {
+          "type": "string",
+          "enum": ["ESSILOR", "ZEISS", "HOYA"]
+        },
+        "lens_category_raw": {
+          "type": "string",
+          "description": "Categoria bruta do ERP"
+        },
+        "manufacturing_type": {
+          "type": "string",
+          "enum": ["LS", "SF", "PRONTA"],
+          "description": "Tipo de fabricação"
+        },
+        "index": {
+          "type": "string",
+          "enum": ["1.50", "1.53", "1.56", "1.59", "1.60", "1.67", "1.74"],
+          "description": "Índice de refração"
+        },
+        "price_purchase_half_pair": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Preço de compra (meia-par)"
+        },
+        "price_sale_half_pair": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Preço de venda (meia-par)"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "blocked": {
+          "type": "boolean"
+        },
+        "specs": {
+          "$ref": "#/definitions/PriceSpecs"
+        },
+        "treatments_raw": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "addons_detected": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "attribute_overrides": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        "flags": {
+          "type": "object",
+          "properties": {
+            "photochromic": { "type": "boolean" },
+            "polarized": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "PriceSpecs": {
+      "type": "object",
+      "properties": {
+        "diameter_min_mm": { "type": "number" },
+        "diameter_max_mm": { "type": "number" },
+        "altura_min_mm": { "type": "number" },
+        "altura_max_mm": { "type": "number" },
+        "sphere_min": { "type": "number" },
+        "sphere_max": { "type": "number" },
+        "cyl_min": { "type": "number" },
+        "cyl_max": { "type": "number" },
+        "add_min": { "type": "number" },
+        "add_max": { "type": "number" }
+      }
+    },
+    "TechnologyLibrary": {
+      "type": "object",
+      "required": ["items"],
+      "properties": {
+        "items": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Technology"
+          }
+        }
+      }
+    },
+    "Technology": {
+      "type": "object",
+      "required": ["id", "name_common", "description_short"],
+      "properties": {
+        "id": { "type": "string" },
+        "name_common": { "type": "string" },
+        "name_commercial": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "description_short": { "type": "string" },
+        "description_long": { "type": "string" },
+        "benefits": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "icon": { "type": "string" }
+      }
+    },
+    "BenefitRules": {
+      "type": "object",
+      "properties": {
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "attribute_id": { "type": "string" },
+              "scale_labels": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              },
+              "priority": { "type": "integer" }
+            }
+          }
+        },
+        "priority_order": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "QuoteExplainer": {
+      "type": "object",
+      "properties": {
+        "rules": { "type": "array" },
+        "intro_templates": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "closing_templates": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "IndexDisplay": {
+      "type": "object",
+      "required": ["value", "name", "description", "aesthetic_score"],
+      "properties": {
+        "value": {
+          "type": "string",
+          "enum": ["1.50", "1.53", "1.56", "1.59", "1.60", "1.67", "1.74"]
+        },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "aesthetic_score": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
+    },
+    "FamilyMatchingEngine": {
+      "type": "object",
+      "required": ["version", "matching_rules"],
+      "properties": {
+        "version": { "type": "string" },
+        "fallback_family_id": { "type": "string" },
+        "normalization_rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["trim", "uppercase", "lowercase", "replace", "remove_accents"]
+              },
+              "pattern": { "type": "string" },
+              "replacement": { "type": "string" }
+            }
+          }
+        },
+        "matching_rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MatchingRule"
+          }
+        }
+      }
+    },
+    "MatchingRule": {
+      "type": "object",
+      "required": ["id", "name", "priority", "conditions", "target_family_id", "enabled"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "priority": { "type": "integer" },
+        "match_type": {
+          "type": "string",
+          "enum": ["all", "any"],
+          "default": "all"
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MatchingCondition"
+          },
+          "minItems": 1
+        },
+        "target_family_id": { "type": "string" },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "MatchingCondition": {
+      "type": "object",
+      "required": ["field", "operator", "value"],
+      "properties": {
+        "field": {
+          "type": "string",
+          "enum": ["description", "supplier", "lens_category_raw", "index", "erp_code"]
+        },
+        "operator": {
+          "type": "string",
+          "enum": ["contains", "starts_with", "ends_with", "equals", "regex", "not_contains"]
+        },
+        "value": { "type": "string" },
+        "case_sensitive": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  }
+}
