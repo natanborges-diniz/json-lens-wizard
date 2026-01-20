@@ -25,8 +25,10 @@ import type {
   Price, 
   LensData, 
   AnamnesisData,
-  FrameMeasurements
+  FrameMeasurements,
+  LensCategory
 } from '@/types/lens';
+import type { SelectedProduct } from '@/lib/productSuggestionEngine';
 import { toast } from 'sonner';
 
 // Import anamnesis components
@@ -79,9 +81,10 @@ const SellerFlow = () => {
     dp: 64,
     altura: 18,
   });
-  const [lensCategory, setLensCategory] = useState<'PROGRESSIVA' | 'MONOFOCAL' | 'OCUPACIONAL'>('PROGRESSIVA');
+  const [lensCategory, setLensCategory] = useState<LensCategory>('PROGRESSIVA');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedConfiguration, setSelectedConfiguration] = useState<LensCardConfiguration | null>(null);
+  const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
 
   // Use catalog resolver for dynamic tier mapping (no hardcode)
   const { getTierKey } = useCatalogResolver();
@@ -304,6 +307,37 @@ const SellerFlow = () => {
   const recommendations = getRecommendationsByTier;
   const activeAddons = addons.filter(a => a.active && a.rules.categories.includes(lensCategory));
 
+  // Get occupational recommendations for suggestions
+  const occupationalRecommendations = useMemo((): Record<Tier, FamilyWithPrice[]> => {
+    const result: Record<Tier, FamilyWithPrice[]> = {
+      essential: [],
+      comfort: [],
+      advanced: [],
+      top: [],
+    };
+
+    const ocFamilies = families.filter(f => f.active && f.category === 'OCUPACIONAL');
+
+    ocFamilies.forEach(family => {
+      const tier = getTierKey(family.macro);
+      if (!tier) return;
+
+      const bestPrice = getBestPriceForFamily(family.id, null, null);
+      const allPrices = getCompatiblePrices(family.id, null, null);
+      const score = calculateScore(family, bestPrice);
+
+      result[tier].push({
+        family,
+        bestPrice,
+        allPrices,
+        tier,
+        score,
+      });
+    });
+
+    return result;
+  }, [families, getBestPriceForFamily, getCompatiblePrices, getTierKey, calculateScore]);
+
   // Find the most recommended option across all tiers
   const getMostRecommended = (): FamilyWithPrice | null => {
     let best: FamilyWithPrice | null = null;
@@ -324,10 +358,33 @@ const SellerFlow = () => {
 
   const mostRecommended = getMostRecommended();
 
-  // Handle lens selection
+  // Handle lens selection (backward compatibility)
   const handleSelectLens = (configuration: LensCardConfiguration) => {
     setSelectedConfiguration(configuration);
     toast.success('Lente selecionada!');
+  };
+
+  // Handle multiple products selection
+  const handleSelectProducts = (products: SelectedProduct[]) => {
+    setSelectedProducts(products);
+    if (products.length > 0) {
+      // Create configuration from primary product for budget
+      const primary = products.find(p => p.type === 'primary');
+      if (primary) {
+        const family = families.find(f => f.id === primary.familyId);
+        const price = prices.find(p => p.erp_code === primary.selectedPriceErpCode);
+        if (family && price) {
+          setSelectedConfiguration({
+            familyId: primary.familyId,
+            selectedPrice: price,
+            selectedIndex: primary.selectedIndex,
+            selectedTreatments: primary.selectedTreatments,
+            totalPrice: primary.unitPrice,
+          });
+        }
+      }
+      setCurrentStep('budget');
+    }
   };
 
   // Get selected family details
@@ -343,7 +400,7 @@ const SellerFlow = () => {
 
   // Handle finalize budget
   const handleFinalizeBudget = () => {
-    if (selectedConfiguration) {
+    if (selectedConfiguration || selectedProducts.length > 0) {
       setCurrentStep('budget');
     } else {
       toast.error('Selecione uma lente primeiro');
@@ -487,13 +544,16 @@ const SellerFlow = () => {
 
             <RecommendationsGrid
               recommendations={recommendations}
+              occupationalRecommendations={occupationalRecommendations}
               addons={activeAddons}
               onSelectLens={handleSelectLens}
+              onSelectProducts={handleSelectProducts}
               selectedFamilyId={selectedConfiguration?.familyId}
               mostRecommendedId={mostRecommended?.family.id}
               lensCategory={lensCategory}
               attributeDefs={attributeDefs}
               anamnesisData={anamnesisData}
+              prescriptionData={prescriptionData}
               lensData={isDataLoaded ? { 
                 meta: { schema_version: '', dataset_name: '', generated_at: '', counts: { families: 0, addons: 0, skus_prices: 0 }, notes: [] },
                 scales: {},
@@ -516,7 +576,11 @@ const SellerFlow = () => {
               family={getSelectedFamily()!}
               customerName={customerName}
               anamnesisData={anamnesisData}
+              prescriptionData={prescriptionData}
+              frameData={frameData}
               attributeDefs={attributeDefs}
+              lensCategory={lensCategory}
+              additionalProducts={selectedProducts.filter(p => p.type !== 'primary')}
               onBack={() => setCurrentStep('recommendations')}
             />
           </div>

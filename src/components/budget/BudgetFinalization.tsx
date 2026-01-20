@@ -26,7 +26,8 @@ import { useCatalogResolver } from '@/hooks/useCatalogResolver';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import type { FamilyExtended, AnamnesisData, AttributeDef, Prescription, FrameMeasurements } from '@/types/lens';
+import type { FamilyExtended, AnamnesisData, AttributeDef, Prescription, FrameMeasurements, LensCategory } from '@/types/lens';
+import type { SelectedProduct } from '@/lib/productSuggestionEngine';
 import { LensCardConfiguration } from '@/components/recommendations/LensCard';
 import { BudgetSummaryDialog } from './BudgetSummaryDialog';
 import type { BudgetDocumentData } from './BudgetDocument';
@@ -40,7 +41,8 @@ interface BudgetFinalizationProps {
   prescriptionData?: Partial<Prescription>;
   frameData?: Partial<FrameMeasurements>;
   attributeDefs: AttributeDef[];
-  lensCategory?: 'PROGRESSIVA' | 'MONOFOCAL';
+  lensCategory?: LensCategory;
+  additionalProducts?: SelectedProduct[];
   onBack: () => void;
 }
 
@@ -65,6 +67,7 @@ export const BudgetFinalization = ({
   frameData,
   attributeDefs,
   lensCategory = 'PROGRESSIVA',
+  additionalProducts = [],
   onBack,
 }: BudgetFinalizationProps) => {
   const navigate = useNavigate();
