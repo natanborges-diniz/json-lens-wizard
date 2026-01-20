@@ -28,6 +28,25 @@ export interface CompanySettings {
   footer_text?: string | null;
 }
 
+// Resolved attribute with human-readable label
+export interface ResolvedAttribute {
+  id: string;
+  name: string;
+  value: number;
+  label: string;  // Human-readable label from benefit_rules
+  stars: number;
+  group?: string;
+}
+
+// Detailed technology with benefits
+export interface TechnologyDetailed {
+  id: string;
+  name: string;
+  description: string;
+  benefits: string[];
+  supplierName?: string;  // Commercial name for this supplier
+}
+
 export interface BudgetDocumentData {
   customerName: string;
   customerPhone?: string;
@@ -55,12 +74,17 @@ export interface BudgetDocumentData {
   totalDiscount: number;
   finalTotal: number;
   
-  // Content
+  // Content - legacy (for backward compatibility)
   technologies: Technology[];
   benefits: string[];
   attributes: Array<{ name: string; stars: number }>;
   aiDescription?: string;
   notes?: string;
+  
+  // Enhanced content - new fields with human-readable data
+  resolvedAttributes?: ResolvedAttribute[];
+  quoteExplanations?: string[];  // From quote_explainer based on anamnesis
+  technologiesDetailed?: TechnologyDetailed[];
 }
 
 interface BudgetDocumentProps {
@@ -197,8 +221,54 @@ export const BudgetDocument = forwardRef<HTMLDivElement, BudgetDocumentProps>(
           </div>
         </section>
 
-        {/* Technologies Section */}
-        {data.technologies.length > 0 && (
+        {/* Quote Explanations - NEW: Personalized recommendations based on anamnesis */}
+        {data.quoteExplanations && data.quoteExplanations.length > 0 && (
+          <section className="mb-6">
+            <h3 className="text-lg font-bold mb-3 flex items-center gap-2 text-gray-800">
+              <Sparkles className="w-5 h-5 text-primary" />
+              Por Que Esta Lente Para Você
+            </h3>
+            <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-3">
+              {data.quoteExplanations.map((paragraph, idx) => (
+                <p key={idx} className="text-sm text-gray-700 leading-relaxed">
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Technologies Section - Enhanced with detailed benefits */}
+        {data.technologiesDetailed && data.technologiesDetailed.length > 0 ? (
+          <section className="mb-6">
+            <h3 className="text-lg font-bold mb-3 flex items-center gap-2 text-gray-800">
+              <Sparkles className="w-5 h-5 text-amber-500" />
+              Tecnologias Incluídas
+            </h3>
+            <div className="grid gap-3">
+              {data.technologiesDetailed.map((tech) => (
+                <div key={tech.id} className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <h5 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    {tech.supplierName || tech.name}
+                  </h5>
+                  <p className="text-sm text-gray-600 mt-1">{tech.description}</p>
+                  {tech.benefits && tech.benefits.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {tech.benefits.map((benefit, i) => (
+                        <li key={i} className="text-xs text-gray-600 flex items-center gap-1">
+                          <Check className="w-3 h-3 text-green-600" />
+                          {benefit}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : data.technologies.length > 0 && (
+          // Fallback to legacy technologies display
           <section className="mb-6">
             <h3 className="text-lg font-bold mb-3 flex items-center gap-2 text-gray-800">
               <Sparkles className="w-5 h-5 text-amber-500" />
@@ -228,8 +298,26 @@ export const BudgetDocument = forwardRef<HTMLDivElement, BudgetDocumentProps>(
           </section>
         )}
 
-        {/* Attributes Grid */}
-        {data.attributes.length > 0 && (
+        {/* Attributes - Enhanced with human-readable labels */}
+        {data.resolvedAttributes && data.resolvedAttributes.length > 0 ? (
+          <section className="mb-6">
+            <h3 className="text-lg font-bold mb-3 text-gray-800">Diferenciais desta Lente</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {data.resolvedAttributes
+                .filter(attr => attr.value >= 2) // Show only intermediate or better
+                .map((attr, idx) => (
+                  <div key={idx} className="flex items-center gap-2 bg-green-50 border border-green-200 rounded p-2">
+                    <Check className="w-4 h-4 text-green-600 shrink-0" />
+                    <div className="flex-1">
+                      <span className="text-sm font-medium text-gray-800">{attr.label}</span>
+                      <span className="text-xs text-gray-500 block">{attr.name}</span>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </section>
+        ) : data.attributes.length > 0 && (
+          // Fallback to legacy star-based display
           <section className="mb-6">
             <h3 className="text-lg font-bold mb-3 text-gray-800">Características Técnicas</h3>
             <div className="grid grid-cols-2 gap-2">
@@ -269,8 +357,8 @@ export const BudgetDocument = forwardRef<HTMLDivElement, BudgetDocumentProps>(
           </section>
         )}
 
-        {/* AI Description */}
-        {data.aiDescription && (
+        {/* AI Description - complementary to quote explanations */}
+        {data.aiDescription && !data.quoteExplanations?.length && (
           <section className="mb-6">
             <h3 className="text-lg font-bold mb-3 text-gray-800">Por Que Esta Lente?</h3>
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 prose prose-sm max-w-none">

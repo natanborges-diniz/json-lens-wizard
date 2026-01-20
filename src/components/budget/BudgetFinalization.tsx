@@ -86,7 +86,9 @@ export const BudgetFinalization = ({
   const { 
     scaleToStars, 
     getTechnologiesForFamily, 
-    generateQuoteExplanation 
+    generateQuoteExplanation,
+    resolveAttributeLabel,
+    resolveFamilyDisplay,
   } = useCatalogResolver();
 
   // Get technologies for this family from JSON
@@ -94,6 +96,9 @@ export const BudgetFinalization = ({
   
   // Get personalized explanation based on anamnesis
   const explanations = generateQuoteExplanation(family, anamnesisData);
+  
+  // Get resolved family display with full attribute labels
+  const resolvedDisplay = resolveFamilyDisplay(family);
 
   const basePrice = configuration.totalPrice;
   
@@ -264,7 +269,19 @@ ${notes ? `\nObs: ${notes}` : ''}
 
       if (budgetError) throw budgetError;
 
-      // 5. Prepare document data for summary dialog
+      // 5. Build enhanced data from resolver
+      const resolvedAttributes = resolvedDisplay?.attributeLabels || [];
+      
+      // Build detailed technologies with supplier-specific names
+      const technologiesDetailed = technologies.map(tech => ({
+        id: tech.id,
+        name: tech.name_common,
+        description: tech.description_short || tech.description_long || '',
+        benefits: tech.benefits || [],
+        supplierName: tech.name_commercial?.[family.supplier] || tech.name_common,
+      }));
+
+      // 6. Prepare document data for summary dialog
       const documentData: BudgetDocumentData = {
         customerName: customerName || 'Cliente',
         customerPhone,
@@ -286,11 +303,16 @@ ${notes ? `\nObs: ${notes}` : ''}
         extraDiscount: manualDiscount,
         totalDiscount,
         finalTotal,
+        // Legacy fields (for backward compatibility)
         technologies,
         benefits: family.attributes_display_base,
         attributes: getAttributesWithStars(),
         aiDescription: aiText || undefined,
         notes: notes || undefined,
+        // NEW: Enhanced fields with human-readable data
+        resolvedAttributes,
+        quoteExplanations: explanations.length > 0 ? explanations : undefined,
+        technologiesDetailed: technologiesDetailed.length > 0 ? technologiesDetailed : undefined,
       };
 
       setBudgetDocumentData(documentData);
