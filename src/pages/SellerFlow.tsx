@@ -317,26 +317,44 @@ const SellerFlow = () => {
     };
 
     const ocFamilies = families.filter(f => f.active && f.category === 'OCUPACIONAL');
+    console.log(`[SellerFlow] Found ${ocFamilies.length} active occupational families`);
 
     ocFamilies.forEach(family => {
       const tier = getTierKey(family.macro);
-      if (!tier) return;
+      if (!tier) {
+        console.warn(`[SellerFlow] No tier for macro: ${family.macro}`);
+        return;
+      }
 
-      const bestPrice = getBestPriceForFamily(family.id, null, null);
-      const allPrices = getCompatiblePrices(family.id, null, null);
+      // Get all prices for this family - without any prescription filtering for occupational
+      const familyPrices = prices.filter(p => 
+        p.family_id === family.id && 
+        p.active && 
+        !p.blocked
+      );
+      
+      const bestPrice = familyPrices.length > 0 
+        ? [...familyPrices].sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0]
+        : null;
+      
+      console.log(`[SellerFlow] Family ${family.id}: ${familyPrices.length} prices, bestPrice: ${bestPrice?.price_sale_half_pair || 'null'}`);
+
       const score = calculateScore(family, bestPrice);
 
       result[tier].push({
         family,
         bestPrice,
-        allPrices,
+        allPrices: familyPrices,
         tier,
         score,
       });
     });
 
+    const totalWithPrice = Object.values(result).flat().filter(f => f.bestPrice !== null).length;
+    console.log(`[SellerFlow] Occupational recommendations: ${totalWithPrice} with prices`);
+
     return result;
-  }, [families, getBestPriceForFamily, getCompatiblePrices, getTierKey, calculateScore]);
+  }, [families, prices, getTierKey, calculateScore]);
 
   // Find the most recommended option across all tiers
   const getMostRecommended = (): FamilyWithPrice | null => {
