@@ -82,16 +82,30 @@ export const BudgetSummaryDialog = ({
       'credit_12x': 'Crédito 12x',
     };
 
-    const techList = data.technologies.length > 0 
-      ? `\n✨ *Tecnologias:*\n${data.technologies.map(t => `• ${t.name_common}`).join('\n')}\n`
-      : '';
+    // Prefer detailed technologies with supplier-specific names
+    const techList = data.technologiesDetailed && data.technologiesDetailed.length > 0 
+      ? `\n✨ *Tecnologias Incluídas:*\n${data.technologiesDetailed.map(t => `• *${t.supplierName || t.name}*: ${t.description.slice(0, 80)}${t.description.length > 80 ? '...' : ''}`).join('\n')}\n`
+      : data.technologies.length > 0 
+        ? `\n✨ *Tecnologias:*\n${data.technologies.map(t => `• ${t.name_common}`).join('\n')}\n`
+        : '';
 
     const treatmentsList = data.selectedTreatments.length > 0
       ? `\n🔬 *Tratamentos:* ${data.selectedTreatments.join(', ')}`
       : '';
 
-    const aiSummary = data.aiDescription 
-      ? `\n💡 *Por que esta lente?*\n${data.aiDescription.replace(/\*\*/g, '*').slice(0, 500)}${data.aiDescription.length > 500 ? '...' : ''}\n`
+    // Prefer quote explanations (personalized from anamnesis) over AI summary
+    let whyThisLens = '';
+    if (data.quoteExplanations && data.quoteExplanations.length > 0) {
+      // Use first 2-3 personalized explanations
+      const relevantExplanations = data.quoteExplanations.slice(0, 3);
+      whyThisLens = `\n💡 *Por que esta lente para você?*\n${relevantExplanations.map(p => `• ${p.slice(0, 150)}${p.length > 150 ? '...' : ''}`).join('\n')}\n`;
+    } else if (data.aiDescription) {
+      whyThisLens = `\n💡 *Por que esta lente?*\n${data.aiDescription.replace(/\*\*/g, '*').slice(0, 500)}${data.aiDescription.length > 500 ? '...' : ''}\n`;
+    }
+
+    // Show key differentials from resolved attributes
+    const differentials = data.resolvedAttributes && data.resolvedAttributes.length > 0
+      ? `\n✓ *Diferenciais:*\n${data.resolvedAttributes.filter(a => a.value >= 2).slice(0, 4).map(a => `• ${a.label}`).join('\n')}\n`
       : '';
 
     return `👓 *ORÇAMENTO - ${companySettings.company_name.toUpperCase()}*
@@ -105,8 +119,7 @@ Segue seu orçamento personalizado:
 🏭 *Fornecedor:* ${data.supplier}
 📐 *Índice:* ${data.selectedIndex}
 ${treatmentsList}
-${techList}
-${aiSummary}
+${techList}${differentials}${whyThisLens}
 💰 *Valores:*
 ${data.secondPairEnabled && data.secondPairPrice > 0 ? `• Lentes: R$ ${formatCurrency(data.basePrice)}\n• 2º Par: R$ ${formatCurrency(data.secondPairPrice)}\n` : ''}${data.totalDiscount > 0 ? `• Desconto: -R$ ${formatCurrency(data.totalDiscount)}\n` : ''}
 *TOTAL: R$ ${formatCurrency(data.finalTotal)}*
