@@ -42,6 +42,9 @@ export interface BudgetDocumentData {
   selectedIndex: string;
   selectedTreatments: string[];
   
+  // ERP code for seller (internal use only)
+  erpCode?: string;
+  
   // Pricing
   basePrice: number;
   secondPairEnabled: boolean;

@@ -323,6 +323,40 @@ function mergeIncrementData(currentData: LensData, incrementData: Partial<LensDa
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// RESET DE INATIVOS - Aplicado em cada importação
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Reseta o status de itens inativos durante a importação.
+ * Isso é necessário porque SKUs podem mudar entre importações,
+ * então o status inativo anterior não é mais relevante.
+ */
+export function resetInactiveStatesOnImport(data: LensData): LensData {
+  console.log('[CatalogImporter] Resetting inactive states for new import...');
+  
+  const resetData: LensData = {
+    ...data,
+    // Reset all prices to active (not blocked) for new imports
+    prices: data.prices.map(price => ({
+      ...price,
+      active: true,
+      blocked: false,
+    })),
+    // Keep family active states - these are managed manually
+    families: data.families,
+    // Keep addon active states - these are managed manually
+    addons: data.addons,
+  };
+  
+  console.log('[CatalogImporter] Reset complete:', {
+    prices: resetData.prices.length,
+    allPricesActive: resetData.prices.every(p => p.active),
+  });
+  
+  return resetData;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // COMPROVANTE (Seção 8)
 // ════════════════════════════════════════════════════════════════════════════
 

@@ -72,6 +72,8 @@ export interface Price {
   addons_detected?: string[];
   attribute_overrides?: Record<string, number>;
   flags?: Record<string, boolean>;
+  // ERP code for internal system integration (visible to seller, hidden from client)
+  erp_integration_code?: string;
 }
 
 // Extended macro with display configuration (optional, from JSON)

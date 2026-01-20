@@ -276,6 +276,8 @@ ${notes ? `\nObs: ${notes}` : ''}
         lensCategory,
         selectedIndex: configuration.selectedIndex,
         selectedTreatments: configuration.selectedTreatments,
+        // ERP code for internal seller use (not shown to client in exported document)
+        erpCode: configuration.selectedPrice?.erp_code || configuration.selectedPrice?.erp_integration_code,
         basePrice,
         secondPairEnabled,
         secondPairPrice,
