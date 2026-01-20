@@ -21,7 +21,8 @@ import {
   RotateCcw,
   FileText,
   AlertCircle,
-  Info
+  Info,
+  ShieldCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,6 +60,8 @@ import { formatImportReceipt, type ImportResult, type ImportSummary } from '@/li
 import { CatalogVersionBadge, saveCatalogVersion } from '@/components/audit/CatalogVersionBadge';
 import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
 import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
+import { ImportValidationReport } from '@/components/audit/ImportValidationReport';
+import { validateCatalogImport, type ValidationReport } from '@/lib/catalogValidationEngine';
 import { toast } from 'sonner';
 
 // Tier mapping for display (fallback, prefer JSON data)
@@ -93,6 +96,8 @@ const AdminDashboard = () => {
   const [showRollbackConfirm, setShowRollbackConfirm] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
+  const [pendingImportData, setPendingImportData] = useState<LensData | null>(null);
   
   const { 
     schemaVersion,
@@ -169,7 +174,7 @@ const AdminDashboard = () => {
       .replace(/\[\s*-?Infinity\b/g, '[null');
   };
 
-  // Policy-compliant validation and import
+  // Policy-compliant validation and import - now with pre-validation step
   const validateAndPreviewImport = async () => {
     try {
       // Sanitize JSON string before parsing to handle NaN, Infinity
@@ -178,62 +183,107 @@ const AdminDashboard = () => {
       // Check if sanitization was needed (for user feedback)
       const hadInvalidValues = sanitizedInput !== jsonInput;
       
-      const data = JSON.parse(sanitizedInput);
+      const data = JSON.parse(sanitizedInput) as LensData;
       
-      // Use new policy-compliant import system
-      const result = importCatalog(data, importMode);
-      setImportResult(result);
+      // STEP 1: Run comprehensive validation BEFORE import
+      console.log('[AdminDashboard] Running pre-import validation...');
+      const report = validateCatalogImport(data, importMode);
+      setValidationReport(report);
       
-      if (result.success) {
-        setShowReceipt(true);
-        const warningMsg = hadInvalidValues 
-          ? ' (valores NaN/Infinity convertidos para null)' 
-          : '';
-        toast.success(`Importação ${importMode === 'replace' ? 'substituição' : 'incremento'} realizada com sucesso!${warningMsg}`);
-        setJsonInput('');
-        
-        // Save version record to database
-        const mergedData = result.mergedData;
-        if (mergedData) {
-          const version = await saveCatalogVersion({
-            schemaVersion: mergedData.meta?.schema_version || '1.0',
-            datasetName: mergedData.meta?.dataset_name,
-            importMode: importMode,
-            familiesCount: mergedData.families?.length || 0,
-            pricesCount: mergedData.prices?.length || 0,
-            addonsCount: mergedData.addons?.length || 0,
-            technologiesCount: Object.keys(mergedData.technology_library?.items || {}).length,
-            changesSummary: result.summary ? {
-              mode: result.summary.mode,
-              changes: result.summary.changes,
-              totals: result.summary.totals,
-            } : undefined,
-            notes: mergedData.meta?.notes,
-          });
-          
-          if (version) {
-            toast.success(`Versão v${version.version_number} registrada`);
-          }
-        }
-      } else {
-        const allErrors = [...result.validation.errors, ...result.validation.integrityErrors];
-        toast.error(`Falha na importação: ${allErrors.length} erro(s) encontrado(s)`);
+      if (hadInvalidValues) {
+        toast.info('Valores NaN/Infinity foram convertidos para null');
       }
+      
+      // If there are blocking errors, stop here
+      if (!report.isValid) {
+        setPendingImportData(null);
+        toast.error(`Validação falhou: ${report.summary.totalBlockingErrors} erro(s) bloqueante(s)`);
+        return;
+      }
+      
+      // Store pending data for later confirmation
+      setPendingImportData(data);
+      
+      // If there are only warnings, show them but allow proceeding
+      if (report.warnings.length > 0) {
+        toast.warning(`${report.warnings.length} alerta(s) encontrado(s). Revise antes de prosseguir.`);
+      } else {
+        toast.success('Validação aprovada! Pronto para importar.');
+      }
+      
     } catch (e) {
-      setImportResult({
-        success: false,
-        validation: {
-          valid: false,
-          errors: ['JSON inválido: ' + (e as Error).message],
-          warnings: [],
-          integrityErrors: []
+      setValidationReport({
+        isValid: false,
+        blockingErrors: [{
+          code: 'JSON_PARSE_ERROR',
+          message: 'JSON inválido: ' + (e as Error).message,
+          section: 'root',
+          severity: 'blocking'
+        }],
+        warnings: [],
+        summary: {
+          totalBlockingErrors: 1,
+          totalWarnings: 0,
+          affectedFamilies: [],
+          affectedSkus: []
         },
-        summary: null,
-        mergedData: null,
-        previousData: null
+        timestamp: new Date().toISOString()
       });
+      setPendingImportData(null);
       toast.error('JSON inválido');
     }
+  };
+
+  // Execute import after validation approval
+  const executeValidatedImport = async () => {
+    if (!pendingImportData) {
+      toast.error('Nenhum dado pendente para importar');
+      return;
+    }
+    
+    // Use new policy-compliant import system
+    const result = importCatalog(pendingImportData, importMode);
+    setImportResult(result);
+    
+    if (result.success) {
+      setShowReceipt(true);
+      toast.success(`Importação ${importMode === 'replace' ? 'substituição' : 'incremento'} realizada com sucesso!`);
+      setJsonInput('');
+      setValidationReport(null);
+      setPendingImportData(null);
+      
+      // Save version record to database
+      const mergedData = result.mergedData;
+      if (mergedData) {
+        const version = await saveCatalogVersion({
+          schemaVersion: mergedData.meta?.schema_version || '1.0',
+          datasetName: mergedData.meta?.dataset_name,
+          importMode: importMode,
+          familiesCount: mergedData.families?.length || 0,
+          pricesCount: mergedData.prices?.length || 0,
+          addonsCount: mergedData.addons?.length || 0,
+          technologiesCount: Object.keys(mergedData.technology_library?.items || {}).length,
+          changesSummary: result.summary ? {
+            mode: result.summary.mode,
+            changes: result.summary.changes,
+            totals: result.summary.totals,
+          } : undefined,
+          notes: mergedData.meta?.notes,
+        });
+        
+        if (version) {
+          toast.success(`Versão v${version.version_number} registrada`);
+        }
+      }
+    } else {
+      const allErrors = [...result.validation.errors, ...result.validation.integrityErrors];
+      toast.error(`Falha na importação: ${allErrors.length} erro(s) encontrado(s)`);
+    }
+  };
+
+  const cancelValidation = () => {
+    setValidationReport(null);
+    setPendingImportData(null);
   };
 
   const handleRollback = () => {
@@ -471,8 +521,8 @@ const AdminDashboard = () => {
                       </SelectContent>
                     </Select>
                     <Button onClick={validateAndPreviewImport} disabled={!jsonInput.trim()}>
-                      <Upload className="w-4 h-4 mr-2" />
-                      Importar
+                      <ShieldCheck className="w-4 h-4 mr-2" />
+                      Validar
                     </Button>
                     {canRollback() && (
                       <Button variant="outline" onClick={() => setShowRollbackConfirm(true)}>
@@ -497,11 +547,14 @@ const AdminDashboard = () => {
                 </CardContent>
               </Card>
 
-              {/* Import Result & Export */}
+              {/* Import Result & Validation Report */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
-                    <span>Resultado</span>
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-5 h-5 text-primary" />
+                      <span>Validação e Resultado</span>
+                    </div>
                     <Button variant="outline" size="sm" onClick={exportJson} className="gap-2">
                       <Download className="w-4 h-4" />
                       Exportar
@@ -509,10 +562,19 @@ const AdminDashboard = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {!importResult ? (
+                  {/* Validation Report */}
+                  {validationReport ? (
+                    <ImportValidationReport 
+                      report={validationReport}
+                      onProceed={validationReport.isValid ? executeValidatedImport : undefined}
+                      onCancel={cancelValidation}
+                      showActions={true}
+                    />
+                  ) : !importResult ? (
                     <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                       <FileJson className="w-12 h-12 mb-4 opacity-50" />
-                      <p>Cole um JSON e clique em Importar</p>
+                      <p>Cole um JSON e clique em Validar</p>
+                      <p className="text-xs mt-2">O motor de validação verificará erros bloqueantes e alertas</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -530,19 +592,6 @@ const AdminDashboard = () => {
                           {importResult.success ? 'Importação realizada!' : 'Erros encontrados'}
                         </span>
                       </div>
-
-                      {(importResult.validation.errors.length > 0 || importResult.validation.integrityErrors.length > 0) && (
-                        <div className="space-y-2">
-                          <h4 className="font-medium text-destructive">Erros</h4>
-                          <div className="space-y-1 max-h-32 overflow-y-auto">
-                            {[...importResult.validation.errors, ...importResult.validation.integrityErrors].map((error, i) => (
-                              <div key={i} className="text-xs text-destructive/80 p-2 bg-destructive/5 rounded font-mono">
-                                {error}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
 
                       {importResult.summary && (
                         <div className="grid grid-cols-2 gap-2 text-sm">
