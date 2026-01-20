@@ -8,7 +8,7 @@ import type { Prescription } from '@/types/lens';
 interface PrescriptionStepProps {
   data: Partial<Prescription>;
   onUpdate: (data: Partial<Prescription>) => void;
-  lensCategory: 'PROGRESSIVA' | 'MONOFOCAL';
+  lensCategory: 'PROGRESSIVA' | 'MONOFOCAL' | 'OCUPACIONAL';
 }
 
 export const PrescriptionStep = ({ data, onUpdate, lensCategory }: PrescriptionStepProps) => {

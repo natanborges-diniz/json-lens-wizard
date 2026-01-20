@@ -31,7 +31,7 @@ export interface AIResponse {
 interface SmartSearchProps {
   lensData: LensData | null;
   anamnesisData: AnamnesisData;
-  lensCategory: 'PROGRESSIVA' | 'MONOFOCAL';
+  lensCategory: 'PROGRESSIVA' | 'MONOFOCAL' | 'OCUPACIONAL';
   onHighlightFamilies: (familyIds: string[]) => void;
   onSuggestAddons: (addonIds: string[]) => void;
   onSelectAIRecommendation?: (recommendation: AIRecommendation, allRecommendations: AIRecommendation[], aiResponse: AIResponse) => void;

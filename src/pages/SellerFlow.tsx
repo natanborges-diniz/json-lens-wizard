@@ -79,7 +79,7 @@ const SellerFlow = () => {
     dp: 64,
     altura: 18,
   });
-  const [lensCategory, setLensCategory] = useState<'PROGRESSIVA' | 'MONOFOCAL'>('PROGRESSIVA');
+  const [lensCategory, setLensCategory] = useState<'PROGRESSIVA' | 'MONOFOCAL' | 'OCUPACIONAL'>('PROGRESSIVA');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedConfiguration, setSelectedConfiguration] = useState<LensCardConfiguration | null>(null);
 

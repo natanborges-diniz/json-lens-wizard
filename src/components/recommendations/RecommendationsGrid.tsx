@@ -21,7 +21,7 @@ interface RecommendationsGridProps {
   onSelectLens: (configuration: LensCardConfiguration) => void;
   selectedFamilyId?: string;
   mostRecommendedId?: string;
-  lensCategory: 'PROGRESSIVA' | 'MONOFOCAL';
+  lensCategory: 'PROGRESSIVA' | 'MONOFOCAL' | 'OCUPACIONAL';
   attributeDefs: AttributeDef[];
   anamnesisData?: AnamnesisData;
   lensData?: LensData | null;

@@ -74,6 +74,10 @@ const macroToTier: Record<string, string> = {
   'MONO_ENTRADA': 'Conforto',
   'MONO_INTER': 'Avançada',
   'MONO_TOP': 'Top de Mercado',
+  // Ocupacionais
+  'OC_BASICO': 'Essencial',
+  'OC_CONFORTO': 'Conforto',
+  'OC_AVANCADO': 'Avançada',
 };
 
 const macroToBadgeClass: Record<string, string> = {
@@ -85,6 +89,10 @@ const macroToBadgeClass: Record<string, string> = {
   'MONO_ENTRADA': 'bg-primary/10 text-primary',
   'MONO_INTER': 'bg-info/10 text-info',
   'MONO_TOP': 'bg-secondary/10 text-secondary',
+  // Ocupacionais
+  'OC_BASICO': 'bg-cyan-100 text-cyan-700',
+  'OC_CONFORTO': 'bg-teal-100 text-teal-700',
+  'OC_AVANCADO': 'bg-emerald-100 text-emerald-700',
 };
 
 const AdminDashboard = () => {
@@ -432,6 +440,7 @@ const AdminDashboard = () => {
   // Group families by category
   const progressiveFamilies = families.filter(f => f.category === 'PROGRESSIVA');
   const monofocalFamilies = families.filter(f => f.category === 'MONOFOCAL');
+  const occupationalFamilies = families.filter(f => f.category === 'OCUPACIONAL');
 
   // Get price count for a family
   const getPriceCount = (familyId: string) => {
@@ -877,6 +886,76 @@ const AdminDashboard = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Occupational Families */}
+            {occupationalFamilies.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="w-5 h-5 text-cyan-600" />
+                    Lentes Ocupacionais
+                  </CardTitle>
+                  <CardDescription>
+                    {occupationalFamilies.length} famílias disponíveis
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {occupationalFamilies.map((family) => (
+                      <div 
+                        key={family.id} 
+                        className={`flex items-center justify-between p-4 rounded-lg border transition-all ${
+                          family.active ? 'bg-card' : 'bg-muted/30 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => toggleFamilyActive(family.id)}
+                            className={family.active ? 'text-success' : 'text-muted-foreground'}
+                          >
+                            {family.active ? (
+                              <ToggleRight className="w-6 h-6" />
+                            ) : (
+                              <ToggleLeft className="w-6 h-6" />
+                            )}
+                          </Button>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-foreground">{family.name_original}</span>
+                              <Badge className={macroToBadgeClass[family.macro] || 'bg-cyan-100 text-cyan-700'}>
+                                {macroToTier[family.macro] || family.macro}
+                              </Badge>
+                              <Badge variant="outline" className="text-xs bg-cyan-50">
+                                Ocupacional
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                              <span>{family.supplier}</span>
+                              <span>•</span>
+                              <span>{getPriceCount(family.id)} SKUs ativos</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1 max-w-md">
+                          {family.attributes_display_base.slice(0, 2).map((attr, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
+                              {attr.length > 30 ? attr.slice(0, 30) + '...' : attr}
+                            </Badge>
+                          ))}
+                          {family.attributes_display_base.length > 2 && (
+                            <Badge variant="outline" className="text-xs">
+                              +{family.attributes_display_base.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* Addons Tab */}

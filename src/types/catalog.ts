@@ -48,10 +48,13 @@ export interface QuoteExplainer {
   closing_templates: string[];
 }
 
+// Lens category type - includes occupational lenses
+export type LensCategory = 'PROGRESSIVA' | 'MONOFOCAL' | 'OCUPACIONAL';
+
 // Extended Macro with display configuration
 export interface MacroDisplay {
   id: string;
-  category: 'PROGRESSIVA' | 'MONOFOCAL';
+  category: LensCategory;
   name_client: string;
   alias_client?: string;
   description_client: string;
@@ -70,7 +73,7 @@ export interface FamilyExtended {
   id: string;
   supplier: string;
   name_original: string;
-  category: 'PROGRESSIVA' | 'MONOFOCAL';
+  category: LensCategory;
   macro: string;
   attributes_base: Record<string, number | boolean>;
   attributes_display_base: string[];
