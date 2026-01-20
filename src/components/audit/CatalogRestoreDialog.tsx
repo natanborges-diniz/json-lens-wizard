@@ -154,28 +154,37 @@ export function CatalogRestoreDialog({
   const handleResetToZero = async () => {
     setIsRestoring(true);
     try {
-      // Load original catalog from local file (the source of truth)
-      const response = await fetch('/data/lenses.json');
-      const arrayBuffer = await response.arrayBuffer();
-      const decoder = new TextDecoder('utf-8');
-      const text = decoder.decode(arrayBuffer);
-      const originalData: LensData = JSON.parse(text);
-
-      // Reset all active states to true (original state)
-      const resetData: LensData = {
-        ...originalData,
-        families: originalData.families.map(f => ({ ...f, active: true })),
-        addons: originalData.addons.map(a => ({ ...a, active: true })),
-        prices: originalData.prices.map(p => ({ ...p, active: true, blocked: false })),
+      // Create a completely empty catalog structure with required meta
+      const emptyData: LensData = {
+        meta: {
+          schema_version: '1.2',
+          dataset_name: 'Catálogo Vazio',
+          generated_at: new Date().toISOString(),
+          counts: {
+            families: 0,
+            addons: 0,
+            skus_prices: 0,
+          },
+          notes: ['Catálogo esvaziado manualmente'],
+        },
+        scales: {},
+        attribute_defs: [],
+        macros: [],
+        families: [],
+        addons: [],
+        products_avulsos: [],
+        prices: [],
+        technology_library: { items: {} },
+        family_matching_engine: [],
       };
 
       onReset();
-      onRestore(resetData);
-      toast.success('Catálogo resetado para estado inicial');
+      onRestore(emptyData);
+      toast.success('Catálogo esvaziado completamente');
       onOpenChange(false);
     } catch (error) {
       console.error('Error resetting catalog:', error);
-      toast.error('Erro ao resetar catálogo');
+      toast.error('Erro ao esvaziar catálogo');
     } finally {
       setIsRestoring(false);
       setShowResetConfirm(false);
@@ -200,7 +209,7 @@ export function CatalogRestoreDialog({
             </DialogDescription>
           </DialogHeader>
 
-          {/* Reset to Zero Option */}
+          {/* Reset to Zero Option - Empty Catalog */}
           <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -208,9 +217,9 @@ export function CatalogRestoreDialog({
                   <Trash2 className="w-5 h-5 text-destructive" />
                 </div>
                 <div>
-                  <h4 className="font-semibold text-foreground">Resetar para Zero</h4>
+                  <h4 className="font-semibold text-foreground">Esvaziar Catálogo</h4>
                   <p className="text-sm text-muted-foreground">
-                    Restaura o catálogo original com todas as famílias, SKUs e add-ons ativos
+                    Remove todos os dados do catálogo - famílias, SKUs, tecnologias e add-ons
                   </p>
                 </div>
               </div>
@@ -225,7 +234,7 @@ export function CatalogRestoreDialog({
                 ) : (
                   <>
                     <Trash2 className="w-4 h-4 mr-1" />
-                    Resetar
+                    Esvaziar
                   </>
                 )}
               </Button>
@@ -343,17 +352,21 @@ export function CatalogRestoreDialog({
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="w-5 h-5" />
-              Confirmar Reset Completo
+              Confirmar Esvaziamento do Catálogo
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-2">
               <p>Esta ação irá:</p>
               <ul className="list-disc list-inside text-sm space-y-1">
-                <li>Restaurar o catálogo original do arquivo fonte</li>
-                <li>Ativar todas as famílias, SKUs e add-ons</li>
-                <li>Remover todas as customizações de status inativo</li>
-                <li>Sobrescrever o catálogo atual na nuvem</li>
+                <li><strong>Remover todas as famílias de lentes</strong></li>
+                <li><strong>Remover todos os SKUs e preços</strong></li>
+                <li><strong>Remover todas as tecnologias</strong></li>
+                <li><strong>Remover todos os add-ons e macros</strong></li>
+                <li>Deixar o catálogo completamente vazio</li>
               </ul>
-              <p className="font-medium text-foreground pt-2">
+              <p className="font-medium text-destructive pt-2">
+                ⚠️ Você precisará importar um novo catálogo para utilizar o sistema.
+              </p>
+              <p className="font-medium text-foreground">
                 Esta ação não pode ser desfeita. Deseja continuar?
               </p>
             </AlertDialogDescription>
@@ -369,7 +382,7 @@ export function CatalogRestoreDialog({
               ) : (
                 <Trash2 className="w-4 h-4 mr-2" />
               )}
-              Sim, Resetar Tudo
+              Sim, Esvaziar Tudo
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
