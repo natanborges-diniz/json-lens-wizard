@@ -508,59 +508,103 @@ function buildReport(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// AÇÕES PÓS-IMPORT
+// AÇÕES PÓS-IMPORT (GOVERNANÇA: Requer confirmação explícita)
 // ════════════════════════════════════════════════════════════════════════════
 
+export interface PendingPostImportAction {
+  actionId: string;
+  message: string;
+  affectedItems: string[];
+  changes: Record<string, unknown>;
+}
+
 /**
- * Executa ações pós-import baseadas nos warnings encontrados
- * Retorna os dados modificados e relatório de ações
+ * Identifica ações pós-import que PRECISAM de confirmação do usuário.
+ * GOVERNANÇA: Não executa automaticamente - apenas identifica e retorna para confirmação.
+ */
+export async function identifyPostImportActions(
+  data: LensData,
+  report: ValidationReport
+): Promise<PendingPostImportAction[]> {
+  const rules = await loadValidationRules();
+  const pendingActions: PendingPostImportAction[] = [];
+  
+  for (const action of rules.post_import_actions) {
+    const [level, ruleId] = action.trigger.split(':');
+    const hasWarning = report.warnings.some(w => w.ruleId === ruleId);
+    
+    if (!hasWarning && level === 'warning') continue;
+    
+    if (action.id === 'AUTO_DISABLE_FAMILIES_WITHOUT_SKU') {
+      const familyWarnings = report.warnings.filter(w => w.ruleId === 'FAMILY_WITHOUT_SKU');
+      const affectedIds = familyWarnings.map(w => w.item).filter(Boolean) as string[];
+      
+      if (affectedIds.length > 0) {
+        pendingActions.push({
+          actionId: action.id,
+          message: action.message,
+          affectedItems: affectedIds,
+          changes: action.action.set
+        });
+      }
+    }
+  }
+  
+  return pendingActions;
+}
+
+/**
+ * Aplica uma ação pós-import APÓS confirmação explícita do usuário.
+ * GOVERNANÇA: Só deve ser chamada após o usuário confirmar a ação.
+ */
+export function applyConfirmedPostImportAction(
+  data: LensData,
+  action: PendingPostImportAction
+): LensData {
+  let modifiedData = { ...data, families: [...(data.families || [])] };
+  
+  if (action.actionId === 'AUTO_DISABLE_FAMILIES_WITHOUT_SKU') {
+    const affectedIds = new Set(action.affectedItems);
+    
+    modifiedData.families = modifiedData.families.map(family => {
+      if (affectedIds.has(family.id)) {
+        return {
+          ...family,
+          active: false,
+          availability_status: 'SEM_SKU_NO_ERP'
+        };
+      }
+      return family;
+    });
+  }
+  
+  return modifiedData;
+}
+
+/**
+ * @deprecated Use identifyPostImportActions + applyConfirmedPostImportAction
+ * Mantido para compatibilidade - será removido em versão futura.
+ * GOVERNANÇA: Esta função NÃO deve ser usada em produção.
  */
 export async function executePostImportActions(
   data: LensData,
   report: ValidationReport
 ): Promise<{ modifiedData: LensData; results: PostImportResult[] }> {
-  const rules = await loadValidationRules();
-  const results: PostImportResult[] = [];
-  let modifiedData = { ...data, families: [...(data.families || [])] };
+  console.warn('[GOVERNANÇA] executePostImportActions está deprecated. Use identifyPostImportActions + applyConfirmedPostImportAction.');
   
-  for (const action of rules.post_import_actions) {
-    // Parse trigger: "warning:RULE_ID"
-    const [level, ruleId] = action.trigger.split(':');
-    
-    // Verificar se o warning correspondente existe
-    const hasWarning = report.warnings.some(w => w.ruleId === ruleId);
-    
-    if (!hasWarning && level === 'warning') continue;
-    
-    // Executar ação
-    if (action.id === 'AUTO_DISABLE_FAMILIES_WITHOUT_SKU') {
-      const affectedFamilies: string[] = [];
-      
-      // Obter famílias afetadas pelo warning
-      const familyWarnings = report.warnings.filter(w => w.ruleId === 'FAMILY_WITHOUT_SKU');
-      const affectedIds = new Set(familyWarnings.map(w => w.item).filter(Boolean));
-      
-      modifiedData.families = modifiedData.families.map(family => {
-        if (affectedIds.has(family.id)) {
-          affectedFamilies.push(family.id);
-          return {
-            ...family,
-            active: false,
-            availability_status: 'SEM_SKU_NO_ERP'
-          };
-        }
-        return family;
-      });
-      
-      if (affectedFamilies.length > 0) {
-        results.push({
-          actionId: action.id,
-          message: action.message,
-          affectedItems: affectedFamilies,
-          changes: action.action.set
-        });
-      }
-    }
+  const pendingActions = await identifyPostImportActions(data, report);
+  const results: PostImportResult[] = [];
+  let modifiedData = data;
+  
+  // GOVERNANÇA: Retorna os dados SEM modificar automaticamente
+  // As ações pendentes são retornadas para confirmação
+  for (const action of pendingActions) {
+    results.push({
+      actionId: action.actionId,
+      message: `[PENDENTE] ${action.message} (${action.affectedItems.length} itens aguardando confirmação)`,
+      affectedItems: action.affectedItems,
+      changes: action.changes
+    });
   }
   
   return { modifiedData, results };
