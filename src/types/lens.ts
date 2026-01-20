@@ -91,6 +91,7 @@ export interface MacroExtended extends Macro {
 // Extended family with technology references (optional, from JSON)
 export interface FamilyExtended extends Family {
   technology_refs?: string[];
+  availability_status?: string; // e.g. "SEM_SKU_NO_ERP" for auto-disabled families
 }
 
 // Technology Library types

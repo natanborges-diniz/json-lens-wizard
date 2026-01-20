@@ -174,7 +174,7 @@ const AdminDashboard = () => {
       .replace(/\[\s*-?Infinity\b/g, '[null');
   };
 
-  // Policy-compliant validation and import - now with pre-validation step
+  // Policy-compliant validation and import - now with pre-validation step (async)
   const validateAndPreviewImport = async () => {
     try {
       // Sanitize JSON string before parsing to handle NaN, Infinity
@@ -185,9 +185,9 @@ const AdminDashboard = () => {
       
       const data = JSON.parse(sanitizedInput) as LensData;
       
-      // STEP 1: Run comprehensive validation BEFORE import
+      // STEP 1: Run comprehensive validation BEFORE import (now async)
       console.log('[AdminDashboard] Running pre-import validation...');
-      const report = validateCatalogImport(data, importMode);
+      const report = await validateCatalogImport(data, importMode);
       setValidationReport(report);
       
       if (hadInvalidValues) {
@@ -216,6 +216,7 @@ const AdminDashboard = () => {
         isValid: false,
         blockingErrors: [{
           code: 'JSON_PARSE_ERROR',
+          ruleId: 'JSON_PARSE',
           message: 'JSON inválido: ' + (e as Error).message,
           section: 'root',
           severity: 'blocking'
@@ -225,8 +226,10 @@ const AdminDashboard = () => {
           totalBlockingErrors: 1,
           totalWarnings: 0,
           affectedFamilies: [],
-          affectedSkus: []
+          affectedSkus: [],
+          byRuleId: { 'JSON_PARSE': 1 }
         },
+        rulesVersion: 'N/A',
         timestamp: new Date().toISOString()
       });
       setPendingImportData(null);

@@ -1,0 +1,118 @@
+{
+  "meta": {
+    "version": "1.0",
+    "scope": "lenses_catalog",
+    "name": "Validation Rules - Lenses Catalog",
+    "generated_at": "2026-01-20",
+    "description": "Regras de validação (bloqueantes e alertas) + ações pós-import para o catálogo de lentes."
+  },
+  "blocking_rules": [
+    {
+      "id": "REQUIRED_SECTIONS",
+      "type": "structure",
+      "level": "block",
+      "required_sections": [
+        "meta",
+        "scales",
+        "attribute_defs",
+        "macros",
+        "families",
+        "addons",
+        "prices"
+      ],
+      "message": "JSON inválido: seções obrigatórias ausentes."
+    },
+    {
+      "id": "FAMILY_MACRO_INTEGRITY",
+      "type": "reference",
+      "level": "block",
+      "from": "families[].macro",
+      "to": "macros[].id",
+      "message": "Família referencia macro inexistente."
+    },
+    {
+      "id": "PRICE_FAMILY_INTEGRITY",
+      "type": "reference",
+      "level": "block",
+      "from": "prices[].family_id",
+      "to": "families[].id",
+      "message": "SKU referencia família inexistente."
+    },
+    {
+      "id": "PRICE_REQUIRED_FIELDS",
+      "type": "field_presence",
+      "level": "block",
+      "fields": [
+        "prices[].erp_code",
+        "prices[].price_sale_half_pair"
+      ],
+      "message": "SKU sem código ERP ou sem preço de venda."
+    }
+  ],
+  "warning_rules": [
+    {
+      "id": "FAMILY_WITHOUT_SKU",
+      "type": "aggregation",
+      "level": "warning",
+      "definition": "Famílias (active=true) sem nenhum SKU ativo em prices",
+      "message": "Família ativa sem nenhum SKU com preço."
+    },
+    {
+      "id": "SKU_WITHOUT_INDEX_DISPLAY",
+      "type": "reference",
+      "level": "warning",
+      "from": "prices[].index",
+      "to": "index_display[].value",
+      "message": "SKU com index que não existe em index_display."
+    },
+    {
+      "id": "FAMILY_WITHOUT_TECHNOLOGY_REFS",
+      "type": "field_presence",
+      "level": "warning",
+      "fields": [
+        "families[].technology_refs"
+      ],
+      "message": "Família sem tecnologias associadas (technology_refs vazio ou ausente)."
+    }
+  ],
+  "post_import_actions": [
+    {
+      "id": "AUTO_DISABLE_FAMILIES_WITHOUT_SKU",
+      "trigger": "warning:FAMILY_WITHOUT_SKU",
+      "action": {
+        "set": {
+          "families[].active": false,
+          "families[].availability_status": "SEM_SKU_NO_ERP"
+        }
+      },
+      "message": "Famílias sem SKU foram desativadas automaticamente (active=false)."
+    }
+  ],
+  "ui_spec": {
+    "admin_pages": [
+      {
+        "id": "ADMIN_IMPORT",
+        "title": "Importar Catálogo",
+        "steps": [
+          "upload",
+          "validate",
+          "review",
+          "apply",
+          "report"
+        ]
+      },
+      {
+        "id": "ADMIN_AUDIT",
+        "title": "Auditoria do Catálogo",
+        "widgets": [
+          "Resumo de erros bloqueantes",
+          "Resumo de alertas",
+          "Tabela: SKUs sem família",
+          "Tabela: Famílias sem SKU",
+          "Tabela: Famílias desativadas automaticamente",
+          "Exportar CSV/JSON do relatório"
+        ]
+      }
+    ]
+  }
+}

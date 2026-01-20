@@ -9,7 +9,9 @@ import {
   Package,
   DollarSign,
   Copy,
-  FileText
+  FileText,
+  Download,
+  FileJson
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,14 +39,14 @@ interface ImportValidationReportProps {
   showActions?: boolean;
 }
 
-// Agrupar erros por seção
-function groupErrorsBySection(errors: ValidationError[]): Record<string, ValidationError[]> {
+// Agrupar erros por ruleId
+function groupErrorsByRule(errors: ValidationError[]): Record<string, ValidationError[]> {
   return errors.reduce((acc, error) => {
-    const section = error.section;
-    if (!acc[section]) {
-      acc[section] = [];
+    const ruleId = error.ruleId;
+    if (!acc[ruleId]) {
+      acc[ruleId] = [];
     }
-    acc[section].push(error);
+    acc[ruleId].push(error);
     return acc;
   }, {} as Record<string, ValidationError[]>);
 }
@@ -69,7 +71,8 @@ export function ImportValidationReport({
 }: ImportValidationReportProps) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     blocking: true,
-    warnings: false
+    warnings: false,
+    byRule: false
   });
 
   const toggleSection = (section: string) => {
@@ -85,8 +88,44 @@ export function ImportValidationReport({
     toast.success('Relatório copiado para a área de transferência');
   };
 
-  const groupedBlockingErrors = groupErrorsBySection(report.blockingErrors);
-  const groupedWarnings = groupErrorsBySection(report.warnings);
+  const exportReportJSON = () => {
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `validation-report-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Relatório exportado em JSON');
+  };
+
+  const exportReportCSV = () => {
+    const lines = ['Tipo,RuleID,Código,Seção,Item,Mensagem'];
+    
+    report.blockingErrors.forEach(e => {
+      lines.push(`Erro,${e.ruleId},${e.code},${e.section},${e.item || ''},${e.message.replace(/,/g, ';')}`);
+    });
+    
+    report.warnings.forEach(e => {
+      lines.push(`Alerta,${e.ruleId},${e.code},${e.section},${e.item || ''},${e.message.replace(/,/g, ';')}`);
+    });
+    
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `validation-report-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Relatório exportado em CSV');
+  };
+
+  const groupedBlockingErrors = groupErrorsByRule(report.blockingErrors);
+  const groupedWarnings = groupErrorsByRule(report.warnings);
 
   return (
     <Card className="border-2 border-border">
@@ -106,23 +145,54 @@ export function ImportValidationReport({
               <CardTitle className="text-lg">
                 {report.isValid ? 'Validação Aprovada' : 'Validação com Erros'}
               </CardTitle>
-              <CardDescription>
-                {new Date(report.timestamp).toLocaleString('pt-BR')}
+              <CardDescription className="flex items-center gap-2">
+                <span>{new Date(report.timestamp).toLocaleString('pt-BR')}</span>
+                {report.rulesVersion && (
+                  <Badge variant="outline" className="text-xs">
+                    Regras v{report.rulesVersion}
+                  </Badge>
+                )}
               </CardDescription>
             </div>
           </div>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="icon" onClick={copyReport}>
-                  <Copy className="w-4 h-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Copiar relatório</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <div className="flex gap-1">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="icon" onClick={copyReport}>
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Copiar relatório</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="icon" onClick={exportReportJSON}>
+                    <FileJson className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Exportar JSON</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="icon" onClick={exportReportCSV}>
+                    <Download className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Exportar CSV</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </div>
       </CardHeader>
       
@@ -155,6 +225,46 @@ export function ImportValidationReport({
           </div>
         </div>
 
+        {/* Contagem por regra */}
+        {Object.keys(report.summary.byRuleId).length > 0 && (
+          <Collapsible 
+            open={expandedSections.byRule} 
+            onOpenChange={() => toggleSection('byRule')}
+          >
+            <CollapsibleTrigger asChild>
+              <Button 
+                variant="ghost" 
+                className="w-full justify-between px-3 py-2 h-auto hover:bg-muted"
+              >
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-primary" />
+                  <span className="font-semibold text-foreground">
+                    Contagem por Regra ({Object.keys(report.summary.byRuleId).length})
+                  </span>
+                </div>
+                {expandedSections.byRule ? (
+                  <ChevronDown className="w-4 h-4" />
+                ) : (
+                  <ChevronRight className="w-4 h-4" />
+                )}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
+                {Object.entries(report.summary.byRuleId).map(([ruleId, count]) => (
+                  <div 
+                    key={ruleId} 
+                    className="flex justify-between items-center p-2 bg-muted/50 rounded text-sm"
+                  >
+                    <code className="text-xs">{ruleId}</code>
+                    <Badge variant="secondary">{count}</Badge>
+                  </div>
+                ))}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+
         {/* Erros Bloqueantes */}
         {report.blockingErrors.length > 0 && (
           <Collapsible 
@@ -182,24 +292,22 @@ export function ImportValidationReport({
             <CollapsibleContent>
               <ScrollArea className="h-[200px] mt-2">
                 <div className="space-y-3 pr-4">
-                  {Object.entries(groupedBlockingErrors).map(([section, errors]) => (
-                    <div key={section} className="space-y-1">
+                  {Object.entries(groupedBlockingErrors).map(([ruleId, errors]) => (
+                    <div key={ruleId} className="space-y-1">
                       <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        {getSectionIcon(section)}
-                        <span className="capitalize">{section}</span>
+                        <AlertCircle className="w-3 h-3 text-destructive" />
+                        <code className="text-xs bg-destructive/10 px-1 rounded">{ruleId}</code>
                         <Badge variant="outline" className="text-xs">
                           {errors.length}
                         </Badge>
                       </div>
-                      {errors.map((error, i) => (
+                      {errors.slice(0, 10).map((error, i) => (
                         <div 
                           key={`${error.code}-${i}`}
                           className="ml-6 p-2 bg-destructive/5 border border-destructive/20 rounded text-sm"
                         >
                           <div className="flex items-start gap-2">
-                            <Badge variant="destructive" className="text-xs shrink-0">
-                              {error.code}
-                            </Badge>
+                            {getSectionIcon(error.section)}
                             <span className="text-foreground">{error.message}</span>
                           </div>
                           {error.item && (
@@ -209,6 +317,11 @@ export function ImportValidationReport({
                           )}
                         </div>
                       ))}
+                      {errors.length > 10 && (
+                        <div className="ml-6 text-xs text-muted-foreground">
+                          ... e mais {errors.length - 10} erros
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -244,27 +357,22 @@ export function ImportValidationReport({
             <CollapsibleContent>
               <ScrollArea className="h-[200px] mt-2">
                 <div className="space-y-3 pr-4">
-                  {Object.entries(groupedWarnings).map(([section, errors]) => (
-                    <div key={section} className="space-y-1">
+                  {Object.entries(groupedWarnings).map(([ruleId, errors]) => (
+                    <div key={ruleId} className="space-y-1">
                       <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                        {getSectionIcon(section)}
-                        <span className="capitalize">{section}</span>
+                        <AlertTriangle className="w-3 h-3 text-warning" />
+                        <code className="text-xs bg-warning/10 px-1 rounded">{ruleId}</code>
                         <Badge variant="outline" className="text-xs">
                           {errors.length}
                         </Badge>
                       </div>
-                      {errors.map((error, i) => (
+                      {errors.slice(0, 10).map((error, i) => (
                         <div 
                           key={`${error.code}-${i}`}
                           className="ml-6 p-2 bg-warning/5 border border-warning/20 rounded text-sm"
                         >
                           <div className="flex items-start gap-2">
-                            <Badge 
-                              variant="outline" 
-                              className="text-xs shrink-0 border-warning text-warning"
-                            >
-                              {error.code}
-                            </Badge>
+                            {getSectionIcon(error.section)}
                             <span className="text-foreground">{error.message}</span>
                           </div>
                           {error.item && (
@@ -274,6 +382,11 @@ export function ImportValidationReport({
                           )}
                         </div>
                       ))}
+                      {errors.length > 10 && (
+                        <div className="ml-6 text-xs text-muted-foreground">
+                          ... e mais {errors.length - 10} alertas
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
