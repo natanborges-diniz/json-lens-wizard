@@ -180,13 +180,23 @@ export const AdditionalProductModal = ({
   // Render occupational options (grid of families)
   const renderOccupationalOptions = () => {
     const availableFamilies = families.filter(f => f.bestPrice !== null);
+    
+    console.log('[AdditionalProductModal] Occupational families received:', families.length);
+    console.log('[AdditionalProductModal] With prices:', availableFamilies.length);
+    if (families.length > 0) {
+      console.log('[AdditionalProductModal] Sample family:', families[0]);
+    }
 
     if (availableFamilies.length === 0) {
       return (
         <div className="text-center py-8 text-muted-foreground">
           <Monitor className="w-12 h-12 mx-auto mb-3 opacity-50" />
           <p>Nenhuma lente ocupacional disponível no catálogo</p>
-          <p className="text-xs mt-1">Importe famílias ocupacionais para habilitar esta opção</p>
+          <p className="text-xs mt-1">
+            {families.length > 0 
+              ? `${families.length} família(s) encontrada(s), mas sem preços vinculados`
+              : 'Verifique se as famílias ocupacionais têm preços cadastrados'}
+          </p>
         </div>
       );
     }

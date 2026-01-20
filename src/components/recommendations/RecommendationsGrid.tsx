@@ -511,13 +511,13 @@ export const RecommendationsGrid = ({
         )}
       </div>
 
-      {/* Main content grid with cart */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Left: Lens cards */}
-        <div className="lg:col-span-3 space-y-6">
-          {/* Grid of cards */}
+      {/* Main content - responsive layout */}
+      <div className="flex flex-col xl:flex-row gap-6">
+        {/* Left: Lens cards - auto-expands */}
+        <div className="flex-1 min-w-0 space-y-6">
+          {/* Grid of cards - auto-adjustable columns */}
           {tierOptions.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 auto-rows-fr">
               {tierOptions.map(option => {
                 if (!option) return null;
                 
@@ -591,8 +591,8 @@ export const RecommendationsGrid = ({
           </div>
         </div>
 
-        {/* Right: Product Cart */}
-        <div className="lg:col-span-1">
+        {/* Right: Product Cart - fixed width on xl+ */}
+        <div className="xl:w-80 xl:flex-shrink-0">
           <div className="sticky top-24">
             <ProductCart
               products={selectedProducts}

@@ -51,25 +51,47 @@ export const SmartSearch = ({
   const [isLoading, setIsLoading] = useState(false);
   const [aiResponse, setAiResponse] = useState<AIResponse | null>(null);
 
-  // Local search suggestions
+  // Local search suggestions - includes current category AND occupational for smart suggestions
   const localSuggestions = useMemo(() => {
     if (!localQuery || localQuery.length < 2 || !lensData) return [];
 
     const query = localQuery.toLowerCase();
-    const families = lensData.families.filter(f => 
-      f.active && 
-      f.category === lensCategory &&
-      (f.name_original.toLowerCase().includes(query) ||
-       f.supplier.toLowerCase().includes(query) ||
-       f.attributes_display_base.some(attr => attr.toLowerCase().includes(query)))
-    );
+    const isOccupationalSearch = 
+      query.includes('ocupacional') || 
+      query.includes('escritorio') || 
+      query.includes('escritório') ||
+      query.includes('office') ||
+      query.includes('computador') ||
+      query.includes('tela') ||
+      query.includes('eyezen') ||
+      query.includes('sync') ||
+      query.includes('workstyle');
 
-    return families.slice(0, 6);
+    const families = lensData.families.filter(f => {
+      if (!f.active) return false;
+      
+      // Include occupational if searching for it, otherwise include current category
+      const matchesCategory = isOccupationalSearch 
+        ? f.category === 'OCUPACIONAL'
+        : (f.category === lensCategory || f.category === 'OCUPACIONAL');
+      
+      if (!matchesCategory) return false;
+
+      return (
+        f.name_original.toLowerCase().includes(query) ||
+        f.supplier.toLowerCase().includes(query) ||
+        f.category.toLowerCase().includes(query) ||
+        f.attributes_display_base.some(attr => attr.toLowerCase().includes(query))
+      );
+    });
+
+    return families.slice(0, 8);
   }, [localQuery, lensData, lensCategory]);
 
-  // Quick filters for common searches
+  // Quick filters for common searches - includes occupational
   const quickFilters = useMemo(() => {
     const filters = [
+      { label: 'Ocupacional', query: 'ocupacional', icon: '🖥️' },
       { label: 'Luz Azul', query: 'blue', icon: '💙' },
       { label: 'Antirreflexo', query: 'antirreflexo', icon: '✨' },
       { label: 'Fotossensível', query: 'fotossensível', icon: '🌞' },
@@ -114,14 +136,35 @@ export const SmartSearch = ({
     }
 
     const q = query.toLowerCase();
+    const isOccupationalSearch = 
+      q.includes('ocupacional') || 
+      q.includes('escritorio') || 
+      q.includes('escritório') ||
+      q.includes('office') ||
+      q.includes('computador') ||
+      q.includes('tela') ||
+      q.includes('eyezen') ||
+      q.includes('sync') ||
+      q.includes('workstyle');
+
     const matchingIds = lensData.families
-      .filter(f => 
-        f.active && 
-        f.category === lensCategory &&
-        (f.name_original.toLowerCase().includes(q) ||
-         f.supplier.toLowerCase().includes(q) ||
-         f.attributes_display_base.some(attr => attr.toLowerCase().includes(q)))
-      )
+      .filter(f => {
+        if (!f.active) return false;
+        
+        // Include occupational if searching for it
+        const matchesCategory = isOccupationalSearch 
+          ? f.category === 'OCUPACIONAL'
+          : (f.category === lensCategory || f.category === 'OCUPACIONAL');
+        
+        if (!matchesCategory) return false;
+
+        return (
+          f.name_original.toLowerCase().includes(q) ||
+          f.supplier.toLowerCase().includes(q) ||
+          f.category.toLowerCase().includes(q) ||
+          f.attributes_display_base.some(attr => attr.toLowerCase().includes(q))
+        );
+      })
       .map(f => f.id);
 
     onHighlightFamilies(matchingIds);
