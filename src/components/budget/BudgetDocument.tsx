@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import type { FamilyExtended, AnamnesisData, AttributeDef, Technology } from '@/types/lens';
+import type { FamilyExtended, AnamnesisData, AttributeDef, Technology, LensCategory } from '@/types/lens';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -57,7 +57,7 @@ export interface BudgetDocumentData {
   // Product info
   familyName: string;
   supplier: string;
-  lensCategory: 'PROGRESSIVA' | 'MONOFOCAL';
+  lensCategory: LensCategory;
   selectedIndex: string;
   selectedTreatments: string[];
   
@@ -202,7 +202,11 @@ export const BudgetDocument = forwardRef<HTMLDivElement, BudgetDocumentProps>(
                 <p className="text-sm text-gray-600">{data.supplier}</p>
               </div>
               <Badge className="bg-primary text-white">
-                {data.lensCategory === 'PROGRESSIVA' ? 'Progressiva' : 'Monofocal'}
+                {data.lensCategory === 'PROGRESSIVA' 
+                  ? 'Progressiva' 
+                  : data.lensCategory === 'OCUPACIONAL'
+                    ? 'Ocupacional'
+                    : 'Monofocal'}
               </Badge>
             </div>
             
