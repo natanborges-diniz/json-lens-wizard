@@ -24,6 +24,7 @@ export interface CatalogLoaderResult {
   loadCatalog: (forceLocal?: boolean) => Promise<boolean>;
   reloadFromLocal: () => Promise<boolean>;
   syncLocalToCloud: () => Promise<boolean>;
+  forceCloudReload: () => Promise<boolean>;
   lastLoadedAt: string | null;
 }
 
@@ -173,12 +174,45 @@ export function useCatalogLoader(): CatalogLoaderResult {
     }
   }, [saveCatalogToCloud]);
 
+  /**
+   * Força recarga da nuvem, ignorando cache e limpando estado
+   * Use quando suspeitar que dados locais estão desatualizados
+   */
+  const forceCloudReload = useCallback(async (): Promise<boolean> => {
+    setIsLoading(true);
+    
+    try {
+      console.log('[CatalogLoader] Force cloud reload - clearing cache and reloading...');
+      
+      // Força carregamento da nuvem
+      const cloudLoaded = await loadCatalogFromCloud();
+      
+      if (cloudLoaded) {
+        setLoadSource('cloud');
+        setLastLoadedAt(new Date().toISOString());
+        console.log('[CatalogLoader] Force cloud reload successful');
+        toast.success('Catálogo recarregado da nuvem');
+        return true;
+      }
+      
+      toast.error('Nenhum catálogo encontrado na nuvem');
+      return false;
+    } catch (error) {
+      console.error('[CatalogLoader] Force cloud reload error:', error);
+      toast.error('Erro ao recarregar da nuvem');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [loadCatalogFromCloud]);
+
   return {
     isLoading,
     loadSource,
     loadCatalog,
     reloadFromLocal,
     syncLocalToCloud,
+    forceCloudReload,
     lastLoadedAt,
   };
 }
