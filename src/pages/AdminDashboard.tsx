@@ -61,7 +61,7 @@ import { CatalogVersionBadge, saveCatalogVersion } from '@/components/audit/Cata
 import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
 import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
 import { ImportValidationReport } from '@/components/audit/ImportValidationReport';
-import { validateCatalogImport, type ValidationReport } from '@/lib/catalogValidationEngine';
+import { validateCatalogImport, executePostImportActions, type ValidationReport } from '@/lib/catalogValidationEngine';
 import { toast } from 'sonner';
 
 // Tier mapping for display (fallback, prefer JSON data)
@@ -237,20 +237,45 @@ const AdminDashboard = () => {
     }
   };
 
-  // Execute import after validation approval
+  // Execute import after validation approval (with post-import actions)
   const executeValidatedImport = async () => {
-    if (!pendingImportData) {
+    if (!pendingImportData || !validationReport) {
       toast.error('Nenhum dado pendente para importar');
       return;
     }
     
+    // Execute post-import actions (e.g., AUTO_DISABLE_FAMILIES_WITHOUT_SKU)
+    let dataToImport = pendingImportData;
+    let postImportMessages: string[] = [];
+    
+    if (validationReport.warnings.length > 0) {
+      try {
+        const { modifiedData, results } = await executePostImportActions(pendingImportData, validationReport);
+        dataToImport = modifiedData;
+        
+        // Collect messages from post-import actions
+        results.forEach(result => {
+          postImportMessages.push(`${result.message} (${result.affectedItems.length} itens)`);
+        });
+      } catch (error) {
+        console.error('Post-import actions error:', error);
+        // Continue with original data if post-import actions fail
+      }
+    }
+    
     // Use new policy-compliant import system
-    const result = importCatalog(pendingImportData, importMode);
+    const result = importCatalog(dataToImport, importMode);
     setImportResult(result);
     
     if (result.success) {
       setShowReceipt(true);
       toast.success(`Importação ${importMode === 'replace' ? 'substituição' : 'incremento'} realizada com sucesso!`);
+      
+      // Show post-import action messages
+      postImportMessages.forEach(msg => {
+        toast.info(msg, { duration: 5000 });
+      });
+      
       setJsonInput('');
       setValidationReport(null);
       setPendingImportData(null);
@@ -270,6 +295,7 @@ const AdminDashboard = () => {
             mode: result.summary.mode,
             changes: result.summary.changes,
             totals: result.summary.totals,
+            postImportActions: postImportMessages,
           } : undefined,
           notes: mergedData.meta?.notes,
         });
@@ -468,6 +494,13 @@ const AdminDashboard = () => {
               <Button variant="outline" size="sm" className="gap-2">
                 <FileText className="w-4 h-4" />
                 Edição Manual
+              </Button>
+            </Link>
+            
+            <Link to="/catalog-audit">
+              <Button variant="outline" size="sm" className="gap-2">
+                <AlertCircle className="w-4 h-4" />
+                Auditoria
               </Button>
             </Link>
             
