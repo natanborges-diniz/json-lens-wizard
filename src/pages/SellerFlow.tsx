@@ -469,7 +469,7 @@ const SellerFlow = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-6 py-8 max-w-3xl">
+      <main className="container mx-auto px-6 py-8">
         {/* Step 1: Usage Profile */}
         {currentStep === 'profile' && (
           <div className="animate-slide-up">
@@ -533,7 +533,7 @@ const SellerFlow = () => {
 
         {/* Step 6: Recommendations */}
         {currentStep === 'recommendations' && (
-          <div className="space-y-6 animate-slide-up max-w-7xl mx-auto">
+          <div className="space-y-6 animate-slide-up w-full">
             <div className="text-center mb-6">
               <h2 className="text-2xl font-bold text-foreground mb-2">Soluções Recomendadas</h2>
               <p className="text-muted-foreground">
