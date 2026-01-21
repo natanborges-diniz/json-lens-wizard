@@ -1,42 +1,31 @@
 /**
  * useCatalogLoader - Hook centralizado para carregamento do catálogo
  * 
- * POLÍTICA DE CARREGAMENTO:
- * - forceLocal=true: SEMPRE usa arquivo local (para imports explícitos)
- * - forceLocal=false (padrão): Tenta nuvem, fallback local
- * 
- * Esta arquitetura elimina a confusão local vs nuvem:
- * - Quando usuário faz IMPORT explícito → forceLocal=true → arquivo local é lei
- * - Quando app carrega normalmente → usa nuvem (que foi sincronizada do último import)
+ * ARQUITETURA SIMPLIFICADA:
+ * - Nuvem é a ÚNICA fonte de verdade
+ * - Arquivo local é usado apenas para seed inicial (quando nuvem está vazia)
+ * - Auto-save para nuvem em todas as edições
  */
 
 import { useState, useCallback } from 'react';
 import { useLensStore } from '@/store/lensStore';
-import { supabase } from '@/integrations/supabase/client';
 import type { LensData } from '@/types/lens';
 import { toast } from 'sonner';
 
-export type LoadSource = 'cloud' | 'local' | 'none';
-
 export interface CatalogLoaderResult {
   isLoading: boolean;
-  loadSource: LoadSource;
-  loadCatalog: (forceLocal?: boolean) => Promise<boolean>;
-  reloadFromLocal: () => Promise<boolean>;
-  syncLocalToCloud: () => Promise<boolean>;
-  forceCloudReload: () => Promise<boolean>;
+  loadCatalog: () => Promise<boolean>;
   lastLoadedAt: string | null;
 }
 
 export function useCatalogLoader(): CatalogLoaderResult {
   const [isLoading, setIsLoading] = useState(false);
-  const [loadSource, setLoadSource] = useState<LoadSource>('none');
   const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null);
   
   const { loadLensData, saveCatalogToCloud, loadCatalogFromCloud } = useLensStore();
 
   /**
-   * Carrega o catálogo local do arquivo público
+   * Carrega o catálogo local do arquivo público (usado apenas para seed)
    */
   const loadLocalCatalog = useCallback(async (): Promise<LensData | null> => {
     try {
@@ -45,10 +34,9 @@ export function useCatalogLoader(): CatalogLoaderResult {
         throw new Error(`HTTP ${response.status}`);
       }
       const data: LensData = await response.json();
-      console.log('[CatalogLoader] Local catalog loaded:', {
+      console.log('[CatalogLoader] Local catalog loaded for seeding:', {
         families: data.families?.length || 0,
         prices: data.prices?.length || 0,
-        occupationalFamilies: data.families?.filter(f => f.category === 'OCUPACIONAL').length || 0
       });
       return data;
     } catch (error) {
@@ -58,45 +46,41 @@ export function useCatalogLoader(): CatalogLoaderResult {
   }, []);
 
   /**
-   * Carrega catálogo priorizando origem conforme flag
-   * @param forceLocal - Se true, ignora nuvem e usa apenas local
+   * Carrega catálogo da nuvem (única fonte de verdade)
+   * Se nuvem estiver vazia, faz seed automático do arquivo local
    */
-  const loadCatalog = useCallback(async (forceLocal: boolean = false): Promise<boolean> => {
+  const loadCatalog = useCallback(async (): Promise<boolean> => {
     setIsLoading(true);
     
     try {
-      // Modo FORCE LOCAL: ignora completamente a nuvem
-      if (forceLocal) {
-        console.log('[CatalogLoader] Force local mode - ignoring cloud');
-        const localData = await loadLocalCatalog();
-        if (localData) {
-          loadLensData(localData);
-          setLoadSource('local');
-          setLastLoadedAt(new Date().toISOString());
-          return true;
-        }
-        toast.error('Falha ao carregar catálogo local');
-        return false;
-      }
-
-      // Modo NORMAL: tenta nuvem primeiro, fallback local
-      console.log('[CatalogLoader] Normal mode - trying cloud first');
+      console.log('[CatalogLoader] Loading from cloud (single source of truth)...');
       const cloudLoaded = await loadCatalogFromCloud();
       
       if (cloudLoaded) {
-        setLoadSource('cloud');
         setLastLoadedAt(new Date().toISOString());
-        console.log('[CatalogLoader] Loaded from cloud');
+        console.log('[CatalogLoader] ✓ Loaded from cloud');
         return true;
       }
 
-      // Fallback para local
-      console.log('[CatalogLoader] Cloud failed, falling back to local');
+      // Nuvem vazia - fazer seed automático do arquivo local
+      console.log('[CatalogLoader] Cloud empty, auto-seeding from local file...');
       const localData = await loadLocalCatalog();
+      
       if (localData) {
         loadLensData(localData);
-        setLoadSource('local');
         setLastLoadedAt(new Date().toISOString());
+        
+        // Seed automático para nuvem
+        console.log('[CatalogLoader] Seeding to cloud...');
+        const seedSuccess = await saveCatalogToCloud();
+        
+        if (seedSuccess) {
+          toast.info('Catálogo inicializado na nuvem');
+          console.log('[CatalogLoader] ✓ Auto-seed complete');
+        } else {
+          console.warn('[CatalogLoader] ⚠ Seed to cloud failed, but local data loaded');
+        }
+        
         return true;
       }
 
@@ -109,110 +93,11 @@ export function useCatalogLoader(): CatalogLoaderResult {
     } finally {
       setIsLoading(false);
     }
-  }, [loadLensData, loadCatalogFromCloud, loadLocalCatalog]);
-
-  /**
-   * Força reload do arquivo local e sincroniza com a nuvem
-   * Use quando o arquivo local foi atualizado externamente
-   */
-  const reloadFromLocal = useCallback(async (): Promise<boolean> => {
-    setIsLoading(true);
-    
-    try {
-      console.log('[CatalogLoader] Force reloading from local file...');
-      const localData = await loadLocalCatalog();
-      
-      if (!localData) {
-        toast.error('Falha ao carregar arquivo local');
-        return false;
-      }
-
-      // Carrega no store
-      loadLensData(localData);
-      setLoadSource('local');
-      setLastLoadedAt(new Date().toISOString());
-
-      // Sincroniza automaticamente com a nuvem
-      console.log('[CatalogLoader] Syncing to cloud...');
-      const syncSuccess = await saveCatalogToCloud();
-      
-      if (syncSuccess) {
-        toast.success('Catálogo recarregado e sincronizado com a nuvem');
-      } else {
-        toast.warning('Catálogo carregado mas sincronização falhou');
-      }
-
-      return true;
-    } catch (error) {
-      console.error('[CatalogLoader] Reload error:', error);
-      toast.error('Erro ao recarregar catálogo');
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [loadLensData, saveCatalogToCloud, loadLocalCatalog]);
-
-  /**
-   * Sincroniza o catálogo atual do store para a nuvem
-   */
-  const syncLocalToCloud = useCallback(async (): Promise<boolean> => {
-    setIsLoading(true);
-    try {
-      const success = await saveCatalogToCloud();
-      if (success) {
-        toast.success('Catálogo sincronizado com a nuvem');
-      } else {
-        toast.error('Falha na sincronização');
-      }
-      return success;
-    } catch (error) {
-      console.error('[CatalogLoader] Sync error:', error);
-      toast.error('Erro na sincronização');
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [saveCatalogToCloud]);
-
-  /**
-   * Força recarga da nuvem, ignorando cache e limpando estado
-   * Use quando suspeitar que dados locais estão desatualizados
-   */
-  const forceCloudReload = useCallback(async (): Promise<boolean> => {
-    setIsLoading(true);
-    
-    try {
-      console.log('[CatalogLoader] Force cloud reload - clearing cache and reloading...');
-      
-      // Força carregamento da nuvem
-      const cloudLoaded = await loadCatalogFromCloud();
-      
-      if (cloudLoaded) {
-        setLoadSource('cloud');
-        setLastLoadedAt(new Date().toISOString());
-        console.log('[CatalogLoader] Force cloud reload successful');
-        toast.success('Catálogo recarregado da nuvem');
-        return true;
-      }
-      
-      toast.error('Nenhum catálogo encontrado na nuvem');
-      return false;
-    } catch (error) {
-      console.error('[CatalogLoader] Force cloud reload error:', error);
-      toast.error('Erro ao recarregar da nuvem');
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [loadCatalogFromCloud]);
+  }, [loadLensData, loadCatalogFromCloud, loadLocalCatalog, saveCatalogToCloud]);
 
   return {
     isLoading,
-    loadSource,
     loadCatalog,
-    reloadFromLocal,
-    syncLocalToCloud,
-    forceCloudReload,
     lastLoadedAt,
   };
 }
