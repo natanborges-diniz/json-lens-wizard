@@ -130,8 +130,8 @@ const CatalogAudit = () => {
     }
   }, [technologyLibrary]);
 
-  // Load data on mount - usando hook centralizado
-  const { isLoading: catalogLoading, loadSource, loadCatalog, reloadFromLocal } = useCatalogLoader();
+  // Load data on mount - cloud is single source of truth
+  const { isLoading: catalogLoading, loadCatalog } = useCatalogLoader();
 
   useEffect(() => {
     if (families.length === 0) {
@@ -139,16 +139,6 @@ const CatalogAudit = () => {
       loadCatalog().finally(() => setIsLoading(false));
     }
   }, [families.length, loadCatalog]);
-
-  // Handler para forçar reload do arquivo local (sobrescreve nuvem)
-  const handleForceLocalReload = async () => {
-    setIsLoading(true);
-    const success = await reloadFromLocal();
-    if (success) {
-      toast.success('Catálogo recarregado do arquivo local e sincronizado com a nuvem');
-    }
-    setIsLoading(false);
-  };
 
   // Get unique values for filters
   const uniqueSuppliers = useMemo(() => 

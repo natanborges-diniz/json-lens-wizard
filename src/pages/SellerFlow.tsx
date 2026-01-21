@@ -90,8 +90,8 @@ const SellerFlow = () => {
   // Use catalog resolver for dynamic tier mapping (no hardcode)
   const { getTierKey } = useCatalogResolver();
 
-  // Use centralized catalog loader - ALWAYS prioritizes cloud
-  const { loadCatalog, loadSource, isLoading: catalogLoading } = useCatalogLoader();
+  // Use centralized catalog loader - cloud is single source of truth
+  const { loadCatalog, isLoading: catalogLoading } = useCatalogLoader();
 
   const { 
     families = [], 
@@ -107,16 +107,15 @@ const SellerFlow = () => {
     rawLensData,
   } = useLensStore();
 
-  // Load data on mount using centralized loader - ALWAYS prioritizes cloud
+  // Load data on mount using centralized loader - cloud is single source of truth
   useEffect(() => {
     const loadData = async () => {
       // Only load if we don't have data yet
       if (families.length === 0) {
         setIsLoading(true);
         try {
-          // Use centralized loader - tries cloud first, fallback to local
-          const success = await loadCatalog(false); // false = don't force local
-          console.log('[SellerFlow] Catalog loaded:', success, 'source:', loadSource);
+          const success = await loadCatalog();
+          console.log('[SellerFlow] Catalog loaded:', success);
           
           if (!success) {
             toast.error('Erro ao carregar dados das lentes');
@@ -130,7 +129,7 @@ const SellerFlow = () => {
       }
     };
     loadData();
-  }, [loadCatalog, loadSource, families.length]);
+  }, [loadCatalog, families.length]);
 
   // Debug: verificar integridade dos dados carregados
   useEffect(() => {
