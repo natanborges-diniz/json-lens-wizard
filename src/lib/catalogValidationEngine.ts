@@ -18,7 +18,7 @@ import type { LensData, Price, FamilyExtended, IndexDisplay } from '@/types/lens
 
 export interface ValidationRuleBase {
   id: string;
-  type: 'structure' | 'reference' | 'field_presence' | 'aggregation';
+  type: 'structure' | 'reference' | 'field_presence' | 'aggregation' | 'enum_validation';
   level: 'block' | 'warning';
   message: string;
 }
@@ -44,7 +44,14 @@ export interface AggregationRule extends ValidationRuleBase {
   definition: string;
 }
 
-export type ValidationRule = StructureRule | ReferenceRule | FieldPresenceRule | AggregationRule;
+export interface EnumValidationRule extends ValidationRuleBase {
+  type: 'enum_validation';
+  field: string; // e.g. "families[].clinical_type"
+  allowed_values: string[];
+  optional?: boolean; // If true, missing values are allowed
+}
+
+export type ValidationRule = StructureRule | ReferenceRule | FieldPresenceRule | AggregationRule | EnumValidationRule;
 
 export interface PostImportAction {
   id: string;
@@ -394,6 +401,53 @@ function executeAggregationRule(rule: AggregationRule, data: LensData): Validati
   return errors;
 }
 
+function executeEnumValidationRule(rule: EnumValidationRule, data: LensData): ValidationError[] {
+  const errors: ValidationError[] = [];
+  
+  // Parse field path (e.g. "families[].clinical_type")
+  const match = rule.field.match(/^(\w+)\[\]\.(.+)$/);
+  if (!match) return errors;
+  
+  const [, section, field] = match;
+  const array = (data as Record<string, unknown>)[section];
+  
+  if (!Array.isArray(array)) return errors;
+  
+  const allowedSet = new Set(rule.allowed_values);
+  
+  array.forEach((item, index) => {
+    if (!item || typeof item !== 'object') return;
+    
+    const record = item as Record<string, unknown>;
+    const value = record[field];
+    const identifier = record.id || record.erp_code || `[${index}]`;
+    
+    // If field is missing/null/undefined
+    if (value === null || value === undefined || value === '') {
+      // If optional, skip validation
+      if (rule.optional) return;
+      // Otherwise, skip - will be caught by field_presence rule if needed
+      return;
+    }
+    
+    // Check if value is in allowed set
+    if (!allowedSet.has(String(value))) {
+      errors.push({
+        code: 'INVALID_ENUM_VALUE',
+        ruleId: rule.id,
+        message: `${rule.message} (${identifier} → "${value}")`,
+        section,
+        item: String(identifier),
+        field,
+        context: { invalidValue: value, allowed: rule.allowed_values },
+        severity: rule.level === 'block' ? 'blocking' : 'warning'
+      });
+    }
+  });
+  
+  return errors;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // ENGINE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
@@ -425,6 +479,9 @@ export async function validateCatalogImport(
         break;
       case 'aggregation':
         ruleErrors = executeAggregationRule(rule as AggregationRule, data);
+        break;
+      case 'enum_validation':
+        ruleErrors = executeEnumValidationRule(rule as EnumValidationRule, data);
         break;
     }
     
@@ -458,6 +515,9 @@ export async function validateCatalogImport(
         break;
       case 'aggregation':
         ruleErrors = executeAggregationRule(rule as AggregationRule, data);
+        break;
+      case 'enum_validation':
+        ruleErrors = executeEnumValidationRule(rule as EnumValidationRule, data);
         break;
     }
     

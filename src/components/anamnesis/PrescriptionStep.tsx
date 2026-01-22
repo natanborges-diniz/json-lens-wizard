@@ -3,12 +3,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AnamnesisStep } from './AnamnesisStep';
-import type { Prescription } from '@/types/lens';
+import type { Prescription, ClinicalType } from '@/types/lens';
 
 interface PrescriptionStepProps {
   data: Partial<Prescription>;
   onUpdate: (data: Partial<Prescription>) => void;
-  lensCategory: 'PROGRESSIVA' | 'MONOFOCAL' | 'OCUPACIONAL';
+  lensCategory: ClinicalType;
 }
 
 export const PrescriptionStep = ({ data, onUpdate, lensCategory }: PrescriptionStepProps) => {

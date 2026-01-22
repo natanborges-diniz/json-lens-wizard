@@ -27,7 +27,7 @@ import type {
   LensData, 
   AnamnesisData,
   FrameMeasurements,
-  LensCategory
+  ClinicalType
 } from '@/types/lens';
 import type { SelectedProduct } from '@/lib/productSuggestionEngine';
 import { toast } from 'sonner';
@@ -82,7 +82,7 @@ const SellerFlow = () => {
     dp: 64,
     altura: 18,
   });
-  const [lensCategory, setLensCategory] = useState<LensCategory>('PROGRESSIVA');
+  const [lensCategory, setLensCategory] = useState<ClinicalType>('PROGRESSIVA');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedConfiguration, setSelectedConfiguration] = useState<LensCardConfiguration | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);

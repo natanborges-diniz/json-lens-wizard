@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
-import type { Family, AnamnesisData, LensData } from '@/types/lens';
+import type { Family, AnamnesisData, LensData, ClinicalType } from '@/types/lens';
 import { toast } from 'sonner';
 
 export interface AIRecommendation {
@@ -31,7 +31,7 @@ export interface AIResponse {
 interface SmartSearchProps {
   lensData: LensData | null;
   anamnesisData: AnamnesisData;
-  lensCategory: 'PROGRESSIVA' | 'MONOFOCAL' | 'OCUPACIONAL';
+  lensCategory: ClinicalType;
   onHighlightFamilies: (familyIds: string[]) => void;
   onSuggestAddons: (addonIds: string[]) => void;
   onSelectAIRecommendation?: (recommendation: AIRecommendation, allRecommendations: AIRecommendation[], aiResponse: AIResponse) => void;
