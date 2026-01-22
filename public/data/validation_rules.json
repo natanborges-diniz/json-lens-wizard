@@ -1,10 +1,10 @@
 {
   "meta": {
-    "version": "1.0",
+    "version": "1.1",
     "scope": "lenses_catalog",
     "name": "Validation Rules - Lenses Catalog",
-    "generated_at": "2026-01-20",
-    "description": "Regras de validação (bloqueantes e alertas) + ações pós-import para o catálogo de lentes."
+    "generated_at": "2026-01-22",
+    "description": "Regras de validação (bloqueantes e alertas) + ações pós-import para o catálogo de lentes. Schema alinhado com Prompt Canônico V1."
   },
   "blocking_rules": [
     {
@@ -47,6 +47,23 @@
         "prices[].price_sale_half_pair"
       ],
       "message": "SKU sem código ERP ou sem preço de venda."
+    },
+    {
+      "id": "FAMILY_CLINICAL_TYPE_VALID",
+      "type": "enum_validation",
+      "level": "block",
+      "field": "families[].clinical_type",
+      "allowed_values": ["MONOFOCAL", "PROGRESSIVA", "OCUPACIONAL", "BIFOCAL"],
+      "message": "Família com clinical_type inválido. Valores permitidos: MONOFOCAL, PROGRESSIVA, OCUPACIONAL, BIFOCAL."
+    },
+    {
+      "id": "SKU_PROCESS_VALID",
+      "type": "enum_validation",
+      "level": "block",
+      "field": "prices[].process",
+      "allowed_values": ["PRONTA", "SURFACADA"],
+      "optional": true,
+      "message": "SKU com process inválido. Valores permitidos: PRONTA, SURFACADA."
     }
   ],
   "warning_rules": [
@@ -73,6 +90,24 @@
         "families[].technology_refs"
       ],
       "message": "Família sem tecnologias associadas (technology_refs vazio ou ausente)."
+    },
+    {
+      "id": "FAMILY_MISSING_CLINICAL_TYPE",
+      "type": "field_presence",
+      "level": "warning",
+      "fields": [
+        "families[].clinical_type"
+      ],
+      "message": "Família sem clinical_type definido (usando category legado)."
+    },
+    {
+      "id": "SKU_MISSING_PROCESS",
+      "type": "field_presence",
+      "level": "warning",
+      "fields": [
+        "prices[].process"
+      ],
+      "message": "SKU sem process definido (usando manufacturing_type legado)."
     }
   ],
   "post_import_actions": [
@@ -113,6 +148,24 @@
           "Exportar CSV/JSON do relatório"
         ]
       }
+    ]
+  },
+  "governance": {
+    "policy": "ZERO_CREATION",
+    "description": "O sistema NÃO CRIA produtos, NÃO INVENTA SKUs, NÃO ALTERA vínculos estruturais. Apenas consome, valida, interpreta e recomenda.",
+    "allowed_actions": [
+      "Aplicar regras de validação",
+      "Validar integridade referencial",
+      "Comparar produtos existentes",
+      "Gerar alertas para correção manual",
+      "Permitir edição manual no Admin"
+    ],
+    "forbidden_actions": [
+      "Criar famílias automaticamente",
+      "Criar SKUs automaticamente",
+      "Reatribuir family_id",
+      "Inferir preços",
+      "Criar tecnologias não existentes"
     ]
   }
 }

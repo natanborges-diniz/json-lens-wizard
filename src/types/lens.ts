@@ -11,8 +11,14 @@ export interface AttributeDef {
   scale: string;
 }
 
-// Lens category type - includes occupational lenses
-export type LensCategory = 'PROGRESSIVA' | 'MONOFOCAL' | 'OCUPACIONAL';
+// Clinical type - official classification per Prompt Canônico V1
+export type ClinicalType = 'MONOFOCAL' | 'PROGRESSIVA' | 'OCUPACIONAL' | 'BIFOCAL';
+
+// Process type - manufacturing process
+export type ProcessType = 'PRONTA' | 'SURFACADA';
+
+// Legacy lens category type (deprecated - use ClinicalType)
+export type LensCategory = ClinicalType;
 
 export interface Macro {
   id: string;
@@ -25,7 +31,8 @@ export interface Family {
   id: string;
   supplier: string;
   name_original: string;
-  category: LensCategory;
+  category: LensCategory; // Legacy field
+  clinical_type?: ClinicalType; // New official field per Prompt Canônico V1
   macro: string;
   attributes_base: Record<string, number | boolean>;
   attributes_display_base: string[];
@@ -63,8 +70,10 @@ export interface Price {
   erp_code: string;
   description: string;
   supplier: string;
-  lens_category_raw: string;
-  manufacturing_type: string;
+  lens_category_raw: string; // Legacy field
+  clinical_type?: ClinicalType; // New official field per Prompt Canônico V1
+  manufacturing_type: string; // Legacy field (LS, SF, PRONTA)
+  process?: ProcessType; // New official field per Prompt Canônico V1
   index: string;
   price_purchase_half_pair: number;
   price_sale_half_pair: number;

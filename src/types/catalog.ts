@@ -48,8 +48,14 @@ export interface QuoteExplainer {
   closing_templates: string[];
 }
 
-// Lens category type - includes occupational lenses
-export type LensCategory = 'PROGRESSIVA' | 'MONOFOCAL' | 'OCUPACIONAL';
+// Clinical type - official classification per Prompt Canônico V1
+export type ClinicalType = 'MONOFOCAL' | 'PROGRESSIVA' | 'OCUPACIONAL' | 'BIFOCAL';
+
+// Process type - manufacturing process
+export type ProcessType = 'PRONTA' | 'SURFACADA';
+
+// Legacy lens category type (deprecated - use ClinicalType)
+export type LensCategory = ClinicalType;
 
 // Extended Macro with display configuration
 export interface MacroDisplay {

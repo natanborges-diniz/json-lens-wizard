@@ -8,7 +8,7 @@ import { SmartSearch, AIRecommendation, AIResponse } from '@/components/search/S
 import { ProductSuggestionCards } from './ProductSuggestionCards';
 import { ProductCart } from './ProductCart';
 import { AdditionalProductModal } from './AdditionalProductModal';
-import type { Family, Price, Addon, Tier, AttributeDef, AnamnesisData, LensData, Prescription } from '@/types/lens';
+import type { Family, Price, Addon, Tier, AttributeDef, AnamnesisData, LensData, Prescription, ClinicalType } from '@/types/lens';
 import type { SelectedProduct, ProductSuggestion } from '@/lib/productSuggestionEngine';
 import { 
   generateProductSuggestions, 
@@ -33,7 +33,7 @@ interface RecommendationsGridProps {
   onSelectProducts?: (products: SelectedProduct[]) => void;
   selectedFamilyId?: string;
   mostRecommendedId?: string;
-  lensCategory: 'PROGRESSIVA' | 'MONOFOCAL' | 'OCUPACIONAL';
+  lensCategory: ClinicalType;
   attributeDefs: AttributeDef[];
   anamnesisData?: AnamnesisData;
   prescriptionData?: Partial<Prescription>;
