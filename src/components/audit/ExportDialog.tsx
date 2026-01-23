@@ -196,8 +196,18 @@ export const ExportDialog = ({ families, macros, technologies }: ExportDialogPro
     const date = new Date().toISOString().slice(0, 10);
     const filename = `catalogo-lentes-${mode === 'compact' ? 'compacto' : 'detalhado'}-${date}.xlsx`;
     
+    // Count total SKUs for detailed mode toast message
+    const totalSkus = mode === 'detailed' 
+      ? families.reduce((acc, f) => acc + (f.prices?.length || 0), 0) 
+      : 0;
+    
     XLSX.writeFile(workbook, filename);
-    toast.success(`Arquivo ${filename} exportado com sucesso!`);
+    
+    if (mode === 'detailed' && totalSkus > 0) {
+      toast.success(`${filename} exportado: ${families.length} famílias + ${totalSkus} SKUs (verifique as abas do Excel)`);
+    } else {
+      toast.success(`Arquivo ${filename} exportado com sucesso!`);
+    }
   };
 
   const exportToPDF = async () => {
