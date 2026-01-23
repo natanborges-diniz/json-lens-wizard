@@ -22,7 +22,8 @@ import {
   FileText,
   AlertCircle,
   Info,
-  ShieldCheck
+  ShieldCheck,
+  XCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -638,7 +639,60 @@ const AdminDashboard = () => {
                         </span>
                       </div>
 
-                      {importResult.summary && (
+                      {/* Show detailed errors when import fails */}
+                      {!importResult.success && importResult.validation && (
+                        <div className="space-y-3">
+                          {importResult.validation.errors.length > 0 && (
+                            <div className="p-3 bg-destructive/5 border border-destructive/20 rounded-lg">
+                              <h4 className="font-medium text-destructive text-sm mb-2 flex items-center gap-2">
+                                <XCircle className="w-4 h-4" />
+                                Erros de Validação ({importResult.validation.errors.length})
+                              </h4>
+                              <ul className="space-y-1 text-sm text-destructive/80">
+                                {importResult.validation.errors.map((error, idx) => (
+                                  <li key={idx} className="pl-4 relative before:content-['•'] before:absolute before:left-1">
+                                    {error}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          
+                          {importResult.validation.integrityErrors.length > 0 && (
+                            <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
+                              <h4 className="font-medium text-amber-600 text-sm mb-2 flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4" />
+                                Erros de Integridade ({importResult.validation.integrityErrors.length})
+                              </h4>
+                              <ul className="space-y-1 text-sm text-amber-600/80">
+                                {importResult.validation.integrityErrors.map((error, idx) => (
+                                  <li key={idx} className="pl-4 relative before:content-['•'] before:absolute before:left-1">
+                                    {error}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          
+                          {importResult.validation.warnings.length > 0 && (
+                            <div className="p-3 bg-muted/50 border rounded-lg">
+                              <h4 className="font-medium text-muted-foreground text-sm mb-2 flex items-center gap-2">
+                                <Info className="w-4 h-4" />
+                                Avisos ({importResult.validation.warnings.length})
+                              </h4>
+                              <ul className="space-y-1 text-sm text-muted-foreground">
+                                {importResult.validation.warnings.map((warning, idx) => (
+                                  <li key={idx} className="pl-4 relative before:content-['•'] before:absolute before:left-1">
+                                    {warning}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {importResult.success && importResult.summary && (
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           <div className="p-2 bg-muted/50 rounded flex justify-between">
                             <span className="text-muted-foreground">Famílias</span>
