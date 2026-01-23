@@ -26,6 +26,7 @@ export interface ValidationRuleBase {
 export interface StructureRule extends ValidationRuleBase {
   type: 'structure';
   required_sections: string[];
+  check_empty?: boolean; // If true, also check if sections are empty arrays/objects
 }
 
 export interface ReferenceRule extends ValidationRuleBase {
@@ -216,7 +217,16 @@ function extractUniqueValuesFromPath(data: LensData, path: string): Set<unknown>
 function executeStructureRule(rule: StructureRule, data: LensData): ValidationError[] {
   const errors: ValidationError[] = [];
   
+  const isEmptySection = (value: unknown): boolean => {
+    if (value === null || value === undefined) return true;
+    if (Array.isArray(value) && value.length === 0) return true;
+    if (typeof value === 'object' && Object.keys(value as object).length === 0) return true;
+    return false;
+  };
+  
   for (const section of rule.required_sections) {
+    const sectionValue = data[section as keyof LensData];
+    
     if (!(section in data)) {
       errors.push({
         code: 'MISSING_SECTION',
@@ -225,11 +235,19 @@ function executeStructureRule(rule: StructureRule, data: LensData): ValidationEr
         section,
         severity: rule.level === 'block' ? 'blocking' : 'warning'
       });
-    } else if (data[section as keyof LensData] === null || data[section as keyof LensData] === undefined) {
+    } else if (sectionValue === null || sectionValue === undefined) {
       errors.push({
         code: 'NULL_SECTION',
         ruleId: rule.id,
         message: `${rule.message} Seção nula: "${section}"`,
+        section,
+        severity: rule.level === 'block' ? 'blocking' : 'warning'
+      });
+    } else if (rule.check_empty && isEmptySection(sectionValue)) {
+      errors.push({
+        code: 'EMPTY_SECTION',
+        ruleId: rule.id,
+        message: `${rule.message} Seção "${section}" está vazia.`,
         section,
         severity: rule.level === 'block' ? 'blocking' : 'warning'
       });

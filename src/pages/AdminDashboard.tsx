@@ -62,7 +62,7 @@ import { CatalogVersionBadge, saveCatalogVersion } from '@/components/audit/Cata
 import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
 import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
 import { ImportValidationReport } from '@/components/audit/ImportValidationReport';
-import { validateCatalogImport, executePostImportActions, type ValidationReport } from '@/lib/catalogValidationEngine';
+import { validateCatalogImport, executePostImportActions, clearRulesCache, type ValidationReport } from '@/lib/catalogValidationEngine';
 import { toast } from 'sonner';
 
 // Tier mapping for display (fallback, prefer JSON data)
@@ -195,6 +195,8 @@ const AdminDashboard = () => {
       const data = JSON.parse(sanitizedInput) as LensData;
       
       // STEP 1: Run comprehensive validation BEFORE import (now async)
+      // Clear rules cache to ensure fresh rules are loaded
+      clearRulesCache();
       console.log('[AdminDashboard] Running pre-import validation...');
       const report = await validateCatalogImport(data, importMode);
       setValidationReport(report);

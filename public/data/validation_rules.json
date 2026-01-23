@@ -20,7 +20,17 @@
         "addons",
         "prices"
       ],
-      "message": "JSON inválido: seções obrigatórias ausentes."
+      "check_empty": true,
+      "message": "JSON inválido: seções obrigatórias ausentes ou vazias."
+    },
+    {
+      "id": "MACRO_TIER_KEY_VALID",
+      "type": "enum_validation",
+      "level": "block",
+      "field": "macros[].tier_key",
+      "allowed_values": ["essential", "comfort", "advanced", "top"],
+      "optional": true,
+      "message": "Macro com tier_key inválido. Valores permitidos: essential, comfort, advanced, top."
     },
     {
       "id": "FAMILY_MACRO_INTEGRITY",
