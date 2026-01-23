@@ -372,11 +372,11 @@ export const FamilyCard = ({
           </div>
 
           {/* Attributes */}
-          {family.attributes_display_base.length > 0 && (
+          {(family.attributes_display_base?.length ?? 0) > 0 && (
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-2">Atributos:</p>
               <div className="flex flex-wrap gap-1">
-                {family.attributes_display_base.map((attr, i) => (
+                {family.attributes_display_base?.map((attr, i) => (
                   <Badge key={i} variant="secondary" className="text-xs">
                     {attr}
                   </Badge>
