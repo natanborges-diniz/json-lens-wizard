@@ -861,14 +861,14 @@ const AdminDashboard = () => {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-1 max-w-md">
-                        {family.attributes_display_base.slice(0, 2).map((attr, i) => (
+                        {(family.attributes_display_base ?? []).slice(0, 2).map((attr, i) => (
                           <Badge key={i} variant="outline" className="text-xs">
                             {attr.length > 30 ? attr.slice(0, 30) + '...' : attr}
                           </Badge>
                         ))}
-                        {family.attributes_display_base.length > 2 && (
+                        {(family.attributes_display_base?.length ?? 0) > 2 && (
                           <Badge variant="outline" className="text-xs">
-                            +{family.attributes_display_base.length - 2}
+                            +{(family.attributes_display_base?.length ?? 0) - 2}
                           </Badge>
                         )}
                       </div>
@@ -926,14 +926,14 @@ const AdminDashboard = () => {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-1 max-w-md">
-                        {family.attributes_display_base.slice(0, 2).map((attr, i) => (
+                        {(family.attributes_display_base ?? []).slice(0, 2).map((attr, i) => (
                           <Badge key={i} variant="outline" className="text-xs">
                             {attr.length > 30 ? attr.slice(0, 30) + '...' : attr}
                           </Badge>
                         ))}
-                        {family.attributes_display_base.length > 2 && (
+                        {(family.attributes_display_base?.length ?? 0) > 2 && (
                           <Badge variant="outline" className="text-xs">
-                            +{family.attributes_display_base.length - 2}
+                            +{(family.attributes_display_base?.length ?? 0) - 2}
                           </Badge>
                         )}
                       </div>
@@ -995,14 +995,14 @@ const AdminDashboard = () => {
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-1 max-w-md">
-                          {family.attributes_display_base.slice(0, 2).map((attr, i) => (
+                          {(family.attributes_display_base ?? []).slice(0, 2).map((attr, i) => (
                             <Badge key={i} variant="outline" className="text-xs">
                               {attr.length > 30 ? attr.slice(0, 30) + '...' : attr}
                             </Badge>
                           ))}
-                          {family.attributes_display_base.length > 2 && (
+                          {(family.attributes_display_base?.length ?? 0) > 2 && (
                             <Badge variant="outline" className="text-xs">
-                              +{family.attributes_display_base.length - 2}
+                              +{(family.attributes_display_base?.length ?? 0) - 2}
                             </Badge>
                           )}
                         </div>

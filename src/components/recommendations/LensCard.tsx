@@ -366,15 +366,15 @@ export const LensCard = ({
           <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
             Inclusos
           </h4>
-          {family.attributes_display_base.slice(0, 3).map((attr, i) => (
+          {(family.attributes_display_base ?? []).slice(0, 3).map((attr, i) => (
             <div key={i} className="flex items-start gap-2 text-xs">
               <Check className="w-3.5 h-3.5 text-success shrink-0 mt-0.5" />
               <span className="text-muted-foreground">{attr}</span>
             </div>
           ))}
-          {family.attributes_display_base.length > 3 && (
+          {(family.attributes_display_base?.length ?? 0) > 3 && (
             <div className="text-xs text-muted-foreground pl-5">
-              +{family.attributes_display_base.length - 3} benefícios
+              +{(family.attributes_display_base?.length ?? 0) - 3} benefícios
             </div>
           )}
         </div>
