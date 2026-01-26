@@ -67,9 +67,13 @@ export const ExportDialog = ({ families, macros, technologies }: ExportDialogPro
 
   const exportToExcel = () => {
     const workbook = XLSX.utils.book_new();
+    const isCompactMode = mode === 'compact';
+    
+    console.log('[ExportDialog] Exporting with mode:', mode, 'isCompact:', isCompactMode);
 
-    if (mode === 'compact') {
-      // Compact: One row per family
+    if (isCompactMode) {
+      // Compact: One row per family - single sheet only
+      console.log('[ExportDialog] Creating COMPACT export - single Famílias sheet');
       const data = families.map(family => {
         const macroInfo = getMacroInfo(family.macro);
         return {
@@ -109,8 +113,10 @@ export const ExportDialog = ({ families, macros, technologies }: ExportDialogPro
       ];
 
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Famílias');
+      console.log('[ExportDialog] Compact export: 1 sheet (Famílias) with', data.length, 'rows');
     } else {
-      // Detailed: Multiple sheets - Families + SKUs
+      // Detailed: Multiple sheets - Families + SKUs + Tecnologias
+      console.log('[ExportDialog] Creating DETAILED export - 3 sheets');
       
       // Families sheet
       const familiesData = families.map(family => {
@@ -144,7 +150,7 @@ export const ExportDialog = ({ families, macros, technologies }: ExportDialogPro
       // SKUs sheet
       const skusData: any[] = [];
       families.forEach(family => {
-        family.prices.forEach(price => {
+        (family.prices || []).forEach(price => {
           skusData.push({
             'Família ID': family.id,
             'Família Nome': family.name_original,
@@ -190,23 +196,24 @@ export const ExportDialog = ({ families, macros, technologies }: ExportDialogPro
         ];
         XLSX.utils.book_append_sheet(workbook, techsSheet, 'Tecnologias');
       }
+      
+      console.log('[ExportDialog] Detailed export: Famílias:', familiesData.length, 'SKUs:', skusData.length, 'Tecnologias:', techsData.length);
     }
 
     // Generate filename with date
     const date = new Date().toISOString().slice(0, 10);
-    const filename = `catalogo-lentes-${mode === 'compact' ? 'compacto' : 'detalhado'}-${date}.xlsx`;
+    const isCompact = mode === 'compact';
+    const filename = `catalogo-lentes-${isCompact ? 'compacto' : 'detalhado'}-${date}.xlsx`;
     
-    // Count total SKUs for detailed mode toast message
-    const totalSkus = mode === 'detailed' 
-      ? families.reduce((acc, f) => acc + (f.prices?.length || 0), 0) 
-      : 0;
+    console.log('[ExportDialog] Writing file:', filename);
     
     XLSX.writeFile(workbook, filename);
     
-    if (mode === 'detailed' && totalSkus > 0) {
-      toast.success(`${filename} exportado: ${families.length} famílias + ${totalSkus} SKUs (verifique as abas do Excel)`);
+    if (isCompact) {
+      toast.success(`${filename} exportado: ${families.length} famílias (1 aba)`);
     } else {
-      toast.success(`Arquivo ${filename} exportado com sucesso!`);
+      const totalSkus = families.reduce((acc, f) => acc + (f.prices?.length || 0), 0);
+      toast.success(`${filename} exportado: ${families.length} famílias + ${totalSkus} SKUs (verifique as 3 abas)`);
     }
   };
 
