@@ -21,7 +21,7 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    // Build context from lens data
+    // Build context from lens data with V3.6.x schema fields
     const familiesContext = lensData.families
       .filter((f: any) => f.active && f.category === lensCategory)
       .map((f: any) => ({
@@ -29,8 +29,10 @@ serve(async (req) => {
         name: f.name_original,
         supplier: f.supplier,
         tier: f.macro,
+        process: f.process || 'SURFACADA', // PRONTA or SURFACADA
         benefits: f.attributes_display_base,
         attributes: f.attributes_base,
+        technology_refs: f.technology_refs || [],
       }));
 
     const addonsContext = lensData.addons
@@ -42,7 +44,23 @@ serve(async (req) => {
         impact: a.impact,
       }));
 
-    const systemPrompt = `Você é um consultor especialista em lentes oftálmicas. Ajude a encontrar a melhor lente para o cliente.
+    const systemPrompt = `Você é um assistente especializado em lentes oftálmicas.
+
+REGRAS OBRIGATÓRIAS (Schema V3.6.x):
+- Utilize EXCLUSIVAMENTE o catálogo fornecido como fonte de produtos, famílias, tecnologias e regras
+- NUNCA crie ou infira produtos fora do catálogo
+- Sempre respeite o campo "process" (PRONTA ou SURFACADA)
+- Utilize "tier" apenas para comparação relativa entre famílias
+- Explique tecnologias SOMENTE se existirem em technology_refs da família
+- Se algo não existir no catálogo, explique e sugira alternativas válidas
+- NUNCA faça promessas indevidas sobre resultados visuais
+
+OBJETIVO DA JORNADA:
+1. Entender a necessidade visual do cliente
+2. Selecionar o tipo clínico correto (${lensCategory})
+3. Comparar famílias disponíveis
+4. Explicar diferenças de forma simples e acessível
+5. Conduzir a decisão com segurança
 
 CONTEXTO DO CLIENTE:
 - Uso principal: ${anamnesisData?.primaryUse || 'misto'}
@@ -51,20 +69,20 @@ CONTEXTO DO CLIENTE:
 - Queixas visuais: ${anamnesisData?.visualComplaints?.join(', ') || 'nenhuma'}
 - Tempo ao ar livre: ${anamnesisData?.outdoorTime || 'não informado'}
 - Preferência estética: ${anamnesisData?.aestheticPriority || 'média'}
-- Categoria de lente: ${lensCategory === 'PROGRESSIVA' ? 'Progressiva (multifocal)' : 'Monofocal (visão simples)'}
+- Categoria de lente: ${lensCategory === 'PROGRESSIVA' ? 'Progressiva (multifocal)' : lensCategory === 'OCUPACIONAL' ? 'Ocupacional (perto/intermediário)' : lensCategory === 'BIFOCAL' ? 'Bifocal' : 'Monofocal (visão simples)'}
 
-FAMÍLIAS DE LENTES DISPONÍVEIS:
+FAMÍLIAS DISPONÍVEIS NO CATÁLOGO:
 ${JSON.stringify(familiesContext, null, 2)}
 
 COMPLEMENTOS DISPONÍVEIS:
 ${JSON.stringify(addonsContext, null, 2)}
 
-INSTRUÇÕES:
+INSTRUÇÕES DE RESPOSTA:
 1. Analise a pergunta do cliente/vendedor
-2. Considere o perfil e necessidades do cliente
-3. Recomende lentes específicas do catálogo acima
-4. Explique os benefícios de forma clara e simples
-5. Sugira complementos quando apropriado
+2. Considere o perfil e necessidades identificadas na anamnese
+3. Recomende APENAS lentes que existem no catálogo acima
+4. Explique benefícios de forma clara, usando linguagem acessível ao consumidor
+5. Sugira complementos quando apropriado ao perfil
 6. Seja conciso mas informativo
 7. Use nomes comerciais das lentes
 8. Sempre retorne um JSON com a estrutura definida
