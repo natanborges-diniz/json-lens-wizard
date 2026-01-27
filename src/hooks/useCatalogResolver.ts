@@ -11,7 +11,8 @@ import type {
   BenefitRules,
   QuoteExplainer,
   IndexDisplay,
-  AnamnesisData 
+  AnamnesisData,
+  ClinicalType 
 } from '@/types/lens';
 import type { CatalogEvent } from '@/store/lensStore';
 
@@ -276,12 +277,47 @@ export const useCatalogResolver = (): CatalogResolverResult => {
     return Object.values(technologyLibrary.items);
   }, [technologyLibrary]);
   
-  // Get technologies for a family
-  const getTechnologiesForFamily = useCallback((family: FamilyExtended): Technology[] => {
-    if (!family.technology_refs || !technologyLibrary?.items) return [];
-    return family.technology_refs
-      .map(ref => technologyLibrary.items[ref])
+  // Get technologies for a family with anti-duplication logic
+  // Prevents duplicate "Base" technologies when family already has one
+  const getTechnologiesForFamily = useCallback((family: FamilyExtended, options?: { 
+    includeAutoBase?: boolean; 
+    clinicalType?: ClinicalType 
+  }): Technology[] => {
+    const techRefs = family.technology_refs || [];
+    const techLib = technologyLibrary?.items || {};
+    
+    // Resolve technologies from family.technology_refs
+    const resolvedTechs = techRefs
+      .map(ref => techLib[ref])
       .filter(Boolean) as Technology[];
+    
+    // Check if auto-base should be added
+    if (!options?.includeAutoBase) {
+      return resolvedTechs;
+    }
+    
+    // Anti-duplication: Check if any "Base" technology already exists
+    const hasBaseTech = resolvedTechs.some(tech => 
+      tech.group === 'Base' || 
+      tech.name_common.toLowerCase().startsWith('base ')
+    );
+    
+    // If base already exists, don't add auto-base
+    if (hasBaseTech) {
+      return resolvedTechs;
+    }
+    
+    // Generate auto-base tech ID based on clinical type
+    const clinicalType = options.clinicalType || family.category;
+    const autoBaseTechId = `BASE_${clinicalType}`;
+    const autoBaseTech = techLib[autoBaseTechId];
+    
+    // If auto-base tech exists in library and not already in list, prepend it
+    if (autoBaseTech && !techRefs.includes(autoBaseTechId)) {
+      return [autoBaseTech, ...resolvedTechs];
+    }
+    
+    return resolvedTechs;
   }, [technologyLibrary]);
   
   // Get index display configuration - reads from JSON first

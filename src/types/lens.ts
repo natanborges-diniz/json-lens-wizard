@@ -115,6 +115,7 @@ export interface Technology {
   description_long?: string;
   benefits?: string[];
   icon?: string;
+  group?: string; // e.g., "Base", "Digital", "Coating" - used for deduplication
 }
 
 export interface TechnologyLibrary {
