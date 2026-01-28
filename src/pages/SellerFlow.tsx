@@ -244,6 +244,13 @@ const SellerFlow = () => {
     const categoryFamilies = families.filter(f => 
       f.active && f.category === lensCategory
     );
+    
+    console.log(`[SellerFlow] Filtering families for category: ${lensCategory}`);
+    console.log(`[SellerFlow] Total families: ${families.length}, Category families: ${categoryFamilies.length}`);
+    
+    // Debug: show unique macros for this category
+    const uniqueMacros = [...new Set(categoryFamilies.map(f => f.macro))];
+    console.log(`[SellerFlow] Unique macros in category: ${JSON.stringify(uniqueMacros)}`);
 
     // Get priority for suppliers per macro
     const getPriority = (macroId: string, supplier: string): number => {
@@ -255,8 +262,12 @@ const SellerFlow = () => {
 
     // Group by macro and find best price for each family
     categoryFamilies.forEach(family => {
-      const tier = getTierKey(family.macro);
-      if (!tier) return;
+      // Use family.tier_target if available (from catalog), otherwise infer from macro
+      const tier = (family as any).tier_target || getTierKey(family.macro);
+      if (!tier) {
+        console.warn(`[SellerFlow] No tier for family: ${family.id}`);
+        return;
+      }
 
       // Only pass prescription if it has real values (not just initialization defaults)
       const hasRealPrescription = 
@@ -281,6 +292,14 @@ const SellerFlow = () => {
       });
     });
 
+    // Log tier counts
+    console.log(`[SellerFlow] Recommendations by tier:`, {
+      essential: result.essential.length,
+      comfort: result.comfort.length,
+      advanced: result.advanced.length,
+      top: result.top.length,
+    });
+
     // Sort each tier by score (highest first), then by supplier priority
     Object.keys(result).forEach(tier => {
       result[tier as Tier].sort((a, b) => {
@@ -294,7 +313,7 @@ const SellerFlow = () => {
     });
 
     return result;
-  }, [families, lensCategory, prescriptionData, frameData, supplierPriorities, anamnesisData, getBestPriceForFamily, getCompatiblePrices]);
+  }, [families, lensCategory, prescriptionData, frameData, supplierPriorities, anamnesisData, getBestPriceForFamily, getCompatiblePrices, getTierKey, calculateScore]);
 
   const recommendations = getRecommendationsByTier;
   const activeAddons = addons.filter(a => a.active && a.rules.categories.includes(lensCategory));

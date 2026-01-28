@@ -627,11 +627,14 @@ export const RecommendationsGrid = ({
     </div>
   );
 
-  return (
-    <div className="space-y-6">
-      {viewMode === 'system' && renderSystemView()}
-      {viewMode === 'ai' && renderAIView()}
-      {viewMode === 'single' && renderSingleView()}
-    </div>
-  );
+  // Main render - proper view mode switching
+  if (viewMode === 'ai') {
+    return renderAIView();
+  }
+  
+  if (viewMode === 'single') {
+    return renderSingleView();
+  }
+  
+  return renderSystemView();
 };
