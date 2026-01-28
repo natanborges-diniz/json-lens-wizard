@@ -616,13 +616,13 @@ ${notes ? `\nObs: ${notes}` : ''}
         </div>
       </div>
 
-      {/* Summary Dialog */}
-      {budgetDocumentData && companySettings && (
+      {/* Summary Dialog - always render with fallback settings */}
+      {budgetDocumentData && (
         <BudgetSummaryDialog
           open={showSummaryDialog}
           onOpenChange={setShowSummaryDialog}
           data={budgetDocumentData}
-          companySettings={companySettings}
+          companySettings={companySettings || { company_name: 'Ótica' }}
           customerPhone={customerPhone}
           onNavigateToManagement={handleNavigateToManagement}
         />
