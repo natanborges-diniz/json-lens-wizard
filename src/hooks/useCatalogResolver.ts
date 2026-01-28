@@ -95,17 +95,70 @@ const DEFAULT_SCALE_LABELS: Record<string, string> = {
   '3': 'Avançado',
 };
 
-// Macro ID to tier key mapping (fallback)
+// Macro ID to tier key mapping (fallback for known macros)
 const MACRO_TO_TIER_FALLBACK: Record<string, 'essential' | 'comfort' | 'advanced' | 'top'> = {
+  // Progressive
   'PROG_BASICO': 'essential',
+  'PROG_ESSENTIAL': 'essential',
   'PROG_CONFORTO': 'comfort',
+  'PROG_COMFORT': 'comfort',
   'PROG_AVANCADO': 'advanced',
+  'PROG_ADVANCED': 'advanced',
   'PROG_TOP': 'top',
+  'PROG_PREMIUM': 'top',
+  // Monofocal
   'MONO_BASICO': 'essential',
+  'MONO_ESSENTIAL': 'essential',
   'MONO_ENTRADA': 'comfort',
+  'MONO_COMFORT': 'comfort',
+  'MONO_CONFORTO': 'comfort',
   'MONO_INTER': 'advanced',
+  'MONO_ADVANCED': 'advanced',
+  'MONO_AVANCADO': 'advanced',
   'MONO_TOP': 'top',
+  'MONO_PREMIUM': 'top',
+  // Occupational
+  'OCUPACIONAL_BASICO': 'essential',
+  'OCUPACIONAL_ESSENTIAL': 'essential',
+  'OCUPACIONAL_CONFORTO': 'comfort',
+  'OCUPACIONAL_COMFORT': 'comfort',
+  'OCUPACIONAL_AVANCADO': 'advanced',
+  'OCUPACIONAL_ADVANCED': 'advanced',
+  'OCUPACIONAL_TOP': 'top',
+  'OCUPACIONAL_PREMIUM': 'top',
+  // Bifocal
+  'BIFOCAL_BASICO': 'essential',
+  'BIFOCAL_ESSENTIAL': 'essential',
+  'BIFOCAL_CONFORTO': 'comfort',
+  'BIFOCAL_COMFORT': 'comfort',
+  'BIFOCAL_AVANCADO': 'advanced',
+  'BIFOCAL_ADVANCED': 'advanced',
+  'BIFOCAL_TOP': 'top',
+  'BIFOCAL_PREMIUM': 'top',
 };
+
+// Infer tier from macro name when not in fallback table
+function inferTierFromMacroName(macroId: string): 'essential' | 'comfort' | 'advanced' | 'top' {
+  const upper = macroId.toUpperCase();
+  
+  // Check for top/premium tier keywords
+  if (upper.includes('TOP') || upper.includes('PREMIUM') || upper.includes('ELITE')) {
+    return 'top';
+  }
+  
+  // Check for advanced tier keywords  
+  if (upper.includes('AVANCADO') || upper.includes('ADVANCED') || upper.includes('PLUS')) {
+    return 'advanced';
+  }
+  
+  // Check for comfort tier keywords
+  if (upper.includes('CONFORTO') || upper.includes('COMFORT') || upper.includes('INTER') || upper.includes('ENTRADA')) {
+    return 'comfort';
+  }
+  
+  // Default to essential
+  return 'essential';
+}
 
 // Default index display (fallback)
 const DEFAULT_INDEX_DISPLAY: IndexDisplay[] = [
@@ -180,13 +233,24 @@ export const useCatalogResolver = (): CatalogResolverResult => {
     return map;
   }, [macros]);
   
-  // Get tier key from macro ID - reads from JSON first, fallback to hardcoded
+  // Get tier key from macro ID - reads from JSON first, fallback to hardcoded, then infer
   const getTierKey = useCallback((macroId: string): 'essential' | 'comfort' | 'advanced' | 'top' => {
     const macro = macroMap.get(macroId);
+    
+    // 1. First check if macro has tier_key in JSON
     if (macro?.tier_key) {
       return macro.tier_key;
     }
-    return MACRO_TO_TIER_FALLBACK[macroId] || 'essential';
+    
+    // 2. Check hardcoded fallback table
+    if (MACRO_TO_TIER_FALLBACK[macroId]) {
+      return MACRO_TO_TIER_FALLBACK[macroId];
+    }
+    
+    // 3. Infer from macro name
+    const inferred = inferTierFromMacroName(macroId);
+    console.log(`[CatalogResolver] Inferred tier '${inferred}' for macro: ${macroId}`);
+    return inferred;
   }, [macroMap]);
   
   // Get tier configuration - reads from JSON macro.display first

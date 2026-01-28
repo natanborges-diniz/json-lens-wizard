@@ -104,6 +104,8 @@ export interface MacroExtended extends Macro {
 export interface FamilyExtended extends Family {
   technology_refs?: string[];
   availability_status?: string; // e.g. "SEM_SKU_NO_ERP" for auto-disabled families
+  tier_target?: 'essential' | 'comfort' | 'advanced' | 'top'; // Direct tier from catalog
+  tier_confidence?: 'high' | 'medium' | 'low'; // Confidence level of tier assignment
 }
 
 // Technology Library types
