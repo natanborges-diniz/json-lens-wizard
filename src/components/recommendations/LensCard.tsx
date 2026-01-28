@@ -84,19 +84,31 @@ export const LensCard = ({
   const config = getTierConfig(family.macro);
   const TierIcon = ICON_MAP[config.icon] || Shield;
 
+  // Helper to get index from price (supports both old and new schema)
+  const getIndexFromPrice = (price: Price): string => {
+    // New schema: availability.index
+    const avail = (price as any).availability;
+    if (avail?.index) return avail.index;
+    // Old schema: direct index field
+    if ((price as any).index) return (price as any).index;
+    return '1.50'; // fallback
+  };
+
   // Get unique indices available for this family
   const availableIndices = useMemo(() => {
-    const indices = [...new Set(allPrices.map(p => p.index))];
+    const indices = [...new Set(allPrices.map(p => getIndexFromPrice(p)))];
     return indices.sort((a, b) => parseFloat(a) - parseFloat(b));
   }, [allPrices]);
 
   // State for configuration
-  const [selectedIndex, setSelectedIndex] = useState<string>(bestPrice?.index || availableIndices[0] || '1.50');
+  const [selectedIndex, setSelectedIndex] = useState<string>(
+    bestPrice ? getIndexFromPrice(bestPrice) : availableIndices[0] || '1.50'
+  );
   const [selectedTreatments, setSelectedTreatments] = useState<string[]>([]);
 
   // Get prices for selected index
   const pricesForIndex = useMemo(() => {
-    return allPrices.filter(p => p.index === selectedIndex);
+    return allPrices.filter(p => getIndexFromPrice(p) === selectedIndex);
   }, [allPrices, selectedIndex]);
 
   // Find the best price for selected index and treatments
