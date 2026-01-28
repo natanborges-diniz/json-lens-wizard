@@ -476,44 +476,82 @@ export const useLensStore = create<LensState>()(
         
         // Filter by prescription specs when we have real data
         const filtered = familyPrices.filter(p => {
-          const { specs } = p;
-          if (!specs) return true; // No specs = no filtering
+          // Support both old 'specs' format and new 'availability' format (Schema V3.6.x)
+          const specs = (p as any).specs;
+          const availability = (p as any).availability;
           
-          // Check sphere range
-          const sphereOk = 
-            prescription.rightSphere >= specs.sphere_min && 
-            prescription.rightSphere <= specs.sphere_max &&
-            prescription.leftSphere >= specs.sphere_min && 
-            prescription.leftSphere <= specs.sphere_max;
+          // If no specs/availability = no filtering
+          if (!specs && !availability) return true;
           
-          // Check cylinder range (cylinder is typically negative, so cyl_min is more negative)
-          const cylOk = 
-            prescription.rightCylinder >= specs.cyl_min && 
-            prescription.rightCylinder <= specs.cyl_max &&
-            prescription.leftCylinder >= specs.cyl_min && 
-            prescription.leftCylinder <= specs.cyl_max;
+          // New schema: availability uses nested objects { sphere: {min, max}, cylinder: {min, max}, addition: {min, max} }
+          // Old schema: specs uses flat structure { sphere_min, sphere_max, cyl_min, cyl_max, add_min, add_max }
+          
+          let sphereMin: number | undefined;
+          let sphereMax: number | undefined;
+          let cylMin: number | undefined;
+          let cylMax: number | undefined;
+          let addMin: number | undefined;
+          let addMax: number | undefined;
+          let alturaMin: number | undefined;
+          let alturaMax: number | undefined;
+          
+          if (availability) {
+            // New schema format
+            sphereMin = availability.sphere?.min;
+            sphereMax = availability.sphere?.max;
+            cylMin = availability.cylinder?.min;
+            cylMax = availability.cylinder?.max;
+            addMin = availability.addition?.min;
+            addMax = availability.addition?.max;
+            // Note: altura not typically in availability
+          } else if (specs) {
+            // Old schema format
+            sphereMin = specs.sphere_min;
+            sphereMax = specs.sphere_max;
+            cylMin = specs.cyl_min;
+            cylMax = specs.cyl_max;
+            addMin = specs.add_min;
+            addMax = specs.add_max;
+            alturaMin = specs.altura_min_mm;
+            alturaMax = specs.altura_max_mm;
+          }
+          
+          // Check sphere range (if defined)
+          let sphereOk = true;
+          if (sphereMin !== undefined && sphereMax !== undefined) {
+            sphereOk = 
+              prescription.rightSphere >= sphereMin && 
+              prescription.rightSphere <= sphereMax &&
+              prescription.leftSphere >= sphereMin && 
+              prescription.leftSphere <= sphereMax;
+          }
+          
+          // Check cylinder range (if defined)
+          let cylOk = true;
+          if (cylMin !== undefined && cylMax !== undefined) {
+            cylOk = 
+              prescription.rightCylinder >= cylMin && 
+              prescription.rightCylinder <= cylMax &&
+              prescription.leftCylinder >= cylMin && 
+              prescription.leftCylinder <= cylMax;
+          }
           
           // Check addition for progressive lenses
-          // Only filter by addition if both prescription and specs have addition values
           let addOk = true;
           const rightAdd = prescription.rightAddition || 0;
           const leftAdd = prescription.leftAddition || 0;
           const hasAdditionInRx = rightAdd > 0 || leftAdd > 0;
-          const hasAdditionInSpecs = specs.add_min !== undefined && specs.add_max !== undefined;
+          const hasAdditionInSpecs = addMin !== undefined && addMax !== undefined;
           
           if (hasAdditionInRx && hasAdditionInSpecs) {
-            // Only check if we have addition in prescription
-            addOk = rightAdd >= specs.add_min! && rightAdd <= specs.add_max! &&
-                    leftAdd >= specs.add_min! && leftAdd <= specs.add_max!;
+            addOk = rightAdd >= addMin! && rightAdd <= addMax! &&
+                    leftAdd >= addMin! && leftAdd <= addMax!;
           }
-          // If no addition in prescription but specs require it, still allow the product
-          // This way products show up even if addition wasn't entered yet
           
-          // Check frame dimensions if available
+          // Check frame dimensions if available (old schema only)
           let frameOk = true;
-          if (frame && frame.altura && specs.altura_min_mm && specs.altura_max_mm) {
-            frameOk = frame.altura >= specs.altura_min_mm && 
-                     frame.altura <= specs.altura_max_mm;
+          if (frame && frame.altura && alturaMin !== undefined && alturaMax !== undefined) {
+            frameOk = frame.altura >= alturaMin && frame.altura <= alturaMax;
           }
           
           return sphereOk && cylOk && addOk && frameOk;
