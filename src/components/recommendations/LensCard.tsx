@@ -8,7 +8,8 @@ import {
   Crown,
   Shield,
   Zap,
-  Info
+  Info,
+  Sparkles
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -239,12 +240,6 @@ export const LensCard = ({
             <Badge variant="outline" className="text-xs">
               {family.supplier}
             </Badge>
-            {/* Show up to 2 technologies as badges */}
-            {getTechnologiesForFamily(family as any).slice(0, 2).map(tech => (
-              <Badge key={tech.id} variant="secondary" className="text-[10px] bg-primary/10 text-primary">
-                {tech.name_common}
-              </Badge>
-            ))}
           </div>
         </div>
       </CardHeader>
@@ -268,6 +263,44 @@ export const LensCard = ({
           )}
         </div>
 
+        {/* Technologies Section - from family.technology_refs */}
+        {(() => {
+          const techs = getTechnologiesForFamily(family as any);
+          if (techs.length === 0) return null;
+          return (
+            <div className="space-y-2">
+              <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide flex items-center gap-1">
+                <Zap className="w-3 h-3" />
+                Tecnologias
+              </h4>
+              <div className="space-y-1.5">
+                {techs.slice(0, 3).map(tech => (
+                  <TooltipProvider key={tech.id}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-start gap-2 text-xs bg-primary/5 rounded p-1.5 cursor-help">
+                          <Sparkles className="w-3 h-3 text-primary shrink-0 mt-0.5" />
+                          <span className="font-medium text-foreground truncate">
+                            {tech.name_common}
+                          </span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[250px]">
+                        <p className="text-xs">{tech.description_short || tech.description_long || 'Tecnologia exclusiva'}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ))}
+                {techs.length > 3 && (
+                  <div className="text-[10px] text-muted-foreground text-center">
+                    +{techs.length - 3} tecnologia(s)
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Attributes - Scale 1-5 using resolver */}
         <div className="space-y-2">
           <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide flex items-center gap-1">
@@ -284,7 +317,7 @@ export const LensCard = ({
             </TooltipProvider>
           </h4>
           <div className="space-y-1.5">
-            {relevantAttributes.slice(0, 5).map(attr => {
+            {relevantAttributes.slice(0, 4).map(attr => {
               const rawValue = getAttributeValue(attr.id);
               const stars = scaleToStars(rawValue);
               return (
