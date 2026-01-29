@@ -455,6 +455,7 @@ export const useLensStore = create<LensState>()(
       
       getCompatiblePrices: (familyId, prescription, frame) => {
         const state = get();
+        const family = state.families.find(f => f.id === familyId);
         const familyPrices = state.prices.filter(p => 
           p.family_id === familyId && 
           p.active && 
@@ -474,67 +475,73 @@ export const useLensStore = create<LensState>()(
         // If no meaningful prescription values, return all prices
         if (!hasSphereOrCyl) return familyPrices;
         
+        // Safe defaults by clinical type (LAYER B from CatalogEnricher)
+        const clinicalType = family?.clinical_type || family?.category || 'MONOFOCAL';
+        const SAFE_DEFAULTS: Record<string, { sphere: { min: number; max: number }; cylinder: { min: number; max: number }; addition?: { min: number; max: number } }> = {
+          'MONOFOCAL': { sphere: { min: -10, max: 10 }, cylinder: { min: -6, max: 0 } },
+          'PROGRESSIVA': { sphere: { min: -8, max: 8 }, cylinder: { min: -4, max: 0 }, addition: { min: 0.75, max: 3.50 } },
+          'OCUPACIONAL': { sphere: { min: -8, max: 8 }, cylinder: { min: -4, max: 0 }, addition: { min: 0.75, max: 2.50 } },
+          'BIFOCAL': { sphere: { min: -8, max: 8 }, cylinder: { min: -3, max: 0 }, addition: { min: 0.75, max: 3.50 } },
+        };
+        const defaults = SAFE_DEFAULTS[clinicalType] || SAFE_DEFAULTS['MONOFOCAL'];
+        
         // Filter by prescription specs when we have real data
         const filtered = familyPrices.filter(p => {
           // Support both old 'specs' format and new 'availability' format (Schema V3.6.x)
           const specs = (p as any).specs;
           const availability = (p as any).availability;
           
-          // If no specs/availability = no filtering
-          if (!specs && !availability) return true;
-          
-          // New schema: availability uses nested objects { sphere: {min, max}, cylinder: {min, max}, addition: {min, max} }
-          // Old schema: specs uses flat structure { sphere_min, sphere_max, cyl_min, cyl_max, add_min, add_max }
-          
-          let sphereMin: number | undefined;
-          let sphereMax: number | undefined;
-          let cylMin: number | undefined;
-          let cylMax: number | undefined;
+          // Determine sphere/cyl/add ranges - use actual values or safe defaults
+          let sphereMin: number;
+          let sphereMax: number;
+          let cylMin: number;
+          let cylMax: number;
           let addMin: number | undefined;
           let addMax: number | undefined;
           let alturaMin: number | undefined;
           let alturaMax: number | undefined;
           
-          if (availability) {
+          if (availability?.sphere?.min !== undefined) {
             // New schema format
-            sphereMin = availability.sphere?.min;
-            sphereMax = availability.sphere?.max;
-            cylMin = availability.cylinder?.min;
-            cylMax = availability.cylinder?.max;
+            sphereMin = availability.sphere.min;
+            sphereMax = availability.sphere.max;
+            cylMin = availability.cylinder?.min ?? defaults.cylinder.min;
+            cylMax = availability.cylinder?.max ?? defaults.cylinder.max;
             addMin = availability.addition?.min;
             addMax = availability.addition?.max;
-            // Note: altura not typically in availability
-          } else if (specs) {
+          } else if (specs?.sphere_min !== undefined) {
             // Old schema format
             sphereMin = specs.sphere_min;
             sphereMax = specs.sphere_max;
-            cylMin = specs.cyl_min;
-            cylMax = specs.cyl_max;
+            cylMin = specs.cyl_min ?? defaults.cylinder.min;
+            cylMax = specs.cyl_max ?? defaults.cylinder.max;
             addMin = specs.add_min;
             addMax = specs.add_max;
             alturaMin = specs.altura_min_mm;
             alturaMax = specs.altura_max_mm;
+          } else {
+            // No specs/availability - apply safe defaults (never reject due to missing data)
+            sphereMin = defaults.sphere.min;
+            sphereMax = defaults.sphere.max;
+            cylMin = defaults.cylinder.min;
+            cylMax = defaults.cylinder.max;
+            addMin = defaults.addition?.min;
+            addMax = defaults.addition?.max;
           }
           
-          // Check sphere range (if defined)
-          let sphereOk = true;
-          if (sphereMin !== undefined && sphereMax !== undefined) {
-            sphereOk = 
-              prescription.rightSphere >= sphereMin && 
-              prescription.rightSphere <= sphereMax &&
-              prescription.leftSphere >= sphereMin && 
-              prescription.leftSphere <= sphereMax;
-          }
+          // Check sphere range
+          const sphereOk = 
+            prescription.rightSphere >= sphereMin && 
+            prescription.rightSphere <= sphereMax &&
+            prescription.leftSphere >= sphereMin && 
+            prescription.leftSphere <= sphereMax;
           
-          // Check cylinder range (if defined)
-          let cylOk = true;
-          if (cylMin !== undefined && cylMax !== undefined) {
-            cylOk = 
-              prescription.rightCylinder >= cylMin && 
-              prescription.rightCylinder <= cylMax &&
-              prescription.leftCylinder >= cylMin && 
-              prescription.leftCylinder <= cylMax;
-          }
+          // Check cylinder range
+          const cylOk = 
+            prescription.rightCylinder >= cylMin && 
+            prescription.rightCylinder <= cylMax &&
+            prescription.leftCylinder >= cylMin && 
+            prescription.leftCylinder <= cylMax;
           
           // Check addition for progressive lenses
           let addOk = true;

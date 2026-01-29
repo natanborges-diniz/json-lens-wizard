@@ -11,7 +11,8 @@ import {
   Info,
   Sparkles,
   ArrowUpCircle,
-  Eye
+  Eye,
+  MessageSquare
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useCatalogResolver } from '@/hooks/useCatalogResolver';
+import { useCatalogEnricher } from '@/hooks/useCatalogEnricher';
 import type { Family, Price, Addon, Tier } from '@/types/lens';
 
 interface LensCardProps {
@@ -103,6 +105,10 @@ export const LensCard = ({
     scaleToStars,
     getTechnologiesForFamily
   } = useCatalogResolver();
+  
+  // Use CatalogEnricher for enriched display data
+  const { getEnrichedFamily, getEnrichedPrice } = useCatalogEnricher();
+  const enrichedFamily = getEnrichedFamily(family.id);
   
   // Get tier configuration from resolver (uses JSON data)
   const config = getTierConfig(family.macro);
@@ -334,17 +340,25 @@ export const LensCard = ({
         
         <div>
           <h3 className="font-bold text-foreground text-lg leading-tight">
-            {family.name_original}
+            {enrichedFamily?.display_name || family.name_original}
           </h3>
-          <div className="flex flex-wrap items-center gap-1 mt-1">
-            <Badge variant="outline" className="text-xs">
-              {family.supplier}
-            </Badge>
-          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {enrichedFamily?.display_subtitle || `${family.category} · ${family.supplier}`}
+          </p>
         </div>
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col p-4 space-y-4">
+        {/* Sales Pills - quick value props */}
+        {enrichedFamily?.sales_pills && enrichedFamily.sales_pills.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {enrichedFamily.sales_pills.slice(0, 3).map((pill, idx) => (
+              <Badge key={idx} variant="secondary" className="text-[10px] py-0.5">
+                {pill}
+              </Badge>
+            ))}
+          </div>
+        )}
         {/* Price */}
         <div className={`text-center py-3 rounded-lg transition-colors ${
           isSelected ? 'bg-success/10' : 'bg-muted/30'
@@ -401,12 +415,35 @@ export const LensCard = ({
           );
         })()}
 
-        {/* Tier Description */}
-        <div className="bg-muted/30 rounded-lg p-2.5">
-          <p className="text-xs text-muted-foreground italic">
-            {TIER_DESCRIPTIONS[tier]}
-          </p>
-        </div>
+        {/* Knowledge Consumer - Why this lens */}
+        {enrichedFamily?.knowledge?.consumer && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="bg-muted/30 rounded-lg p-2.5 cursor-help">
+                  <div className="flex items-start gap-2">
+                    <MessageSquare className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
+                    <p className="text-xs text-muted-foreground italic line-clamp-2">
+                      {enrichedFamily.knowledge.consumer}
+                    </p>
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[300px]">
+                <p className="text-xs">{enrichedFamily.knowledge.consumer}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        
+        {/* Fallback Tier Description */}
+        {!enrichedFamily?.knowledge?.consumer && (
+          <div className="bg-muted/30 rounded-lg p-2.5">
+            <p className="text-xs text-muted-foreground italic">
+              {TIER_DESCRIPTIONS[tier]}
+            </p>
+          </div>
+        )}
 
         {/* Attributes - from attributeDefs or inferred */}
         <div className="space-y-2">
