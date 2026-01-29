@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { SlidersHorizontal, X, ArrowLeft, Sparkles, LayoutGrid } from 'lucide-react';
+import { SlidersHorizontal, X, ArrowLeft, Sparkles, LayoutGrid, Info, Shield, ThumbsUp, Zap, Crown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -571,22 +571,60 @@ export const RecommendationsGrid = ({
             />
           )}
 
-          {/* Legend */}
-          <div className="p-4 bg-muted/30 rounded-lg">
-            <h4 className="text-sm font-medium mb-2">O que significam os níveis?</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-muted-foreground">
-              <div>
-                <span className="font-medium text-foreground">Essencial:</span> Solução básica com boa correção visual
+          {/* How recommendations work */}
+          <div className="p-4 bg-muted/30 rounded-lg space-y-4">
+            <div>
+              <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                <Info className="w-4 h-4 text-muted-foreground" />
+                Como funciona a recomendação?
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                Analisamos sua prescrição, perfil de uso e preferências para sugerir as lentes mais adequadas em cada faixa de preço. 
+                A opção <strong>"Melhor opção"</strong> é calculada com base nas suas respostas da anamnese.
+              </p>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="p-2 bg-slate-50 rounded border border-slate-200">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Shield className="w-3.5 h-3.5 text-slate-600" />
+                  <span className="font-medium text-slate-700 text-xs">Essencial</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Entrada de linha. Boa correção para uso básico.
+                </p>
               </div>
-              <div>
-                <span className="font-medium text-foreground">Conforto:</span> Equilíbrio entre qualidade e custo
+              <div className="p-2 bg-blue-50 rounded border border-blue-200">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <ThumbsUp className="w-3.5 h-3.5 text-blue-600" />
+                  <span className="font-medium text-blue-700 text-xs">Conforto</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Equilíbrio ideal. Tecnologia + custo-benefício.
+                </p>
               </div>
-              <div>
-                <span className="font-medium text-foreground">Avançada:</span> Tecnologia de ponta para alta performance
+              <div className="p-2 bg-purple-50 rounded border border-purple-200">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Zap className="w-3.5 h-3.5 text-purple-600" />
+                  <span className="font-medium text-purple-700 text-xs">Avançada</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Alta tecnologia. Para exigentes ou prescrições complexas.
+                </p>
               </div>
-              <div>
-                <span className="font-medium text-foreground">Top:</span> O melhor disponível em tecnologia
+              <div className="p-2 bg-amber-50 rounded border border-amber-200">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Crown className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="font-medium text-amber-700 text-xs">Top</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Referência de mercado. O melhor disponível.
+                </p>
               </div>
+            </div>
+
+            <div className="text-[10px] text-muted-foreground border-t pt-2">
+              <strong>Dica:</strong> Cada faixa pode ter alternativas de outros fabricantes. Clique em "alternativas" dentro do card para comparar.
             </div>
           </div>
         </div>
