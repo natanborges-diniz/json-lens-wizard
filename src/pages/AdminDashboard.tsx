@@ -61,6 +61,7 @@ import { formatImportReceipt, type ImportResult, type ImportSummary } from '@/li
 import { CatalogVersionBadge, saveCatalogVersion } from '@/components/audit/CatalogVersionBadge';
 import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
 import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
+import { CloudSaveConfirmDialog } from '@/components/audit/CloudSaveConfirmDialog';
 import { ImportValidationReport } from '@/components/audit/ImportValidationReport';
 import { validateCatalogImport, executePostImportActions, clearRulesCache, type ValidationReport } from '@/lib/catalogValidationEngine';
 import { toast } from 'sonner';
@@ -107,6 +108,8 @@ const AdminDashboard = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
   const [pendingImportData, setPendingImportData] = useState<LensData | null>(null);
+  const [showCloudSaveDialog, setShowCloudSaveDialog] = useState(false);
+  const [cloudSaveImportSummary, setCloudSaveImportSummary] = useState<{ familiesCount: number; pricesCount: number; mode: string } | null>(null);
   
   const { 
     schemaVersion,
@@ -314,6 +317,14 @@ const AdminDashboard = () => {
         if (version) {
           toast.success(`Versão v${version.version_number} registrada`);
         }
+        
+        // Open cloud save confirmation dialog
+        setCloudSaveImportSummary({
+          familiesCount: mergedData.families?.length || 0,
+          pricesCount: mergedData.prices?.length || 0,
+          mode: importMode === 'replace' ? 'Substituição' : 'Incremento'
+        });
+        setShowCloudSaveDialog(true);
       }
     } else {
       const allErrors = [...result.validation.errors, ...result.validation.integrityErrors];
@@ -1097,6 +1108,16 @@ const AdminDashboard = () => {
       <CatalogVersionHistory 
         open={showVersionHistory} 
         onOpenChange={setShowVersionHistory} 
+      />
+      
+      {/* Cloud Save Confirmation Dialog */}
+      <CloudSaveConfirmDialog
+        open={showCloudSaveDialog}
+        onOpenChange={setShowCloudSaveDialog}
+        importSummary={cloudSaveImportSummary || undefined}
+        onSaveComplete={() => {
+          setCloudSaveImportSummary(null);
+        }}
       />
     </div>
   );
