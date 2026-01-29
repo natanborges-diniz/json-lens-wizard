@@ -347,11 +347,11 @@ export const BudgetDocument = forwardRef<HTMLDivElement, BudgetDocumentProps>(
         )}
 
         {/* Benefits Section */}
-        {data.benefits.length > 0 && (
+        {(data.benefits ?? []).length > 0 && (
           <section className="mb-6">
             <h3 className="text-lg font-bold mb-3 text-gray-800">Benefícios Inclusos</h3>
             <div className="grid grid-cols-2 gap-2">
-              {data.benefits.map((benefit, idx) => (
+              {(data.benefits ?? []).map((benefit, idx) => (
                 <div key={idx} className="flex items-start gap-2 text-sm">
                   <Check className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
                   <span className="text-gray-700">{benefit}</span>

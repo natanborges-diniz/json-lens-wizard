@@ -234,11 +234,11 @@ export const TechnologyCard = ({
                 </div>
 
                 {/* Benefits */}
-                {technology.benefits.length > 0 && (
+                {(technology.benefits ?? []).length > 0 && (
                   <div>
                     <p className="text-xs font-medium text-muted-foreground mb-2">Benefícios:</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {technology.benefits.map((benefit, idx) => (
+                      {(technology.benefits ?? []).map((benefit, idx) => (
                         <Badge key={idx} variant="secondary" className="text-xs">
                           {benefit}
                         </Badge>
