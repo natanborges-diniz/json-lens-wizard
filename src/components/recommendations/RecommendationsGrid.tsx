@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { SlidersHorizontal, X, ArrowLeft, Sparkles, LayoutGrid, Info, Shield, ThumbsUp, Zap, Crown } from 'lucide-react';
+import { SlidersHorizontal, X, ArrowLeft, Sparkles, LayoutGrid, Info, Shield, ThumbsUp, Zap, Crown, ArrowUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { SmartSearch, AIRecommendation, AIResponse } from '@/components/search/S
 import { ProductSuggestionCards } from './ProductSuggestionCards';
 import { ProductCart } from './ProductCart';
 import { AdditionalProductModal } from './AdditionalProductModal';
+import { TierStaircaseHorizontal } from './TierStaircase';
 import type { Family, Price, Addon, Tier, AttributeDef, AnamnesisData, LensData, Prescription, ClinicalType } from '@/types/lens';
 import type { SelectedProduct, ProductSuggestion } from '@/lib/productSuggestionEngine';
 import { 
@@ -571,60 +572,49 @@ export const RecommendationsGrid = ({
             />
           )}
 
-          {/* How recommendations work */}
+          {/* Tier Staircase - Visual journey */}
           <div className="p-4 bg-muted/30 rounded-lg space-y-4">
             <div>
               <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                <Info className="w-4 h-4 text-muted-foreground" />
-                Como funciona a recomendação?
+                <ArrowUp className="w-4 h-4 text-muted-foreground" />
+                Jornada de Valor - O que você ganha em cada nível
               </h4>
-              <p className="text-xs text-muted-foreground">
-                Analisamos sua prescrição, perfil de uso e preferências para sugerir as lentes mais adequadas em cada faixa de preço. 
-                A opção <strong>"Melhor opção"</strong> é calculada com base nas suas respostas da anamnese.
+              <p className="text-xs text-muted-foreground mb-3">
+                Cada nível oferece mais tecnologia, conforto e proteção. A <strong>"Melhor opção"</strong> é calculada com base no seu perfil.
               </p>
+              
+              {/* Interactive tier staircase */}
+              <TierStaircaseHorizontal 
+                currentTier={tierOptions[0]?.tier || 'comfort'}
+              />
             </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="p-2 bg-slate-50 rounded border border-slate-200">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <Shield className="w-3.5 h-3.5 text-slate-600" />
-                  <span className="font-medium text-slate-700 text-xs">Essencial</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Entrada de linha. Boa correção para uso básico.
-                </p>
+
+            {/* Value comparison legend */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 pt-2 border-t">
+              <div className="flex items-center gap-1.5 text-xs">
+                <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                <span className="text-muted-foreground">Conforto</span>
               </div>
-              <div className="p-2 bg-blue-50 rounded border border-blue-200">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <ThumbsUp className="w-3.5 h-3.5 text-blue-600" />
-                  <span className="font-medium text-blue-700 text-xs">Conforto</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Equilíbrio ideal. Tecnologia + custo-benefício.
-                </p>
+              <div className="flex items-center gap-1.5 text-xs">
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                <span className="text-muted-foreground">Tecnologia</span>
               </div>
-              <div className="p-2 bg-purple-50 rounded border border-purple-200">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <Zap className="w-3.5 h-3.5 text-purple-600" />
-                  <span className="font-medium text-purple-700 text-xs">Avançada</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Alta tecnologia. Para exigentes ou prescrições complexas.
-                </p>
+              <div className="flex items-center gap-1.5 text-xs">
+                <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                <span className="text-muted-foreground">Proteção</span>
               </div>
-              <div className="p-2 bg-amber-50 rounded border border-amber-200">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <Crown className="w-3.5 h-3.5 text-amber-600" />
-                  <span className="font-medium text-amber-700 text-xs">Top</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Referência de mercado. O melhor disponível.
-                </p>
+              <div className="flex items-center gap-1.5 text-xs">
+                <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+                <span className="text-muted-foreground">Adaptação</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                <span className="text-muted-foreground">Uso Prolongado</span>
               </div>
             </div>
 
             <div className="text-[10px] text-muted-foreground border-t pt-2">
-              <strong>Dica:</strong> Cada faixa pode ter alternativas de outros fabricantes. Clique em "alternativas" dentro do card para comparar.
+              <strong>Dica:</strong> Compare os eixos de valor em cada card. Você pode adicionar tratamentos extras baseados no catálogo do fabricante.
             </div>
           </div>
         </div>

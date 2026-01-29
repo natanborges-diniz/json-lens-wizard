@@ -1,17 +1,16 @@
 /**
- * LensCard - Redesigned for clarity and intuitive navigation
+ * LensCard - Redesigned with value axes and catalog-based upsell
  * 
  * Key improvements:
- * - Clear tier explanation with TierExplainer
- * - Upgrade selector with pricing impact visible
- * - Alternatives with clear reasoning
- * - Simplified attribute display
+ * - Comparativo por eixos de valor (não por produto)
+ * - Mostra "o que ganho se subir" via TierStaircase
+ * - Upsell baseado no catálogo (addons, technology_refs)
+ * - Knowledge do catálogo para explicar escolhas
  */
 
 import { useState, useMemo } from 'react';
 import { 
   Check, 
-  Star,
   ThumbsUp,
   Info,
   Sparkles,
@@ -31,12 +30,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { TierExplainer, TierComparisonStrip } from './TierExplainer';
-import { UpgradeSelector } from './UpgradeSelector';
+import { TierExplainer } from './TierExplainer';
+import { ValueAxesComparison, TierAxesComparison } from './ValueAxesComparison';
+import { CatalogUpsellSuggestions, IncludedFeaturesBadges } from './CatalogUpsellSuggestions';
 import { AlternativesList, AlternativesQuickInfo } from './AlternativesList';
 import { useCatalogResolver } from '@/hooks/useCatalogResolver';
 import { useCatalogEnricher } from '@/hooks/useCatalogEnricher';
-import type { Family, Price, Addon, Tier } from '@/types/lens';
+import { useLensStore } from '@/store/lensStore';
+import type { Family, Price, Addon, Tier, ClinicalType } from '@/types/lens';
 
 interface LensCardProps {
   family: Family;
@@ -109,6 +110,13 @@ const TIER_LABELS: Record<Tier, string> = {
   top: 'Top',
 };
 
+// Get next tier
+const getNextTier = (tier: Tier): Tier | undefined => {
+  const order: Tier[] = ['essential', 'comfort', 'advanced', 'top'];
+  const idx = order.indexOf(tier);
+  return idx < order.length - 1 ? order[idx + 1] : undefined;
+};
+
 export const LensCard = ({
   family,
   bestPrice,
@@ -125,9 +133,11 @@ export const LensCard = ({
   const { getIndexDisplay, getTechnologiesForFamily } = useCatalogResolver();
   const { getEnrichedFamily } = useCatalogEnricher();
   const enrichedFamily = getEnrichedFamily(family.id);
+  const lensCategory = (family.clinical_type || family.category) as ClinicalType;
   
   const colors = TIER_COLORS[tier];
   const TierIcon = TIER_ICONS[tier];
+  const nextTier = getNextTier(tier);
 
   // Helper to get index from price
   const getIndexFromPrice = (price: Price): string => {
@@ -185,27 +195,12 @@ export const LensCard = ({
   const totalPrice = currentPrice ? currentPrice.price_sale_half_pair * 2 : 0;
   const basePrice = bestPrice ? bestPrice.price_sale_half_pair * 2 : 0;
 
-  // Get available treatments from SKUs
-  const availableTreatments = useMemo(() => {
-    const treatmentMap = new Map<string, number>();
-    
-    allPrices.forEach(p => {
-      (p.addons_detected || []).forEach(addon => {
-        treatmentMap.set(addon, (treatmentMap.get(addon) || 0) + 1);
-      });
-    });
-    
-    return Array.from(treatmentMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([id]) => id);
-  }, [allPrices]);
-
-  // Toggle treatment
-  const toggleTreatment = (treatmentId: string) => {
+  // Toggle treatment (from upsell suggestions)
+  const handleSelectUpsell = (upsellId: string) => {
     setSelectedTreatments(prev => 
-      prev.includes(treatmentId)
-        ? prev.filter(t => t !== treatmentId)
-        : [...prev, treatmentId]
+      prev.includes(upsellId)
+        ? prev.filter(t => t !== upsellId)
+        : [...prev, upsellId]
     );
   };
 
@@ -291,16 +286,22 @@ export const LensCard = ({
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col p-4 space-y-4">
-        {/* Sales Pills */}
-        {enrichedFamily?.sales_pills && enrichedFamily.sales_pills.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {enrichedFamily.sales_pills.slice(0, 3).map((pill, idx) => (
-              <Badge key={idx} variant="secondary" className="text-[10px] py-0.5">
-                {pill}
-              </Badge>
-            ))}
-          </div>
+        {/* Included Features Badges */}
+        {enrichedFamily && (
+          <IncludedFeaturesBadges 
+            family={enrichedFamily} 
+            selectedTreatments={selectedTreatments} 
+          />
         )}
+
+        {/* Value Axes Comparison - NEW */}
+        <div className="border rounded-lg p-3 bg-muted/20">
+          <ValueAxesComparison 
+            tier={tier} 
+            family={enrichedFamily || undefined}
+            compact={true}
+          />
+        </div>
 
         {/* Price Display */}
         <div className={`text-center py-4 rounded-lg transition-colors ${
@@ -327,6 +328,15 @@ export const LensCard = ({
             </div>
           )}
         </div>
+
+        {/* What you gain by upgrading - NEW */}
+        {nextTier && (
+          <TierAxesComparison
+            currentTier={tier}
+            nextTier={nextTier}
+            currentFamily={enrichedFamily || undefined}
+          />
+        )}
 
         {/* Technologies */}
         {technologies.length > 0 && (
@@ -426,16 +436,17 @@ export const LensCard = ({
           </div>
         )}
 
-        {/* Upgrade Selector */}
-        {availableTreatments.length > 0 && (
+        {/* Upsell Suggestions from Catalog - NEW */}
+        {enrichedFamily && (
           <div className="border-t pt-3">
-            <UpgradeSelector
-              availableTreatments={availableTreatments}
-              selectedTreatments={selectedTreatments}
-              onToggleTreatment={toggleTreatment}
+            <CatalogUpsellSuggestions
+              family={enrichedFamily}
               allPrices={allPrices}
-              currentIndex={selectedIndex}
-              basePrice={basePrice}
+              currentPrice={currentPrice || undefined}
+              addons={addons}
+              lensCategory={lensCategory}
+              selectedTreatments={selectedTreatments}
+              onSelectUpsell={handleSelectUpsell}
               compact={true}
             />
           </div>
