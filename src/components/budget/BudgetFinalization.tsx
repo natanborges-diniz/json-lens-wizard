@@ -423,15 +423,17 @@ ${notes ? `\nObs: ${notes}` : ''}
               )}
 
               {/* Benefits */}
-              <div className="space-y-1.5">
-                <h4 className="text-sm font-semibold">Benefícios Inclusos</h4>
-                {family.attributes_display_base.map((attr, i) => (
-                  <div key={i} className="flex items-start gap-2 text-xs">
-                    <Check className="w-3.5 h-3.5 text-success shrink-0 mt-0.5" />
-                    <span className="text-muted-foreground">{attr}</span>
-                  </div>
-                ))}
-              </div>
+              {(family.attributes_display_base ?? []).length > 0 && (
+                <div className="space-y-1.5">
+                  <h4 className="text-sm font-semibold">Benefícios Inclusos</h4>
+                  {(family.attributes_display_base ?? []).map((attr, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs">
+                      <Check className="w-3.5 h-3.5 text-success shrink-0 mt-0.5" />
+                      <span className="text-muted-foreground">{attr}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Dynamic Explanation - from quote_explainer */}
               {explanations.length > 0 && (
