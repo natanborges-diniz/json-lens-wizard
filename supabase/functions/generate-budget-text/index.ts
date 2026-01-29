@@ -172,7 +172,6 @@ Por favor, crie um texto completo de orçamento que conecte as necessidades do c
           { role: 'user', content: userMessage },
         ],
         max_completion_tokens: 2000,
-        temperature: 0.7,
       }),
     });
 
