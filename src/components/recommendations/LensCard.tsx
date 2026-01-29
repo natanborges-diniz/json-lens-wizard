@@ -9,7 +9,9 @@ import {
   Shield,
   Zap,
   Info,
-  Sparkles
+  Sparkles,
+  ArrowUpCircle,
+  Eye
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,6 +56,27 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Star,
   Zap,
   Crown,
+};
+
+// Tier descriptions for clear differentiation
+const TIER_DESCRIPTIONS: Record<Tier, string> = {
+  essential: 'Correção visual básica com boa qualidade',
+  comfort: 'Equilíbrio ideal entre conforto e custo-benefício',
+  advanced: 'Tecnologia de ponta para alta performance visual',
+  top: 'O melhor disponível em tecnologia e conforto',
+};
+
+// Map popular treatment names to friendly labels
+const TREATMENT_LABELS: Record<string, { label: string; description: string; icon: string }> = {
+  'BLUE': { label: 'Filtro de Luz Azul', description: 'Proteção para uso de telas', icon: 'Eye' },
+  'FOTOSSENSIVEL': { label: 'Fotossensível', description: 'Escurece ao sol automaticamente', icon: 'Sun' },
+  'POLARIZADA': { label: 'Polarizada', description: 'Reduz ofuscamento e reflexos', icon: 'Contrast' },
+  'AR': { label: 'Antirreflexo Premium', description: 'Reduz reflexos e melhora nitidez', icon: 'Sparkles' },
+  'AR_PREMIUM': { label: 'Antirreflexo Premium', description: 'Antirreflexo de alta durabilidade', icon: 'Sparkles' },
+  'UV': { label: 'Proteção UV', description: 'Bloqueio total de raios UV', icon: 'Shield' },
+  'HMC': { label: 'Tratamento HMC', description: 'Multicamadas anti-risco e reflexo', icon: 'Layers' },
+  'LONG': { label: 'Long Life', description: 'Maior durabilidade e resistência', icon: 'Clock' },
+  'NORISK': { label: 'No Risk', description: 'Garantia estendida', icon: 'Shield' },
 };
 
 export const LensCard = ({
@@ -138,19 +161,26 @@ export const LensCard = ({
   // Calculate total price (pair)
   const totalPrice = currentPrice ? currentPrice.price_sale_half_pair * 2 : 0;
 
-  // Get available treatments for this family
+  // Get available treatments from SKUs (upgrades) - infer from addons_detected
   const availableTreatments = useMemo(() => {
-    const treatmentIds = new Set<string>();
+    const treatmentMap = new Map<string, { id: string; count: number }>();
+    
     allPrices.forEach(p => {
       (p.addons_detected || []).forEach(addon => {
-        // Check if addon exists in our addons list
-        if (addons.some(a => a.id === addon)) {
-          treatmentIds.add(addon);
+        const existing = treatmentMap.get(addon);
+        if (existing) {
+          existing.count++;
+        } else {
+          treatmentMap.set(addon, { id: addon, count: 1 });
         }
       });
     });
-    return Array.from(treatmentIds);
-  }, [allPrices, addons]);
+    
+    // Return treatments sorted by popularity
+    return Array.from(treatmentMap.values())
+      .sort((a, b) => b.count - a.count)
+      .map(t => t.id);
+  }, [allPrices]);
 
   // Handle treatment toggle
   const toggleTreatment = (treatmentId: string) => {
@@ -161,21 +191,91 @@ export const LensCard = ({
     );
   };
 
-  // Get attribute display value
+  // Get attribute value from family.attributes_base (may be empty)
   const getAttributeValue = (attrId: string): number => {
     const base = family.attributes_base?.[attrId];
     return typeof base === 'number' ? base : 0;
   };
 
-  // Filter relevant attributes based on category
-  const getRelevantAttributes = () => {
-    const prefix = family.category === 'PROGRESSIVA' ? 'PROG_' : 'MONO_';
-    return attributeDefs.filter(a => 
-      a.id.startsWith(prefix) || ['AR_QUALIDADE', 'BLUE', 'DURABILIDADE'].includes(a.id)
+  // Infer key features from SKUs when attributes_base is empty
+  const inferredFeatures = useMemo(() => {
+    const features: Array<{ id: string; name: string; value: number; description: string }> = [];
+    
+    // Check if family has real attribute data
+    const hasRealAttributes = Object.keys(family.attributes_base || {}).some(
+      k => typeof family.attributes_base[k] === 'number' && family.attributes_base[k] > 0
     );
-  };
+    
+    if (!hasRealAttributes) {
+      // Infer from tier
+      const tierScores: Record<Tier, number> = {
+        essential: 1,
+        comfort: 2,
+        advanced: 3,
+        top: 4,
+      };
+      const baseScore = tierScores[tier] || 2;
+      
+      features.push({
+        id: 'confort',
+        name: 'Conforto Visual',
+        value: baseScore,
+        description: tier === 'top' ? 'Máximo conforto' : tier === 'advanced' ? 'Alto conforto' : tier === 'comfort' ? 'Bom conforto' : 'Conforto básico',
+      });
+      
+      features.push({
+        id: 'adaptation',
+        name: 'Facilidade de Adaptação',
+        value: Math.max(1, baseScore - 1) + 1,
+        description: tier === 'top' || tier === 'advanced' ? 'Adaptação rápida' : 'Adaptação normal',
+      });
+      
+      // Infer from available treatments
+      if (availableTreatments.includes('BLUE')) {
+        features.push({
+          id: 'digital',
+          name: 'Proteção Digital',
+          value: 3,
+          description: 'Filtro de luz azul disponível',
+        });
+      }
+      
+      if (availableTreatments.includes('FOTOSSENSIVEL')) {
+        features.push({
+          id: 'versatility',
+          name: 'Versatilidade',
+          value: 4,
+          description: 'Adapta-se à luminosidade',
+        });
+      }
+    }
+    
+    return features;
+  }, [family.attributes_base, tier, availableTreatments]);
 
-  const relevantAttributes = getRelevantAttributes();
+  // Get relevant attributes (from attributeDefs) + inferred
+  const relevantAttributes = useMemo(() => {
+    // First try to get from attributeDefs
+    if (attributeDefs.length > 0) {
+      const prefix = family.category === 'PROGRESSIVA' ? 'PROG_' : 'MONO_';
+      const fromDefs = attributeDefs.filter(a => 
+        a.id.startsWith(prefix) || ['AR_QUALIDADE', 'BLUE', 'DURABILIDADE'].includes(a.id)
+      );
+      
+      // Check if family has these attributes populated
+      const populated = fromDefs.filter(a => {
+        const val = getAttributeValue(a.id);
+        return val > 0;
+      });
+      
+      if (populated.length >= 2) {
+        return populated.slice(0, 4);
+      }
+    }
+    
+    // Use inferred features as fallback
+    return [];
+  }, [attributeDefs, family.category, family.attributes_base]);
 
   // Handle selection
   const handleSelect = () => {
@@ -301,7 +401,14 @@ export const LensCard = ({
           );
         })()}
 
-        {/* Attributes - Scale 1-5 using resolver */}
+        {/* Tier Description */}
+        <div className="bg-muted/30 rounded-lg p-2.5">
+          <p className="text-xs text-muted-foreground italic">
+            {TIER_DESCRIPTIONS[tier]}
+          </p>
+        </div>
+
+        {/* Attributes - from attributeDefs or inferred */}
         <div className="space-y-2">
           <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide flex items-center gap-1">
             Características
@@ -311,35 +418,68 @@ export const LensCard = ({
                   <Info className="w-3 h-3" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="text-xs">Escala de 1 a 5 estrelas</p>
+                  <p className="text-xs">Avaliação de 1 a 5 estrelas</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </h4>
           <div className="space-y-1.5">
-            {relevantAttributes.slice(0, 4).map(attr => {
-              const rawValue = getAttributeValue(attr.id);
-              const stars = scaleToStars(rawValue);
-              return (
-                <div key={attr.id} className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground truncate flex-1">
-                    {attr.name_common}
-                  </span>
-                  <div className="flex gap-0.5">
-                    {[1, 2, 3, 4, 5].map(i => (
-                      <Star 
-                        key={i}
-                        className={`w-3 h-3 ${
-                          i <= stars 
-                            ? `${config.colorClass} fill-current`
-                            : 'text-muted'
-                        }`}
-                      />
-                    ))}
+            {/* Show real attributes if available */}
+            {relevantAttributes.length > 0 ? (
+              relevantAttributes.slice(0, 4).map(attr => {
+                const rawValue = getAttributeValue(attr.id);
+                const stars = scaleToStars(rawValue);
+                return (
+                  <div key={attr.id} className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-muted-foreground truncate flex-1">
+                      {attr.name_common}
+                    </span>
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3, 4, 5].map(i => (
+                        <Star 
+                          key={i}
+                          className={`w-3 h-3 ${
+                            i <= stars 
+                              ? `${config.colorClass} fill-current`
+                              : 'text-muted'
+                          }`}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            ) : (
+              /* Show inferred features when no real attributes */
+              inferredFeatures.slice(0, 4).map(feature => (
+                <TooltipProvider key={feature.id}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-between gap-2 cursor-help">
+                        <span className="text-xs text-muted-foreground truncate flex-1">
+                          {feature.name}
+                        </span>
+                        <div className="flex gap-0.5">
+                          {[1, 2, 3, 4, 5].map(i => (
+                            <Star 
+                              key={i}
+                              className={`w-3 h-3 ${
+                                i <= feature.value 
+                                  ? `${config.colorClass} fill-current`
+                                  : 'text-muted'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">{feature.description}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ))
+            )}
           </div>
         </div>
 
@@ -373,35 +513,54 @@ export const LensCard = ({
           </div>
         )}
 
-        {/* Treatment Selection - using resolver for names */}
+        {/* Treatment Selection (Upgrades) - inferred from SKUs */}
         {availableTreatments.length > 0 && (
           <div className="space-y-2 border-t pt-3">
-            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">
-              Tratamentos
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide flex items-center gap-1">
+              <ArrowUpCircle className="w-3 h-3" />
+              Upgrades Disponíveis
             </h4>
             <div className="space-y-2">
-              {availableTreatments.map(treatmentId => {
+              {availableTreatments.slice(0, 5).map(treatmentId => {
+                // Use friendly labels or fall back to addon resolver
+                const friendlyInfo = TREATMENT_LABELS[treatmentId];
                 const addonInfo = getAddonInfo(treatmentId);
+                const displayName = friendlyInfo?.label || addonInfo.name || treatmentId;
+                const displayDesc = friendlyInfo?.description || addonInfo.description;
+                const isActive = selectedTreatments.includes(treatmentId);
                 
                 return (
                   <label 
                     key={treatmentId}
-                    className="flex items-start gap-2 cursor-pointer group"
+                    className={`flex items-start gap-2 cursor-pointer group p-2 rounded-lg border transition-all ${
+                      isActive 
+                        ? 'border-primary bg-primary/10' 
+                        : 'border-transparent hover:bg-muted/50'
+                    }`}
                   >
                     <Checkbox 
-                      checked={selectedTreatments.includes(treatmentId)}
+                      checked={isActive}
                       onCheckedChange={() => toggleTreatment(treatmentId)}
                       className="mt-0.5 data-[state=checked]:bg-primary"
                     />
                     <div className="flex-1">
-                      <span className="text-xs font-medium text-foreground group-hover:text-primary transition-colors">
-                        {addonInfo.name}
+                      <span className={`text-xs font-medium transition-colors ${
+                        isActive ? 'text-primary' : 'text-foreground group-hover:text-primary'
+                      }`}>
+                        {displayName}
                       </span>
-                      <p className="text-[10px] text-muted-foreground">{addonInfo.description}</p>
+                      {displayDesc && (
+                        <p className="text-[10px] text-muted-foreground">{displayDesc}</p>
+                      )}
                     </div>
                   </label>
                 );
               })}
+              {availableTreatments.length > 5 && (
+                <div className="text-[10px] text-muted-foreground text-center">
+                  +{availableTreatments.length - 5} upgrade(s) disponível(is)
+                </div>
+              )}
             </div>
           </div>
         )}
