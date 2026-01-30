@@ -1,14 +1,36 @@
+/**
+ * RecommendationsGrid - Refatorado para modelo varejo ótico
+ * 
+ * Layout:
+ * - 4 cards (escada) Essential / Comfort / Advanced / Top
+ * - Painel lateral fixo "Seu Orçamento" sempre visível
+ * - Cards simplificados (5 linhas, sem rolagem)
+ * - Comparativo visual com barras 1-5
+ * - Upsell baseado em SKUs reais
+ */
+
 import { useState, useMemo, useCallback } from 'react';
-import { SlidersHorizontal, X, ArrowLeft, Sparkles, LayoutGrid, Info, Shield, ThumbsUp, Zap, Crown, ArrowUp } from 'lucide-react';
+import { 
+  SlidersHorizontal, 
+  X, 
+  ArrowLeft, 
+  Sparkles, 
+  LayoutGrid,
+  ArrowUp,
+  Shield,
+  ThumbsUp,
+  Zap,
+  Crown
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { LensCard, LensCardConfiguration } from './LensCard';
+import { Progress } from '@/components/ui/progress';
+import { SimplifiedLensCard, LensCardSelection } from './SimplifiedLensCard';
+import { BudgetPanel } from './BudgetPanel';
 import { SmartSearch, AIRecommendation, AIResponse } from '@/components/search/SmartSearch';
 import { ProductSuggestionCards } from './ProductSuggestionCards';
-import { ProductCart } from './ProductCart';
 import { AdditionalProductModal } from './AdditionalProductModal';
-import { TierStaircaseHorizontal } from './TierStaircase';
 import type { Family, Price, Addon, Tier, AttributeDef, AnamnesisData, LensData, Prescription, ClinicalType } from '@/types/lens';
 import type { SelectedProduct, ProductSuggestion } from '@/lib/productSuggestionEngine';
 import { 
@@ -30,7 +52,7 @@ interface RecommendationsGridProps {
   recommendations: Record<Tier, FamilyWithPrice[]>;
   occupationalRecommendations?: Record<Tier, FamilyWithPrice[]>;
   addons: Addon[];
-  onSelectLens: (configuration: LensCardConfiguration) => void;
+  onSelectLens: (configuration: LensCardSelection) => void;
   onSelectProducts?: (products: SelectedProduct[]) => void;
   selectedFamilyId?: string;
   mostRecommendedId?: string;
@@ -43,17 +65,40 @@ interface RecommendationsGridProps {
 
 type ViewMode = 'system' | 'ai' | 'single';
 
-interface AIViewState {
-  selectedRecommendation: AIRecommendation;
-  allRecommendations: AIRecommendation[];
-  aiResponse: AIResponse;
-}
+// Tier configuration
+const TIER_CONFIG: Record<Tier, {
+  label: string;
+  description: string;
+  icon: React.ElementType;
+  colorClass: string;
+}> = {
+  essential: {
+    label: 'Essential',
+    description: 'Visão funcional com boa qualidade',
+    icon: Shield,
+    colorClass: 'text-slate-600',
+  },
+  comfort: {
+    label: 'Conforto',
+    description: 'Mais conforto no dia a dia',
+    icon: ThumbsUp,
+    colorClass: 'text-blue-600',
+  },
+  advanced: {
+    label: 'Avançada',
+    description: 'Adaptação mais rápida',
+    icon: Zap,
+    colorClass: 'text-purple-600',
+  },
+  top: {
+    label: 'Premium',
+    description: 'Máxima personalização',
+    icon: Crown,
+    colorClass: 'text-amber-600',
+  },
+};
 
-interface SingleViewState {
-  family: Family;
-  allPrices: Price[];
-  previousMode: ViewMode;
-}
+const TIER_ORDER: Tier[] = ['essential', 'comfort', 'advanced', 'top'];
 
 export const RecommendationsGrid = ({
   recommendations,
@@ -69,15 +114,11 @@ export const RecommendationsGrid = ({
   prescriptionData,
   lensData,
 }: RecommendationsGridProps) => {
-  const [searchQuery, setSearchQuery] = useState('');
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
   const [highlightedFamilies, setHighlightedFamilies] = useState<string[]>([]);
-  const [suggestedAddons, setSuggestedAddons] = useState<string[]>([]);
   
   // View mode state
   const [viewMode, setViewMode] = useState<ViewMode>('system');
-  const [aiViewState, setAiViewState] = useState<AIViewState | null>(null);
-  const [singleViewState, setSingleViewState] = useState<SingleViewState | null>(null);
 
   // Product cart state
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
@@ -88,6 +129,15 @@ export const RecommendationsGrid = ({
   const allFamilies = useMemo(() => {
     return Object.values(recommendations).flat();
   }, [recommendations]);
+
+  // Get all prices for selected family (for upgrades panel)
+  const allPricesForFamily = useMemo(() => {
+    const primaryProduct = selectedProducts.find(p => p.type === 'primary');
+    if (!primaryProduct) return [];
+    
+    const familyData = allFamilies.find(f => f.family.id === primaryProduct.familyId);
+    return familyData?.allPrices || [];
+  }, [selectedProducts, allFamilies]);
 
   // Generate product suggestions based on anamnesis
   const productSuggestions = useMemo((): ProductSuggestion[] => {
@@ -113,60 +163,12 @@ export const RecommendationsGrid = ({
     return selectedProducts.find(p => p.type === 'primary');
   }, [selectedProducts]);
 
-  // Get family data by id
-  const getFamilyData = useCallback((familyId: string) => {
-    return allFamilies.find(f => f.family.id === familyId);
-  }, [allFamilies]);
-
-  // Handle selecting an AI recommendation
-  const handleSelectAIRecommendation = useCallback((
-    recommendation: AIRecommendation,
-    allRecommendations: AIRecommendation[],
-    aiResponse: AIResponse
-  ) => {
-    setAiViewState({
-      selectedRecommendation: recommendation,
-      allRecommendations,
-      aiResponse,
-    });
-    setViewMode('ai');
-    setHighlightedFamilies([]);
-  }, []);
-
-  // Handle selecting an alternative (from LensCard)
-  const handleSelectAlternative = useCallback((family: Family, allPrices: Price[]) => {
-    setSingleViewState({
-      family,
-      allPrices,
-      previousMode: viewMode,
-    });
-    setViewMode('single');
-  }, [viewMode]);
-
-  // Return to system view
-  const returnToSystemView = useCallback(() => {
-    setViewMode('system');
-    setAiViewState(null);
-    setSingleViewState(null);
-    setHighlightedFamilies([]);
-  }, []);
-
-  // Return to AI view
-  const returnToAIView = useCallback(() => {
-    if (singleViewState?.previousMode === 'ai' && aiViewState) {
-      setViewMode('ai');
-    } else {
-      returnToSystemView();
-    }
-    setSingleViewState(null);
-  }, [singleViewState, aiViewState, returnToSystemView]);
-
   // Handle lens selection - add to cart as primary
-  const handleLensSelect = useCallback((config: LensCardConfiguration) => {
+  const handleLensSelect = useCallback((config: LensCardSelection) => {
     const family = allFamilies.find(f => f.family.id === config.familyId);
     if (!family) return;
 
-    const primaryProduct: SelectedProduct = {
+    const newPrimary: SelectedProduct = {
       id: generateProductId(),
       type: 'primary',
       familyId: config.familyId,
@@ -182,12 +184,31 @@ export const RecommendationsGrid = ({
     // Replace any existing primary product
     setSelectedProducts(prev => {
       const filtered = prev.filter(p => p.type !== 'primary');
-      return [primaryProduct, ...filtered];
+      return [newPrimary, ...filtered];
     });
 
     // Also call the original handler for backward compatibility
     onSelectLens(config);
   }, [allFamilies, onSelectLens]);
+
+  // Handle upgrade selection
+  const handleUpgradeProduct = useCallback((productId: string, upgrade: any) => {
+    setSelectedProducts(prev => prev.map(p => {
+      if (p.id !== productId) return p;
+      
+      // Update product with upgrade
+      return {
+        ...p,
+        unitPrice: p.unitPrice + upgrade.priceIncrement,
+        selectedTreatments: upgrade.id.startsWith('treatment-')
+          ? [...p.selectedTreatments, upgrade.id.replace('treatment-', '')]
+          : p.selectedTreatments,
+        selectedIndex: upgrade.id.startsWith('index-')
+          ? upgrade.id.replace('index-', '')
+          : p.selectedIndex,
+      };
+    }));
+  }, []);
 
   // Add additional product to cart
   const handleAddProduct = useCallback((product: SelectedProduct) => {
@@ -206,25 +227,14 @@ export const RecommendationsGrid = ({
     }
   }, [selectedProducts, onSelectProducts]);
 
-  // Get one option per tier (the best one) + alternatives
+  // Get one option per tier (the best one) + alternatives count
   const tierOptions = useMemo(() => {
-    const tiers: Tier[] = ['essential', 'comfort', 'advanced', 'top'];
-    
-    return tiers.map(tier => {
-      let tierFamilies = recommendations[tier];
+    return TIER_ORDER.map(tier => {
+      let tierFamilies = recommendations[tier] || [];
       
       // Apply supplier filter
       if (supplierFilter) {
         tierFamilies = tierFamilies.filter(f => f.family.supplier === supplierFilter);
-      }
-      
-      // Apply search filter
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        tierFamilies = tierFamilies.filter(f => 
-          f.family.name_original.toLowerCase().includes(query) ||
-          f.family.supplier.toLowerCase().includes(query)
-        );
       }
 
       // Apply highlight filter from AI search
@@ -234,7 +244,7 @@ export const RecommendationsGrid = ({
 
       if (tierFamilies.length === 0) return null;
 
-      // Primary option (first one, highest score, or first highlighted)
+      // Primary option (first one or first highlighted)
       const primary = highlightedFamilies.length > 0
         ? tierFamilies.sort((a, b) => {
             const aIdx = highlightedFamilies.indexOf(a.family.id);
@@ -243,39 +253,38 @@ export const RecommendationsGrid = ({
           })[0]
         : tierFamilies[0];
       
-      // Alternative options
-      const alternatives = tierFamilies.filter(f => f.family.id !== primary.family.id);
+      // Alternative count
+      const alternativeCount = tierFamilies.length - 1;
 
       return {
         tier,
         primary,
-        alternatives,
+        alternativeCount,
+        config: TIER_CONFIG[tier],
       };
-    }).filter(Boolean);
-  }, [recommendations, supplierFilter, searchQuery, highlightedFamilies]);
+    }).filter(Boolean) as Array<{
+      tier: Tier;
+      primary: FamilyWithPrice;
+      alternativeCount: number;
+      config: typeof TIER_CONFIG[Tier];
+    }>;
+  }, [recommendations, supplierFilter, highlightedFamilies]);
 
   // Get all unique suppliers from available families
   const availableSuppliers = useMemo(() => {
-    const allFamilies = Object.values(recommendations).flat();
     return [...new Set(allFamilies.map(f => f.family.supplier))];
-  }, [recommendations]);
+  }, [allFamilies]);
 
   const clearFilters = () => {
-    setSearchQuery('');
     setSupplierFilter(null);
     setHighlightedFamilies([]);
-    setSuggestedAddons([]);
   };
 
   const handleHighlightFamilies = useCallback((familyIds: string[]) => {
     setHighlightedFamilies(familyIds);
   }, []);
 
-  const handleSuggestAddons = useCallback((addonIds: string[]) => {
-    setSuggestedAddons(addonIds);
-  }, []);
-
-  const hasFilters = searchQuery || supplierFilter || highlightedFamilies.length > 0;
+  const hasFilters = supplierFilter || highlightedFamilies.length > 0;
 
   // Default anamnesis data if not provided
   const defaultAnamnesis: AnamnesisData = {
@@ -288,170 +297,14 @@ export const RecommendationsGrid = ({
     aestheticPriority: 'medium',
   };
 
-  // Render AI view
-  const renderAIView = () => {
-    if (!aiViewState || !lensData) return null;
+  // Current selected tier (based on primary product)
+  const currentTierIndex = useMemo(() => {
+    if (!primaryProduct) return -1;
+    const tierOption = tierOptions.find(t => t.primary.family.id === primaryProduct.familyId);
+    return tierOption ? TIER_ORDER.indexOf(tierOption.tier) : -1;
+  }, [primaryProduct, tierOptions]);
 
-    const { selectedRecommendation, allRecommendations, aiResponse } = aiViewState;
-    const familyData = getFamilyData(selectedRecommendation.familyId);
-
-    if (!familyData) return null;
-
-    // Get other recommendations as alternatives
-    const otherRecommendations = allRecommendations
-      .filter(r => r.familyId !== selectedRecommendation.familyId)
-      .map(r => {
-        const data = getFamilyData(r.familyId);
-        return data ? {
-          family: data.family,
-          bestPrice: data.bestPrice,
-          allPrices: data.allPrices,
-          reason: r.reason,
-        } : null;
-      })
-      .filter(Boolean);
-
-    return (
-      <div className="space-y-4">
-        {/* Navigation Header */}
-        <div className="flex items-center gap-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={returnToSystemView}
-            className="gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Voltar ao Quadro do Sistema
-          </Button>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              <span className="font-medium text-sm">Recomendação IA</span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">{aiResponse.explanation}</p>
-          </div>
-        </div>
-
-        {/* Main recommendation */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div>
-            <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
-              <Badge variant="default">1º Recomendada</Badge>
-              {selectedRecommendation.reason}
-            </h3>
-            <LensCard
-              family={familyData.family}
-              bestPrice={familyData.bestPrice}
-              allPrices={familyData.allPrices}
-              tier={familyData.tier}
-              isRecommended={true}
-              isSelected={selectedFamilyId === familyData.family.id}
-              addons={addons}
-              onSelect={onSelectLens}
-              attributeDefs={attributeDefs}
-              alternativeFamilies={[]}
-            />
-          </div>
-
-          {/* Other AI recommendations */}
-          {otherRecommendations.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium">Outras Recomendações IA:</h3>
-              <div className="space-y-2">
-                {otherRecommendations.map((alt, idx) => alt && (
-                  <Card 
-                    key={alt.family.id}
-                    className="p-4 hover:border-primary cursor-pointer transition-all"
-                    onClick={() => handleSelectAlternative(alt.family, alt.allPrices)}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge variant="outline">{idx + 2}º</Badge>
-                          <span className="font-medium">{alt.family.name_original}</span>
-                          <Badge variant="secondary" className="text-xs">{alt.family.supplier}</Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">{alt.reason}</p>
-                      </div>
-                      {alt.bestPrice && (
-                        <div className="text-right">
-                          <div className="font-bold">
-                            R$ {(alt.bestPrice.price_sale_half_pair * 2).toLocaleString('pt-BR')}
-                          </div>
-                          <div className="text-xs text-muted-foreground">par</div>
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // Render single family view
-  const renderSingleView = () => {
-    if (!singleViewState) return null;
-
-    const { family, allPrices } = singleViewState;
-
-    // Find tier for this family
-    const familyData = getFamilyData(family.id);
-    const tier = familyData?.tier || 'comfort';
-
-    return (
-      <div className="space-y-4">
-        {/* Navigation Header */}
-        <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg border">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={returnToAIView}
-            className="gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Voltar
-          </Button>
-          <div className="flex items-center gap-2">
-            <LayoutGrid className="w-4 h-4 text-muted-foreground" />
-            <span className="font-medium text-sm">Visualização Individual</span>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={returnToSystemView}
-            className="ml-auto gap-2"
-          >
-            <LayoutGrid className="w-4 h-4" />
-            Quadro do Sistema
-          </Button>
-        </div>
-
-        {/* Single Card */}
-        <div className="max-w-md mx-auto">
-          <LensCard
-            family={family}
-            bestPrice={allPrices.length > 0 ? allPrices.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0] : null}
-            allPrices={allPrices}
-            tier={tier}
-            isRecommended={false}
-            isSelected={selectedFamilyId === family.id}
-            addons={addons}
-            onSelect={onSelectLens}
-            attributeDefs={attributeDefs}
-            alternativeFamilies={[]}
-          />
-        </div>
-      </div>
-    );
-  };
-
-  // Render system view (default)
-  const renderSystemView = () => (
+  return (
     <div className="space-y-6">
       {/* Smart Search */}
       <SmartSearch
@@ -459,8 +312,8 @@ export const RecommendationsGrid = ({
         anamnesisData={anamnesisData || defaultAnamnesis}
         lensCategory={lensCategory}
         onHighlightFamilies={handleHighlightFamilies}
-        onSuggestAddons={handleSuggestAddons}
-        onSelectAIRecommendation={handleSelectAIRecommendation}
+        onSuggestAddons={() => {}}
+        onSelectAIRecommendation={() => {}}
       />
 
       {/* Supplier Filters */}
@@ -471,7 +324,6 @@ export const RecommendationsGrid = ({
             variant={supplierFilter === supplier ? 'default' : 'outline'}
             size="sm"
             onClick={() => setSupplierFilter(supplierFilter === supplier ? null : supplier)}
-            className="gap-1.5"
           >
             {supplier}
           </Button>
@@ -485,12 +337,12 @@ export const RecommendationsGrid = ({
             className="gap-1 text-muted-foreground"
           >
             <X className="w-3.5 h-3.5" />
-            Limpar filtros
+            Limpar
           </Button>
         )}
       </div>
 
-      {/* Category and Status badges */}
+      {/* Category badge */}
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="secondary" className="text-sm">
           {lensCategory === 'PROGRESSIVA' 
@@ -502,32 +354,71 @@ export const RecommendationsGrid = ({
         
         {highlightedFamilies.length > 0 && (
           <Badge variant="default" className="text-sm gap-1">
-            ✨ {highlightedFamilies.length} recomendação(ões) IA
-          </Badge>
-        )}
-        {selectedProducts.length > 0 && (
-          <Badge className="text-sm bg-success text-success-foreground gap-1">
-            ✓ {selectedProducts.length} produto(s) selecionado(s)
+            <Sparkles className="w-3 h-3" />
+            {highlightedFamilies.length} recomendação(ões) IA
           </Badge>
         )}
       </div>
 
+      {/* Tier Progress Bar - Visual staircase */}
+      <Card className="p-4 bg-muted/30">
+        <div className="flex items-center gap-2 mb-3">
+          <ArrowUp className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Jornada de Valor</span>
+          <span className="text-xs text-muted-foreground ml-auto">
+            O que você ganha em cada nível
+          </span>
+        </div>
+        
+        <div className="flex items-center gap-1">
+          {TIER_ORDER.map((tier, idx) => {
+            const config = TIER_CONFIG[tier];
+            const Icon = config.icon;
+            const isActive = idx <= currentTierIndex;
+            const isCurrent = idx === currentTierIndex;
+            
+            return (
+              <div key={tier} className="flex-1 relative group">
+                <div className={`
+                  h-2 rounded-full transition-all
+                  ${isActive ? 'bg-primary' : 'bg-muted'}
+                  ${isCurrent ? 'ring-2 ring-primary ring-offset-2' : ''}
+                `} />
+                
+                {/* Label below */}
+                <div className={`
+                  mt-2 text-center text-xs transition-colors
+                  ${isCurrent ? 'font-bold text-primary' : isActive ? 'text-foreground' : 'text-muted-foreground'}
+                `}>
+                  <Icon className={`w-4 h-4 mx-auto mb-0.5 ${config.colorClass}`} />
+                  {config.label}
+                </div>
+                
+                {/* Tooltip on hover */}
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-popover border rounded shadow-md text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                  {config.description}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
       {/* Main content - responsive layout */}
       <div className="flex flex-col xl:flex-row gap-6">
-        {/* Left: Lens cards - auto-expands */}
+        {/* Left: Lens cards grid */}
         <div className="flex-1 min-w-0 space-y-6">
-          {/* Grid of cards - auto-adjustable columns */}
           {tierOptions.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 auto-rows-fr">
               {tierOptions.map(option => {
-                if (!option) return null;
-                
-                const { tier, primary, alternatives } = option;
+                const { tier, primary, alternativeCount } = option;
                 const isRecommended = primary.family.id === mostRecommendedId;
-                const isSelected = selectedProducts.some(p => p.familyId === primary.family.id && p.type === 'primary');
+                const isSelected = selectedProducts.some(
+                  p => p.familyId === primary.family.id && p.type === 'primary'
+                );
                 
                 return (
-                  <LensCard
+                  <SimplifiedLensCard
                     key={tier}
                     family={primary.family}
                     bestPrice={primary.bestPrice}
@@ -537,13 +428,7 @@ export const RecommendationsGrid = ({
                     isSelected={isSelected}
                     addons={addons}
                     onSelect={handleLensSelect}
-                    onSelectAlternative={handleSelectAlternative}
-                    alternativeFamilies={alternatives.map(a => ({
-                      family: a.family,
-                      bestPrice: a.bestPrice,
-                      allPrices: a.allPrices,
-                    }))}
-                    attributeDefs={attributeDefs}
+                    alternativeCount={alternativeCount}
                   />
                 );
               })}
@@ -552,7 +437,7 @@ export const RecommendationsGrid = ({
             <div className="text-center py-12 text-muted-foreground">
               <SlidersHorizontal className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p className="text-lg font-medium">Nenhuma lente encontrada</p>
-              <p className="text-sm">Tente ajustar os filtros ou a busca</p>
+              <p className="text-sm">Tente ajustar os filtros</p>
               {hasFilters && (
                 <Button variant="link" onClick={clearFilters} className="mt-2">
                   Limpar filtros
@@ -571,60 +456,17 @@ export const RecommendationsGrid = ({
               hasSolar={hasProductType(selectedProducts, 'solar')}
             />
           )}
-
-          {/* Tier Staircase - Visual journey */}
-          <div className="p-4 bg-muted/30 rounded-lg space-y-4">
-            <div>
-              <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                <ArrowUp className="w-4 h-4 text-muted-foreground" />
-                Jornada de Valor - O que você ganha em cada nível
-              </h4>
-              <p className="text-xs text-muted-foreground mb-3">
-                Cada nível oferece mais tecnologia, conforto e proteção. A <strong>"Melhor opção"</strong> é calculada com base no seu perfil.
-              </p>
-              
-              {/* Interactive tier staircase */}
-              <TierStaircaseHorizontal 
-                currentTier={tierOptions[0]?.tier || 'comfort'}
-              />
-            </div>
-
-            {/* Value comparison legend */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 pt-2 border-t">
-              <div className="flex items-center gap-1.5 text-xs">
-                <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                <span className="text-muted-foreground">Conforto</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs">
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                <span className="text-muted-foreground">Tecnologia</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs">
-                <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                <span className="text-muted-foreground">Proteção</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs">
-                <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
-                <span className="text-muted-foreground">Adaptação</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs">
-                <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                <span className="text-muted-foreground">Uso Prolongado</span>
-              </div>
-            </div>
-
-            <div className="text-[10px] text-muted-foreground border-t pt-2">
-              <strong>Dica:</strong> Compare os eixos de valor em cada card. Você pode adicionar tratamentos extras baseados no catálogo do fabricante.
-            </div>
-          </div>
         </div>
 
-        {/* Right: Product Cart - fixed width on xl+ */}
+        {/* Right: Budget Panel - fixed width on xl+ */}
         <div className="xl:w-80 xl:flex-shrink-0">
           <div className="sticky top-24">
-            <ProductCart
+            <BudgetPanel
               products={selectedProducts}
+              allPrices={allPricesForFamily}
+              selectedFamilyId={primaryProduct?.familyId}
               onRemoveProduct={handleRemoveProduct}
+              onUpgradeProduct={handleUpgradeProduct}
               onFinalize={handleFinalize}
             />
           </div>
@@ -654,15 +496,4 @@ export const RecommendationsGrid = ({
       />
     </div>
   );
-
-  // Main render - proper view mode switching
-  if (viewMode === 'ai') {
-    return renderAIView();
-  }
-  
-  if (viewMode === 'single') {
-    return renderSingleView();
-  }
-  
-  return renderSystemView();
 };
