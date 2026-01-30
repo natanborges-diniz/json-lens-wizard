@@ -164,7 +164,7 @@ export const SimplifiedLensCard = ({
     return pills.slice(0, 3);
   }, [enrichedFamily]);
 
-  // Calculate "a partir de" price
+  // Calculate "a partir de" price - use allPrices for display
   const startingPrice = useMemo(() => {
     if (!allPrices.length) return null;
     const sorted = [...allPrices].sort((a, b) => 
@@ -177,16 +177,22 @@ export const SimplifiedLensCard = ({
     ? startingPrice.price_sale_half_pair * 2 
     : null;
 
-  // Handle selection - auto-select best SKU
+  // Effective best price: use bestPrice if available, otherwise cheapest from allPrices
+  const effectiveBestPrice = bestPrice || startingPrice;
+
+  // Check if we have any options available
+  const hasOptions = allPrices.length > 0;
+
+  // Handle selection - auto-select best SKU or cheapest available
   const handleSelect = () => {
-    if (!bestPrice) return;
+    if (!effectiveBestPrice) return;
     
     onSelect({
       familyId: family.id,
-      selectedPrice: bestPrice,
-      selectedIndex: getIndexFromPrice(bestPrice),
-      selectedTreatments: bestPrice.addons_detected || [],
-      totalPrice: bestPrice.price_sale_half_pair * 2,
+      selectedPrice: effectiveBestPrice,
+      selectedIndex: getIndexFromPrice(effectiveBestPrice),
+      selectedTreatments: effectiveBestPrice.addons_detected || [],
+      totalPrice: effectiveBestPrice.price_sale_half_pair * 2,
     });
   };
 
@@ -262,7 +268,7 @@ export const SimplifiedLensCard = ({
           <div className={`text-center py-3 rounded-lg transition-colors ${
             isSelected ? 'bg-success/10' : 'bg-muted/30'
           }`}>
-            {priceDisplay ? (
+            {hasOptions && priceDisplay ? (
               <>
                 <div className="text-xs text-muted-foreground mb-1">A partir de</div>
                 <div className={`text-2xl font-bold ${isSelected ? 'text-success' : 'text-foreground'}`}>
@@ -291,7 +297,7 @@ export const SimplifiedLensCard = ({
           <div className="mt-auto pt-2">
             <Button 
               onClick={handleSelect}
-              disabled={!bestPrice}
+              disabled={!hasOptions}
               variant={isSelected ? 'outline' : 'default'}
               className={`w-full ${
                 isSelected 
@@ -326,7 +332,7 @@ export const SimplifiedLensCard = ({
         family={family}
         enrichedFamily={enrichedFamily || undefined}
         allPrices={allPrices}
-        bestPrice={bestPrice}
+        bestPrice={effectiveBestPrice}
         tier={tier}
         addons={addons}
         onSelect={onSelect}
