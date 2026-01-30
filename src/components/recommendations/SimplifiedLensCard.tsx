@@ -127,12 +127,26 @@ export const SimplifiedLensCard = ({
   const TierIcon = TIER_ICONS[tier];
   const lensCategory = (family.clinical_type || family.category) as ClinicalType;
 
-  // Get display name (prefer commercial name)
+  // Get display name - always show "Supplier FamilyName" (e.g., "Zeiss Choice")
   const displayName = useMemo(() => {
-    if (enrichedFamily?.display_name) return enrichedFamily.display_name;
-    if (family.name_original) return family.name_original;
-    // Humanize ID as fallback
-    return family.id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    // Get the family name part
+    let familyName = '';
+    if (enrichedFamily?.display_name) {
+      familyName = enrichedFamily.display_name;
+    } else if (family.name_original) {
+      familyName = family.name_original;
+    } else {
+      // Humanize ID as fallback
+      familyName = family.id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+    
+    // If family name already contains supplier, return as is
+    if (familyName.toLowerCase().includes(family.supplier.toLowerCase())) {
+      return familyName;
+    }
+    
+    // Otherwise, prepend supplier: "Zeiss Choice"
+    return `${family.supplier} ${familyName}`;
   }, [enrichedFamily, family]);
 
   // Get subtitle

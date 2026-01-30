@@ -130,14 +130,22 @@ export const RecommendationsGrid = ({
     return Object.values(recommendations).flat();
   }, [recommendations]);
 
+  // Get ALL prices from all families (for upgrade finding in any family)
+  const allPricesMap = useMemo(() => {
+    const map = new Map<string, Price[]>();
+    allFamilies.forEach(f => {
+      map.set(f.family.id, f.allPrices);
+    });
+    return map;
+  }, [allFamilies]);
+
   // Get all prices for selected family (for upgrades panel)
   const allPricesForFamily = useMemo(() => {
     const primaryProduct = selectedProducts.find(p => p.type === 'primary');
     if (!primaryProduct) return [];
     
-    const familyData = allFamilies.find(f => f.family.id === primaryProduct.familyId);
-    return familyData?.allPrices || [];
-  }, [selectedProducts, allFamilies]);
+    return allPricesMap.get(primaryProduct.familyId) || [];
+  }, [selectedProducts, allPricesMap]);
 
   // Generate product suggestions based on anamnesis
   const productSuggestions = useMemo((): ProductSuggestion[] => {
@@ -228,9 +236,13 @@ export const RecommendationsGrid = ({
   }, [selectedProducts, onSelectProducts]);
 
   // Get one option per tier (the best one) + alternatives count
+  // IMPORTANT: Filter out families with no prices (allPrices.length === 0)
   const tierOptions = useMemo(() => {
     return TIER_ORDER.map(tier => {
       let tierFamilies = recommendations[tier] || [];
+      
+      // Filter out families without any prices (indisponível)
+      tierFamilies = tierFamilies.filter(f => f.allPrices.length > 0);
       
       // Apply supplier filter
       if (supplierFilter) {

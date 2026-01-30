@@ -99,28 +99,57 @@ export const BudgetPanel = ({
 
   // Calculate available upgrades for primary product
   const availableUpgrades = useMemo((): SKUUpgrade[] => {
-    if (!primaryProduct || !selectedFamilyId) return [];
+    if (!primaryProduct || !selectedFamilyId) {
+      console.log('[BudgetPanel] No primary product or familyId:', { primaryProduct, selectedFamilyId });
+      return [];
+    }
+    
+    console.log('[BudgetPanel] Calculating upgrades:', {
+      familyId: selectedFamilyId,
+      allPricesCount: allPrices.length,
+      currentERP: primaryProduct.selectedPriceErpCode,
+    });
     
     const familyPrices = allPrices.filter(p => p.family_id === selectedFamilyId);
+    console.log('[BudgetPanel] Family prices found:', familyPrices.length);
+    
+    if (familyPrices.length === 0) {
+      console.warn('[BudgetPanel] No prices for family, using all prices');
+      // Fallback: use all prices if family filter returns empty
+    }
+    
+    const pricesToUse = familyPrices.length > 0 ? familyPrices : allPrices;
     const currentIndex = primaryProduct.selectedIndex;
     const currentTreatments = new Set(primaryProduct.selectedTreatments);
     
-    // Find current price
-    const currentPrice = familyPrices.find(p => 
+    // Find current price by ERP code first, then by matching criteria
+    let currentPrice = pricesToUse.find(p => 
       p.erp_code === primaryProduct.selectedPriceErpCode
     );
-    if (!currentPrice) return [];
+    
+    // Fallback: find by index if ERP code not found
+    if (!currentPrice) {
+      currentPrice = pricesToUse.find(p => getIndexFromPrice(p) === currentIndex);
+    }
+    
+    console.log('[BudgetPanel] Current price found:', currentPrice ? currentPrice.erp_code : 'NOT FOUND');
+    
+    if (!currentPrice) {
+      console.warn('[BudgetPanel] Could not find current price, using first available');
+      currentPrice = pricesToUse[0];
+      if (!currentPrice) return [];
+    }
     
     const upgrades: SKUUpgrade[] = [];
     
     // 1. Index upgrades (higher index = thinner lens)
-    const indices = [...new Set(familyPrices.map(p => getIndexFromPrice(p)))].sort();
+    const indices = [...new Set(pricesToUse.map(p => getIndexFromPrice(p)))].sort();
     const currentIdxPosition = indices.indexOf(currentIndex);
     
     indices.forEach((idx, pos) => {
       if (pos <= currentIdxPosition) return; // Only higher indices
       
-      const priceForIndex = familyPrices
+      const priceForIndex = pricesToUse
         .filter(p => getIndexFromPrice(p) === idx)
         .sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
       
@@ -140,7 +169,7 @@ export const BudgetPanel = ({
     
     // 2. Treatment upgrades
     const allTreatments = new Set<string>();
-    familyPrices.forEach(p => {
+    pricesToUse.forEach(p => {
       (p.addons_detected || []).forEach(t => allTreatments.add(t));
     });
     
@@ -148,7 +177,7 @@ export const BudgetPanel = ({
       if (currentTreatments.has(treatment)) return; // Already has it
       
       // Find cheapest price with this treatment at current index
-      const priceWithTreatment = familyPrices
+      const priceWithTreatment = pricesToUse
         .filter(p => 
           getIndexFromPrice(p) === currentIndex &&
           (p.addons_detected || []).includes(treatment)
