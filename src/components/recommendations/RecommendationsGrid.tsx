@@ -421,11 +421,11 @@ export const RecommendationsGrid = ({
         </div>
       </Card>
 
-      {/* Main content - 4 cards full width, cart below */}
-      <div className="space-y-6">
-        {/* Lens cards grid - always 4 columns on desktop */}
+      {/* Main content - 4 cards full width in single row, cart below */}
+      <div className="space-y-8">
+        {/* Lens cards grid - force 4 columns that fill available width equally */}
         {tierOptions.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(tierOptions.length, 4)}, minmax(0, 1fr))` }}>
             {tierOptions.map(option => {
               const { tier, primary, alternativeCount } = option;
               const isRecommended = primary.family.id === mostRecommendedId;
@@ -473,15 +473,17 @@ export const RecommendationsGrid = ({
           />
         )}
 
-        {/* Budget Panel - full width at the bottom */}
-        <BudgetPanel
-          products={selectedProducts}
-          allPrices={allPricesForFamily}
-          selectedFamilyId={primaryProduct?.familyId}
-          onRemoveProduct={handleRemoveProduct}
-          onUpgradeProduct={handleUpgradeProduct}
-          onFinalize={handleFinalize}
-        />
+        {/* Budget Panel - full width at the bottom, horizontal layout */}
+        <div className="w-full">
+          <BudgetPanel
+            products={selectedProducts}
+            allPrices={allPricesForFamily}
+            selectedFamilyId={primaryProduct?.familyId}
+            onRemoveProduct={handleRemoveProduct}
+            onUpgradeProduct={handleUpgradeProduct}
+            onFinalize={handleFinalize}
+          />
+        </div>
       </div>
 
       {/* Modals for additional products */}
