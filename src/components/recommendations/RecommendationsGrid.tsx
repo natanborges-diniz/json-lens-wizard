@@ -421,73 +421,67 @@ export const RecommendationsGrid = ({
         </div>
       </Card>
 
-      {/* Main content - responsive layout */}
-      <div className="flex flex-col xl:flex-row gap-6">
-        {/* Left: Lens cards grid */}
-        <div className="flex-1 min-w-0 space-y-6">
-          {tierOptions.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 auto-rows-fr">
-              {tierOptions.map(option => {
-                const { tier, primary, alternativeCount } = option;
-                const isRecommended = primary.family.id === mostRecommendedId;
-                const isSelected = selectedProducts.some(
-                  p => p.familyId === primary.family.id && p.type === 'primary'
-                );
-                
-                return (
-                  <SimplifiedLensCard
-                    key={tier}
-                    family={primary.family}
-                    bestPrice={primary.bestPrice}
-                    allPrices={primary.allPrices}
-                    tier={tier}
-                    isRecommended={isRecommended}
-                    isSelected={isSelected}
-                    addons={addons}
-                    onSelect={handleLensSelect}
-                    alternativeCount={alternativeCount}
-                  />
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <SlidersHorizontal className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">Nenhuma lente encontrada</p>
-              <p className="text-sm">Tente ajustar os filtros</p>
-              {hasFilters && (
-                <Button variant="link" onClick={clearFilters} className="mt-2">
-                  Limpar filtros
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* Product Suggestions - only show after primary is selected */}
-          {selectedProducts.length > 0 && productSuggestions.length > 0 && (
-            <ProductSuggestionCards
-              suggestions={productSuggestions}
-              onSelectOccupational={() => setShowOccupationalModal(true)}
-              onSelectSolar={() => setShowSolarModal(true)}
-              hasOccupational={hasProductType(selectedProducts, 'occupational')}
-              hasSolar={hasProductType(selectedProducts, 'solar')}
-            />
-          )}
-        </div>
-
-        {/* Right: Budget Panel - fixed width on xl+ */}
-        <div className="xl:w-80 xl:flex-shrink-0">
-          <div className="sticky top-24">
-            <BudgetPanel
-              products={selectedProducts}
-              allPrices={allPricesForFamily}
-              selectedFamilyId={primaryProduct?.familyId}
-              onRemoveProduct={handleRemoveProduct}
-              onUpgradeProduct={handleUpgradeProduct}
-              onFinalize={handleFinalize}
-            />
+      {/* Main content - 4 cards full width, cart below */}
+      <div className="space-y-6">
+        {/* Lens cards grid - always 4 columns on desktop */}
+        {tierOptions.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {tierOptions.map(option => {
+              const { tier, primary, alternativeCount } = option;
+              const isRecommended = primary.family.id === mostRecommendedId;
+              const isSelected = selectedProducts.some(
+                p => p.familyId === primary.family.id && p.type === 'primary'
+              );
+              
+              return (
+                <SimplifiedLensCard
+                  key={tier}
+                  family={primary.family}
+                  bestPrice={primary.bestPrice}
+                  allPrices={primary.allPrices}
+                  tier={tier}
+                  isRecommended={isRecommended}
+                  isSelected={isSelected}
+                  addons={addons}
+                  onSelect={handleLensSelect}
+                  alternativeCount={alternativeCount}
+                />
+              );
+            })}
           </div>
-        </div>
+        ) : (
+          <div className="text-center py-12 text-muted-foreground">
+            <SlidersHorizontal className="w-12 h-12 mx-auto mb-4 opacity-50" />
+            <p className="text-lg font-medium">Nenhuma lente encontrada</p>
+            <p className="text-sm">Tente ajustar os filtros</p>
+            {hasFilters && (
+              <Button variant="link" onClick={clearFilters} className="mt-2">
+                Limpar filtros
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Product Suggestions - only show after primary is selected */}
+        {selectedProducts.length > 0 && productSuggestions.length > 0 && (
+          <ProductSuggestionCards
+            suggestions={productSuggestions}
+            onSelectOccupational={() => setShowOccupationalModal(true)}
+            onSelectSolar={() => setShowSolarModal(true)}
+            hasOccupational={hasProductType(selectedProducts, 'occupational')}
+            hasSolar={hasProductType(selectedProducts, 'solar')}
+          />
+        )}
+
+        {/* Budget Panel - full width at the bottom */}
+        <BudgetPanel
+          products={selectedProducts}
+          allPrices={allPricesForFamily}
+          selectedFamilyId={primaryProduct?.familyId}
+          onRemoveProduct={handleRemoveProduct}
+          onUpgradeProduct={handleUpgradeProduct}
+          onFinalize={handleFinalize}
+        />
       </div>
 
       {/* Modals for additional products */}
