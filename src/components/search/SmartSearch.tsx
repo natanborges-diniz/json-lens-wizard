@@ -81,7 +81,7 @@ export const SmartSearch = ({
         f.name_original.toLowerCase().includes(query) ||
         f.supplier.toLowerCase().includes(query) ||
         f.category.toLowerCase().includes(query) ||
-        f.attributes_display_base.some(attr => attr.toLowerCase().includes(query))
+        (f.attributes_display_base ?? []).some(attr => attr.toLowerCase().includes(query))
       );
     });
 
@@ -162,7 +162,7 @@ export const SmartSearch = ({
           f.name_original.toLowerCase().includes(q) ||
           f.supplier.toLowerCase().includes(q) ||
           f.category.toLowerCase().includes(q) ||
-          f.attributes_display_base.some(attr => attr.toLowerCase().includes(q))
+          (f.attributes_display_base ?? []).some(attr => attr.toLowerCase().includes(q))
         );
       })
       .map(f => f.id);
