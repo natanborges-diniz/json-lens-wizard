@@ -127,10 +127,10 @@ export const LensDetailsDrawer = ({
 
   const totalPrice = currentPrice ? currentPrice.price_sale_half_pair * 2 : 0;
 
-  // Technologies
+  // Technologies from family.technology_refs
   const technologies = getTechnologiesForFamily(family as any);
 
-  // Available upgrades from SKUs
+  // Available upgrades from SKUs (treatments that can be added)
   const availableUpgrades = useMemo(() => {
     const allTreatments = new Set<string>();
     allPrices.forEach(p => {
@@ -138,6 +138,16 @@ export const LensDetailsDrawer = ({
     });
     return Array.from(allTreatments);
   }, [allPrices]);
+
+  // Get available addons from catalog that can be sold with this family
+  const catalogAddons = useMemo(() => {
+    const lensCategory = (family.clinical_type || family.category) as string;
+    return addons.filter(addon => 
+      addon.active && 
+      addon.rules?.categories?.includes(lensCategory as any) &&
+      !availableUpgrades.includes(addon.id) // Don't duplicate what's already in SKUs
+    );
+  }, [addons, family, availableUpgrades]);
 
   // Handle selection
   const handleSelect = () => {
@@ -279,10 +289,13 @@ export const LensDetailsDrawer = ({
             </div>
           )}
 
-          {/* Available Upgrades */}
+          {/* Available Upgrades from SKUs */}
           {availableUpgrades.length > 0 && (
             <div className="space-y-3">
-              <h4 className="text-sm font-medium">Melhorias Disponíveis</h4>
+              <h4 className="text-sm font-medium">Melhorias Disponíveis (SKUs)</h4>
+              <p className="text-xs text-muted-foreground">
+                Selecione tratamentos já incluídos em SKUs do catálogo:
+              </p>
               <div className="flex flex-wrap gap-2">
                 {availableUpgrades.map(upgrade => {
                   const isSelected = selectedTreatments.includes(upgrade);
@@ -318,6 +331,42 @@ export const LensDetailsDrawer = ({
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Catalog Addons - Technologies that can be added but are not in current SKUs */}
+          {catalogAddons.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="text-sm font-medium">Tecnologias Adicionais</h4>
+              <p className="text-xs text-muted-foreground">
+                Tratamentos que podem ser adicionados ao orçamento:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {catalogAddons.map(addon => {
+                  const isSelected = selectedTreatments.includes(addon.id);
+                  
+                  return (
+                    <Button
+                      key={addon.id}
+                      variant={isSelected ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => toggleTreatment(addon.id)}
+                      className="gap-1"
+                    >
+                      {isSelected && <Check className="w-3 h-3" />}
+                      {addon.name_common}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Empty state if no upgrades or addons available */}
+          {availableUpgrades.length === 0 && catalogAddons.length === 0 && (
+            <div className="text-center py-4 text-muted-foreground text-sm">
+              <Info className="w-5 h-5 mx-auto mb-2 opacity-50" />
+              Nenhum tratamento adicional disponível para esta lente
             </div>
           )}
 

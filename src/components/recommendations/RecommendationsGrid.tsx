@@ -237,8 +237,9 @@ export const RecommendationsGrid = ({
 
   // Get one option per tier (the best one) + alternatives count
   // IMPORTANT: Filter out families with no prices (indisponível) or no valid prices (price = 0)
+  // Also sorts by price to ensure visual coherence within and across tiers
   const tierOptions = useMemo(() => {
-    return TIER_ORDER.map(tier => {
+    const options = TIER_ORDER.map(tier => {
       let tierFamilies = recommendations[tier] || [];
       
       // Filter out families without any prices or with only zero prices
@@ -261,7 +262,16 @@ export const RecommendationsGrid = ({
 
       if (tierFamilies.length === 0) return null;
 
-      // Primary option (first one or first highlighted)
+      // Sort by lowest price (ascending) to pick the most attractive option for this tier
+      tierFamilies.sort((a, b) => {
+        const priceA = a.bestPrice?.price_sale_half_pair || 
+          Math.min(...a.allPrices.filter(p => p.price_sale_half_pair > 0).map(p => p.price_sale_half_pair)) || Infinity;
+        const priceB = b.bestPrice?.price_sale_half_pair || 
+          Math.min(...b.allPrices.filter(p => p.price_sale_half_pair > 0).map(p => p.price_sale_half_pair)) || Infinity;
+        return priceA - priceB;
+      });
+
+      // Primary option (first one = lowest price, or first highlighted)
       const primary = highlightedFamilies.length > 0
         ? tierFamilies.sort((a, b) => {
             const aIdx = highlightedFamilies.indexOf(a.family.id);
@@ -273,18 +283,37 @@ export const RecommendationsGrid = ({
       // Alternative count
       const alternativeCount = tierFamilies.length - 1;
 
+      // Calculate the starting price for this tier
+      const startingPrice = primary.bestPrice?.price_sale_half_pair || 
+        Math.min(...primary.allPrices.filter(p => p.price_sale_half_pair > 0).map(p => p.price_sale_half_pair)) || 0;
+
       return {
         tier,
         primary,
         alternativeCount,
         config: TIER_CONFIG[tier],
+        startingPrice,
       };
     }).filter(Boolean) as Array<{
       tier: Tier;
       primary: FamilyWithPrice;
       alternativeCount: number;
       config: typeof TIER_CONFIG[Tier];
+      startingPrice: number;
     }>;
+
+    // Log if pricing seems inverted (warning for data quality)
+    if (options.length >= 2) {
+      for (let i = 0; i < options.length - 1; i++) {
+        if (options[i].startingPrice > options[i + 1].startingPrice) {
+          console.warn(
+            `[RecommendationsGrid] Preço invertido: ${options[i].tier} (R$ ${options[i].startingPrice * 2}) > ${options[i + 1].tier} (R$ ${options[i + 1].startingPrice * 2}). Verifique os dados do catálogo.`
+          );
+        }
+      }
+    }
+
+    return options;
   }, [recommendations, supplierFilter, highlightedFamilies]);
 
   // Get all unique suppliers from available families
