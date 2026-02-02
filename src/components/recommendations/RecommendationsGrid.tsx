@@ -236,13 +236,18 @@ export const RecommendationsGrid = ({
   }, [selectedProducts, onSelectProducts]);
 
   // Get one option per tier (the best one) + alternatives count
-  // IMPORTANT: Filter out families with no prices (allPrices.length === 0)
+  // IMPORTANT: Filter out families with no prices (indisponível) or no valid prices (price = 0)
   const tierOptions = useMemo(() => {
     return TIER_ORDER.map(tier => {
       let tierFamilies = recommendations[tier] || [];
       
-      // Filter out families without any prices (indisponível)
-      tierFamilies = tierFamilies.filter(f => f.allPrices.length > 0);
+      // Filter out families without any prices or with only zero prices
+      tierFamilies = tierFamilies.filter(f => {
+        if (f.allPrices.length === 0) return false;
+        // Check if at least one price is valid (> 0)
+        const hasValidPrice = f.allPrices.some(p => p.price_sale_half_pair > 0);
+        return hasValidPrice;
+      });
       
       // Apply supplier filter
       if (supplierFilter) {

@@ -195,7 +195,8 @@ export const SimplifiedLensCard = ({
   const effectiveBestPrice = bestPrice || startingPrice;
 
   // Check if we have any options available
-  const hasOptions = allPrices.length > 0;
+  // A family has options if it has prices AND at least one has a valid price
+  const hasOptions = allPrices.length > 0 && priceDisplay !== null && priceDisplay > 0;
 
   // Handle selection - auto-select best SKU or cheapest available
   const handleSelect = () => {
