@@ -305,7 +305,7 @@ export const SimplifiedLensCard = ({
           >
             <Eye className="w-3 h-3" />
             Ver detalhes
-            {alternativeCount > 0 && ` (+${alternativeCount} opções)`}
+            {allPrices.length > 1 && ` (+${allPrices.length} configurações)`}
           </button>
 
           {/* CTA Button */}
