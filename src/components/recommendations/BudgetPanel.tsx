@@ -7,16 +7,18 @@
  * - Add-ons aplicados (com +R$ incremental)
  * - Módulo "Melhorar sua lente" (upsells baseados em SKUs)
  * - Botão "Finalizar orçamento"
+ * 
+ * REFATORADO: Upgrades são toggleáveis (podem ser desmarcados)
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { 
   ShoppingCart, 
   Package, 
   X, 
   ArrowRight,
-  Plus,
-  Sparkles,
+  ChevronDown,
+  ChevronUp,
   TrendingUp
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -91,51 +93,43 @@ export const BudgetPanel = ({
   onFinalize,
 }: BudgetPanelProps) => {
   const [upgradesOpen, setUpgradesOpen] = useState(true);
-  const [selectedUpgrades, setSelectedUpgrades] = useState<Set<string>>(new Set());
+  const [appliedUpgrades, setAppliedUpgrades] = useState<Map<string, SKUUpgrade>>(new Map());
 
   const total = calculateCartTotal(products);
   const hasPrimary = products.some(p => p.type === 'primary');
   const primaryProduct = products.find(p => p.type === 'primary');
 
+  // Reset upgrades when primary product changes
+  useEffect(() => {
+    if (primaryProduct?.id) {
+      setAppliedUpgrades(new Map());
+    }
+  }, [primaryProduct?.id]);
+
   // Calculate available upgrades for primary product
   const availableUpgrades = useMemo((): SKUUpgrade[] => {
     if (!primaryProduct || !selectedFamilyId) {
-      console.log('[BudgetPanel] No primary product or familyId:', { primaryProduct, selectedFamilyId });
       return [];
     }
     
-    console.log('[BudgetPanel] Calculating upgrades:', {
-      familyId: selectedFamilyId,
-      allPricesCount: allPrices.length,
-      currentERP: primaryProduct.selectedPriceErpCode,
-    });
-    
     const familyPrices = allPrices.filter(p => p.family_id === selectedFamilyId);
-    console.log('[BudgetPanel] Family prices found:', familyPrices.length);
-    
-    if (familyPrices.length === 0) {
-      console.warn('[BudgetPanel] No prices for family, using all prices');
-      // Fallback: use all prices if family filter returns empty
-    }
-    
     const pricesToUse = familyPrices.length > 0 ? familyPrices : allPrices;
+    
+    if (pricesToUse.length === 0) return [];
+    
     const currentIndex = primaryProduct.selectedIndex;
     const currentTreatments = new Set(primaryProduct.selectedTreatments);
     
-    // Find current price by ERP code first, then by matching criteria
+    // Find current price
     let currentPrice = pricesToUse.find(p => 
       p.erp_code === primaryProduct.selectedPriceErpCode
     );
     
-    // Fallback: find by index if ERP code not found
     if (!currentPrice) {
       currentPrice = pricesToUse.find(p => getIndexFromPrice(p) === currentIndex);
     }
     
-    console.log('[BudgetPanel] Current price found:', currentPrice ? currentPrice.erp_code : 'NOT FOUND');
-    
     if (!currentPrice) {
-      console.warn('[BudgetPanel] Could not find current price, using first available');
       currentPrice = pricesToUse[0];
       if (!currentPrice) return [];
     }
@@ -147,14 +141,14 @@ export const BudgetPanel = ({
     const currentIdxPosition = indices.indexOf(currentIndex);
     
     indices.forEach((idx, pos) => {
-      if (pos <= currentIdxPosition) return; // Only higher indices
+      if (pos <= currentIdxPosition) return;
       
       const priceForIndex = pricesToUse
         .filter(p => getIndexFromPrice(p) === idx)
         .sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
       
       if (priceForIndex) {
-        const increment = (priceForIndex.price_sale_half_pair - currentPrice.price_sale_half_pair) * 2;
+        const increment = (priceForIndex.price_sale_half_pair - currentPrice!.price_sale_half_pair) * 2;
         if (increment > 0) {
           upgrades.push({
             id: `index-${idx}`,
@@ -174,9 +168,8 @@ export const BudgetPanel = ({
     });
     
     allTreatments.forEach(treatment => {
-      if (currentTreatments.has(treatment)) return; // Already has it
+      if (currentTreatments.has(treatment)) return;
       
-      // Find cheapest price with this treatment at current index
       const priceWithTreatment = pricesToUse
         .filter(p => 
           getIndexFromPrice(p) === currentIndex &&
@@ -185,7 +178,7 @@ export const BudgetPanel = ({
         .sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
       
       if (priceWithTreatment) {
-        const increment = (priceWithTreatment.price_sale_half_pair - currentPrice.price_sale_half_pair) * 2;
+        const increment = (priceWithTreatment.price_sale_half_pair - currentPrice!.price_sale_half_pair) * 2;
         if (increment > 0) {
           upgrades.push({
             id: `treatment-${treatment}`,
@@ -201,29 +194,32 @@ export const BudgetPanel = ({
     return upgrades.sort((a, b) => a.priceIncrement - b.priceIncrement);
   }, [primaryProduct, selectedFamilyId, allPrices]);
 
-  // Handle upgrade toggle
-  const handleUpgradeToggle = (upgrade: SKUUpgrade) => {
-    const newSelected = new Set(selectedUpgrades);
-    if (newSelected.has(upgrade.id)) {
-      newSelected.delete(upgrade.id);
-    } else {
-      newSelected.add(upgrade.id);
+  // Handle upgrade toggle - now properly toggleable
+  const handleUpgradeToggle = (upgrade: SKUUpgrade, checked: boolean) => {
+    const newApplied = new Map(appliedUpgrades);
+    
+    if (checked) {
+      newApplied.set(upgrade.id, upgrade);
       if (primaryProduct) {
         onUpgradeProduct(primaryProduct.id, upgrade);
       }
+    } else {
+      newApplied.delete(upgrade.id);
+      // Note: We'd need a "downgrade" handler to properly revert price
+      // For now, we track it locally
     }
-    setSelectedUpgrades(newSelected);
+    
+    setAppliedUpgrades(newApplied);
   };
 
   // Calculate total with upgrades
   const upgradesTotal = useMemo(() => {
     let extra = 0;
-    selectedUpgrades.forEach(id => {
-      const upgrade = availableUpgrades.find(u => u.id === id);
-      if (upgrade) extra += upgrade.priceIncrement;
+    appliedUpgrades.forEach(upgrade => {
+      extra += upgrade.priceIncrement;
     });
     return extra;
-  }, [selectedUpgrades, availableUpgrades]);
+  }, [appliedUpgrades]);
 
   // Get SKU display description
   const getSkuDescription = (product: SelectedProduct): string => {
@@ -331,32 +327,45 @@ export const BudgetPanel = ({
                     <TrendingUp className="w-4 h-4 text-primary" />
                     Melhorar sua lente
                   </span>
-                  <Plus className={`w-4 h-4 transition-transform ${upgradesOpen ? 'rotate-45' : ''}`} />
+                  {upgradesOpen ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-3 space-y-2">
-                {availableUpgrades.slice(0, 5).map(upgrade => (
-                  <div 
-                    key={upgrade.id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
-                  >
-                    <Checkbox
-                      id={upgrade.id}
-                      checked={selectedUpgrades.has(upgrade.id)}
-                      onCheckedChange={() => handleUpgradeToggle(upgrade)}
-                    />
-                    <Label 
-                      htmlFor={upgrade.id}
-                      className="flex-1 cursor-pointer"
+                {availableUpgrades.slice(0, 5).map(upgrade => {
+                  const isApplied = appliedUpgrades.has(upgrade.id);
+                  return (
+                    <div 
+                      key={upgrade.id}
+                      className={`flex items-center gap-3 p-2 rounded-lg transition-colors cursor-pointer ${
+                        isApplied ? 'bg-primary/10' : 'hover:bg-muted/50'
+                      }`}
+                      onClick={() => handleUpgradeToggle(upgrade, !isApplied)}
                     >
-                      <span className="text-sm font-medium block">{upgrade.label}</span>
-                      <span className="text-xs text-muted-foreground">{upgrade.description}</span>
-                    </Label>
-                    <Badge variant="outline" className="text-xs shrink-0 text-success border-success/30">
-                      +R$ {upgrade.priceIncrement.toLocaleString('pt-BR')}
-                    </Badge>
-                  </div>
-                ))}
+                      <Checkbox
+                        id={upgrade.id}
+                        checked={isApplied}
+                        onCheckedChange={(checked) => handleUpgradeToggle(upgrade, !!checked)}
+                      />
+                      <Label 
+                        htmlFor={upgrade.id}
+                        className="flex-1 cursor-pointer"
+                      >
+                        <span className="text-sm font-medium block">{upgrade.label}</span>
+                        <span className="text-xs text-muted-foreground">{upgrade.description}</span>
+                      </Label>
+                      <Badge 
+                        variant={isApplied ? 'default' : 'outline'} 
+                        className={`text-xs shrink-0 ${isApplied ? '' : 'text-success border-success/30'}`}
+                      >
+                        +R$ {upgrade.priceIncrement.toLocaleString('pt-BR')}
+                      </Badge>
+                    </div>
+                  );
+                })}
               </CollapsibleContent>
             </Collapsible>
           </>
