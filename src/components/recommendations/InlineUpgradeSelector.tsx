@@ -54,6 +54,45 @@ const TREATMENT_CONFIG: Record<string, { label: string; shortLabel: string; icon
   'POLARIZADO': { label: 'Polarizado', shortLabel: 'Polar.', icon: Shield },
 };
 
+// Infer treatments from SKU description when addons_detected is empty
+const DESCRIPTION_TREATMENT_PATTERNS: { pattern: RegExp; treatmentId: string }[] = [
+  { pattern: /\b(blue\s*(?:uv|guard|protect|light|cut)?|luz\s*azul|blueguard|blue\s*control)\b/i, treatmentId: 'BLUE' },
+  { pattern: /\b(transitions?|xtractive)\b/i, treatmentId: 'TRANSITIONS' },
+  { pattern: /\b(foto(?:ss?ens[ií]vel|crom[áa]tic[ao])?|photochromic)\b/i, treatmentId: 'FOTOSSENSIVEL' },
+  { pattern: /\b(sensity)\b/i, treatmentId: 'SENSITY' },
+  { pattern: /\b(photo\s*fusion)\b/i, treatmentId: 'PHOTOFUSION' },
+  { pattern: /\b(polarizad[ao]|polarized)\b/i, treatmentId: 'POLARIZADO' },
+  { pattern: /\b(crizal|optifog|satin|hard\s*multi|prevencia|diamond)\b/i, treatmentId: 'AR_PREMIUM' },
+];
+
+const inferTreatmentsFromDescription = (price: Price): string[] => {
+  const desc = (price.description || '').toUpperCase();
+  const rawKeys = Object.keys(price.treatments_raw || {}).join(' ').toUpperCase();
+  const combined = `${desc} ${rawKeys}`;
+  
+  const detected: string[] = [];
+  for (const { pattern, treatmentId } of DESCRIPTION_TREATMENT_PATTERNS) {
+    if (pattern.test(combined) && !detected.includes(treatmentId)) {
+      detected.push(treatmentId);
+    }
+  }
+  return detected;
+};
+
+// Enrich prices: if addons_detected is empty, infer from description
+const enrichPricesWithInferredAddons = (prices: Price[]): Price[] => {
+  const anyHasAddons = prices.some(p => p.addons_detected && p.addons_detected.length > 0);
+  if (anyHasAddons) return prices; // catalog already has addon data
+  
+  return prices.map(p => {
+    const inferred = inferTreatmentsFromDescription(p);
+    if (inferred.length > 0) {
+      return { ...p, addons_detected: inferred };
+    }
+    return p;
+  });
+};
+
 const getTreatmentConfig = (id: string) => {
   for (const [key, config] of Object.entries(TREATMENT_CONFIG)) {
     if (id.toUpperCase().includes(key)) return config;
@@ -66,12 +105,15 @@ const getTreatmentConfig = (id: string) => {
 };
 
 export const InlineUpgradeSelector = ({
-  allPrices,
+  allPrices: rawPrices,
   selectedIndex,
   selectedTreatments,
   onIndexChange,
   onTreatmentToggle,
 }: InlineUpgradeSelectorProps) => {
+  // Enrich prices with inferred addons when catalog data is missing
+  const allPrices = useMemo(() => enrichPricesWithInferredAddons(rawPrices), [rawPrices]);
+
   // Available indices with min prices
   const indexOptions = useMemo(() => {
     const indexMap = new Map<string, number>();
