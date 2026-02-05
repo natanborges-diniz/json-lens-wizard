@@ -75,6 +75,93 @@ export type {
 } from './narrativeEngine';
 
 // ============================================
+// TIER REBALANCING BY PRICE QUARTILE
+// ============================================
+
+/**
+ * Reclassifica famílias por quartil de preço quando a classificação por metadata
+ * está desequilibrada (>70% das famílias num único tier).
+ * 
+ * Isso resolve o problema de catálogos onde tier_target está ausente/incorreto,
+ * garantindo que a escada de valor tenha preços ascendentes.
+ */
+function rebalanceTiersByPrice(families: ScoredFamily[]): ScoredFamily[] {
+  const withPrice = families.filter(f => f.startingPrice !== null && f.startingPrice > 0);
+  if (withPrice.length < 4) return families;
+  
+  // Check for price inversions: get median price per tier
+  const tierOrder: TierKey[] = ['essential', 'comfort', 'advanced', 'top'];
+  const tierMedians: Record<TierKey, number> = { essential: 0, comfort: 0, advanced: 0, top: 0 };
+  const tierFamilyCounts: Record<TierKey, number> = { essential: 0, comfort: 0, advanced: 0, top: 0 };
+  
+  tierOrder.forEach(tier => {
+    const tierPrices = withPrice
+      .filter(f => f.score.tierKey === tier)
+      .map(f => f.startingPrice!)
+      .sort((a, b) => a - b);
+    
+    tierFamilyCounts[tier] = tierPrices.length;
+    if (tierPrices.length > 0) {
+      tierMedians[tier] = tierPrices[Math.floor(tierPrices.length / 2)];
+    }
+  });
+  
+  // Detect inversions: check if higher tiers have lower median prices
+  let hasInversion = false;
+  const activeTiers = tierOrder.filter(t => tierFamilyCounts[t] > 0);
+  
+  for (let i = 0; i < activeTiers.length - 1; i++) {
+    if (tierMedians[activeTiers[i]] > tierMedians[activeTiers[i + 1]] && tierMedians[activeTiers[i + 1]] > 0) {
+      hasInversion = true;
+      console.warn(`[RecommendationEngine] Price inversion: ${activeTiers[i]} median R$${tierMedians[activeTiers[i]]} > ${activeTiers[i+1]} median R$${tierMedians[activeTiers[i+1]]}`);
+    }
+  }
+  
+  // Also check: >70% in one tier
+  const maxTierCount = Math.max(...Object.values(tierFamilyCounts));
+  const isImbalanced = maxTierCount / withPrice.length > 0.70;
+  
+  if (!hasInversion && !isImbalanced) {
+    console.log('[RecommendationEngine] Tier distribution balanced, no rebalancing needed');
+    return families;
+  }
+  
+  console.warn(`[RecommendationEngine] Applying price-based quartile rebalancing (inversion=${hasInversion}, imbalance=${isImbalanced})`);
+  
+  // Sort ALL priced families by price ascending
+  const sorted = [...withPrice].sort((a, b) => (a.startingPrice || 0) - (b.startingPrice || 0));
+  
+  // Assign to quartiles
+  const q1 = Math.floor(sorted.length * 0.25);
+  const q2 = Math.floor(sorted.length * 0.50);
+  const q3 = Math.floor(sorted.length * 0.75);
+  
+  sorted.forEach((sf, idx) => {
+    let newTier: TierKey;
+    if (idx < q1) newTier = 'essential';
+    else if (idx < q2) newTier = 'comfort';
+    else if (idx < q3) newTier = 'advanced';
+    else newTier = 'top';
+    
+    sf.score.tierKey = newTier;
+  });
+  
+  // Re-rank within each tier
+  const byTier: Record<TierKey, ScoredFamily[]> = { essential: [], comfort: [], advanced: [], top: [] };
+  sorted.forEach(sf => byTier[sf.score.tierKey].push(sf));
+  Object.values(byTier).forEach(tierFams => {
+    tierFams.sort((a, b) => b.score.final - a.score.final);
+    tierFams.forEach((sf, idx) => { sf.score.rankInTier = idx + 1; });
+  });
+  
+  const newCounts = Object.entries(byTier).map(([k, v]) => `${k}:${v.length}`).join(', ');
+  console.log(`[RecommendationEngine] Rebalanced tiers: ${newCounts}`);
+  
+  const withoutPrice = families.filter(f => f.startingPrice === null || f.startingPrice === 0);
+  return [...sorted, ...withoutPrice];
+}
+
+// ============================================
 // MAIN RECOMMENDATION FUNCTION
 // ============================================
 
@@ -139,6 +226,9 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
       sf.startingPrice === null || sf.startingPrice <= input.filters!.maxPrice!
     );
   }
+  
+  // 4.5. Reclassificar tiers por quartil de preço se metadata estiver desequilibrada
+  finalFamilies = rebalanceTiersByPrice(finalFamilies);
   
   // 5. Organizar em 4 tiers com fallback
   const tiers = organizeTiersWithFallback(finalFamilies);
