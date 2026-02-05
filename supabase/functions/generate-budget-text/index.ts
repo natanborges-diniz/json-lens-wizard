@@ -45,6 +45,17 @@ interface BudgetData {
   };
   attributes?: Record<string, number>;
   benefits?: string[];
+  // NEW: Sprint 4 - Enhanced catalog context
+  knowledgeConsumer?: string | null;
+  knowledgeConsultant?: string | null;
+  salesPills?: string[];
+  narrativeWhyThisLens?: string | null;
+  technologies?: Array<{
+    name: string;
+    description?: string;
+    benefits?: string[];
+  }>;
+  tierKey?: string | null;
 }
 
 serve(async (req) => {
@@ -94,6 +105,13 @@ serve(async (req) => {
       'no': 'não costuma dirigir à noite',
     };
 
+    const tierLabels: Record<string, string> = {
+      'essential': 'Essencial - boa qualidade para o dia a dia',
+      'comfort': 'Conforto - equilíbrio ideal entre qualidade e preço',
+      'advanced': 'Avançada - alta tecnologia para usuários exigentes',
+      'top': 'Premium - o melhor disponível no mercado',
+    };
+
     const customerContext = `
 - Nome: ${budgetData.customerName || 'Cliente'}
 - Uso principal: ${usageMap[budgetData.anamnesisData.primaryUse] || budgetData.anamnesisData.primaryUse}
@@ -114,11 +132,36 @@ ${budgetData.prescriptionData.rightAddition ? `- Adição: ${budgetData.prescrip
     const productContext = `
 Produto selecionado:
 - Lente: ${budgetData.familyName} (${budgetData.supplier})
-- Tipo: ${budgetData.lensCategory === 'PROGRESSIVA' ? 'Progressiva' : 'Monofocal'}
+- Tipo: ${budgetData.lensCategory === 'PROGRESSIVA' ? 'Progressiva' : budgetData.lensCategory === 'OCUPACIONAL' ? 'Ocupacional' : 'Monofocal'}
 - Índice: ${budgetData.selectedIndex}
 - Tratamentos: ${budgetData.selectedTreatments.length > 0 ? budgetData.selectedTreatments.join(', ') : 'Básico'}
-${budgetData.benefits ? `- Benefícios: ${budgetData.benefits.join(', ')}` : ''}
+${budgetData.tierKey ? `- Nível: ${tierLabels[budgetData.tierKey] || budgetData.tierKey}` : ''}
 `;
+
+    // Sprint 4: Enhanced context from catalog
+    let catalogContext = '';
+    
+    if (budgetData.knowledgeConsumer) {
+      catalogContext += `\nConhecimento para o cliente (do catálogo): "${budgetData.knowledgeConsumer}"\n`;
+    }
+    
+    if (budgetData.salesPills && budgetData.salesPills.length > 0) {
+      catalogContext += `\nPílulas de venda do catálogo: ${budgetData.salesPills.join('; ')}\n`;
+    }
+    
+    if (budgetData.narrativeWhyThisLens) {
+      catalogContext += `\nJustificativa gerada pelo sistema: "${budgetData.narrativeWhyThisLens}"\n`;
+    }
+    
+    if (budgetData.technologies && budgetData.technologies.length > 0) {
+      catalogContext += `\nTecnologias incluídas:\n`;
+      budgetData.technologies.forEach(tech => {
+        catalogContext += `- ${tech.name}: ${tech.description || 'Tecnologia avançada'}\n`;
+        if (tech.benefits && tech.benefits.length > 0) {
+          catalogContext += `  Benefícios: ${tech.benefits.join(', ')}\n`;
+        }
+      });
+    }
 
     const pricingContext = `
 Valores:
@@ -128,16 +171,21 @@ ${budgetData.secondPair?.enabled ? `- 2º Par promocional: R$ ${budgetData.secon
 - Valor final: R$ ${budgetData.finalTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
 `;
 
+    // Enhanced system prompt with catalog knowledge
     const systemPrompt = `Você é um consultor óptico experiente e atencioso. Sua tarefa é criar um texto de orçamento personalizado e humanizado para o cliente.
+
+IMPORTANTE: Use as informações do catálogo fornecidas (knowledge, sales_pills, tecnologias) como base para seus argumentos. NÃO invente benefícios ou tecnologias que não foram mencionadas.
 
 O texto deve:
 1. Ser cordial e profissional
 2. Mencionar o nome do cliente
-3. Explicar POR QUE a lente escolhida é ideal para o perfil do cliente, conectando as necessidades identificadas na anamnese com os benefícios do produto
-4. Detalhar os benefícios da lente de forma acessível (evite termos muito técnicos)
-5. Apresentar os valores de forma clara
-6. Ter um tom consultivo e não apenas comercial
-7. Finalizar com uma mensagem positiva sobre a experiência visual que o cliente terá
+3. Usar o "Conhecimento para o cliente" do catálogo (se fornecido) para explicar os benefícios
+4. Incorporar as "Pílulas de venda" como destaques
+5. Detalhar as tecnologias mencionadas de forma acessível
+6. Conectar as necessidades da anamnese com os benefícios reais do produto
+7. Apresentar os valores de forma clara
+8. Ter um tom consultivo e não apenas comercial
+9. Finalizar com uma mensagem positiva
 
 Informações da empresa: ${budgetData.companyInfo.companyName}
 ${budgetData.companyInfo.slogan ? `Slogan: ${budgetData.companyInfo.slogan}` : ''}
@@ -154,9 +202,10 @@ Crie um orçamento personalizado para este cliente:
 ${customerContext}
 ${prescriptionContext}
 ${productContext}
+${catalogContext}
 ${pricingContext}
 
-Por favor, crie um texto completo de orçamento que conecte as necessidades do cliente com os benefícios da lente escolhida.
+Por favor, crie um texto completo de orçamento que conecte as necessidades do cliente com os benefícios da lente escolhida, usando as informações do catálogo como base.
 `;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -166,12 +215,12 @@ Por favor, crie um texto completo de orçamento que conecte as necessidades do c
         'Authorization': `Bearer ${LOVABLE_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'openai/gpt-5-mini',
+        model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },
         ],
-        max_completion_tokens: 2000,
+        max_tokens: 2000,
       }),
     });
 
@@ -180,7 +229,22 @@ Por favor, crie um texto completo de orçamento que conecte as necessidades do c
       console.error('AI API error:', errorText);
       
       if (response.status === 429) {
-        throw new Error('Limite de requisições atingido. Tente novamente em alguns minutos.');
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: 'Limite de requisições atingido. Tente novamente em alguns minutos.' 
+        }), {
+          status: 429,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (response.status === 402) {
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: 'Créditos insuficientes. Por favor, adicione créditos à sua conta.' 
+        }), {
+          status: 402,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
       throw new Error(`Erro ao gerar texto: ${response.status}`);
     }
