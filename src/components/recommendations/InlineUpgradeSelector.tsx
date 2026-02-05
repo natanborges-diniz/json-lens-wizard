@@ -1,266 +1,201 @@
 /**
- * InlineUpgradeSelector - Compact upgrade controls embedded directly in the lens card
+ * InlineUpgradeSelector - Renders upgrade toggles from OptionMatrix
  * 
- * Shows available index options and key treatments with real-time price updates.
- * No need to open the drawer for basic upgrades.
+ * RULES:
+ * - No inference here. Reads pre-built OptionMatrix.
+ * - Toggle only appears if backed by real SKU (skuCount >= 1)
+ * - Price = actual SKU price from catalog
+ * - Audit: shows selected SKU erp_code on hover
  */
 
 import { useMemo } from 'react';
-import { Check, Plus, Eye, Sun, Sparkles, Shield } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Check, Eye, Sun, Sparkles, Shield, Plus } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { Price } from '@/types/lens';
+import type { OptionMatrix, IndexOption, TreatmentOption } from '@/lib/optionMatrix';
 
 interface InlineUpgradeSelectorProps {
-  allPrices: Price[];
+  matrix: OptionMatrix;
   selectedIndex: string;
   selectedTreatments: string[];
   onIndexChange: (index: string) => void;
   onTreatmentToggle: (treatmentId: string) => void;
 }
 
-// Get index from price (V3.6.x compatible)
-const getIndexFromPrice = (price: Price): string => {
-  const avail = (price as any).availability;
-  if (avail?.index) return avail.index;
-  if ((price as any).index) return (price as any).index;
-  return '1.50';
-};
-
-const INDEX_SHORT_LABELS: Record<string, string> = {
-  '1.50': 'Padrão',
-  '1.56': 'Fino',
-  '1.59': 'Extra fino',
-  '1.60': 'Extra fino',
-  '1.67': 'Ultra fino',
-  '1.74': 'Super fino',
-};
-
-const TREATMENT_CONFIG: Record<string, { label: string; shortLabel: string; icon: React.ElementType }> = {
-  'BLUE': { label: 'Filtro Luz Azul', shortLabel: 'Blue', icon: Eye },
-  'FOTOSSENSIVEL': { label: 'Fotossensível', shortLabel: 'Foto', icon: Sun },
-  'FOTO': { label: 'Fotossensível', shortLabel: 'Foto', icon: Sun },
-  'TRANSITIONS': { label: 'Transitions', shortLabel: 'Trans.', icon: Sun },
-  'SENSITY': { label: 'Sensity', shortLabel: 'Sensity', icon: Sun },
-  'PHOTOFUSION': { label: 'PhotoFusion', shortLabel: 'Photo', icon: Sun },
-  'AR': { label: 'Antirreflexo Premium', shortLabel: 'AR', icon: Sparkles },
-  'AR_PREMIUM': { label: 'AR Premium', shortLabel: 'AR+', icon: Sparkles },
-  'POLARIZADO': { label: 'Polarizado', shortLabel: 'Polar.', icon: Shield },
-};
-
-// Infer treatments from SKU description when addons_detected is empty
-const DESCRIPTION_TREATMENT_PATTERNS: { pattern: RegExp; treatmentId: string }[] = [
-  { pattern: /\b(blue\s*(?:uv|guard|protect|light|cut)?|luz\s*azul|blueguard|blue\s*control)\b/i, treatmentId: 'BLUE' },
-  { pattern: /\b(transitions?|xtractive)\b/i, treatmentId: 'TRANSITIONS' },
-  { pattern: /\b(foto(?:ss?ens[ií]vel|crom[áa]tic[ao])?|photochromic)\b/i, treatmentId: 'FOTOSSENSIVEL' },
-  { pattern: /\b(sensity)\b/i, treatmentId: 'SENSITY' },
-  { pattern: /\b(photo\s*fusion)\b/i, treatmentId: 'PHOTOFUSION' },
-  { pattern: /\b(polarizad[ao]|polarized)\b/i, treatmentId: 'POLARIZADO' },
-  { pattern: /\b(crizal|optifog|satin|hard\s*multi|prevencia|diamond)\b/i, treatmentId: 'AR_PREMIUM' },
-];
-
-const inferTreatmentsFromDescription = (price: Price): string[] => {
-  const desc = (price.description || '').toUpperCase();
-  const rawKeys = Object.keys(price.treatments_raw || {}).join(' ').toUpperCase();
-  const combined = `${desc} ${rawKeys}`;
-  
-  const detected: string[] = [];
-  for (const { pattern, treatmentId } of DESCRIPTION_TREATMENT_PATTERNS) {
-    if (pattern.test(combined) && !detected.includes(treatmentId)) {
-      detected.push(treatmentId);
-    }
-  }
-  return detected;
-};
-
-// Enrich prices: if addons_detected is empty, infer from description
-const enrichPricesWithInferredAddons = (prices: Price[]): Price[] => {
-  const anyHasAddons = prices.some(p => p.addons_detected && p.addons_detected.length > 0);
-  if (anyHasAddons) return prices; // catalog already has addon data
-  
-  return prices.map(p => {
-    const inferred = inferTreatmentsFromDescription(p);
-    if (inferred.length > 0) {
-      return { ...p, addons_detected: inferred };
-    }
-    return p;
-  });
-};
-
-const getTreatmentConfig = (id: string) => {
-  for (const [key, config] of Object.entries(TREATMENT_CONFIG)) {
-    if (id.toUpperCase().includes(key)) return config;
-  }
-  return { 
-    label: id.replace(/_/g, ' '), 
-    shortLabel: id.substring(0, 5), 
-    icon: Plus 
-  };
+// Icon mapping from string keys to components
+const ICON_MAP: Record<string, React.ElementType> = {
+  eye: Eye,
+  sun: Sun,
+  sparkles: Sparkles,
+  shield: Shield,
+  plus: Plus,
 };
 
 export const InlineUpgradeSelector = ({
-  allPrices: rawPrices,
+  matrix,
   selectedIndex,
   selectedTreatments,
   onIndexChange,
   onTreatmentToggle,
 }: InlineUpgradeSelectorProps) => {
-  // Enrich prices with inferred addons when catalog data is missing
-  const allPrices = useMemo(() => enrichPricesWithInferredAddons(rawPrices), [rawPrices]);
+  const hasMultipleIndices = matrix.indexOptions.length > 1;
+  const hasTreatments = matrix.treatmentOptions.length > 0;
 
-  // Available indices with min prices
-  const indexOptions = useMemo(() => {
-    const indexMap = new Map<string, number>();
-    allPrices.forEach(price => {
-      const idx = getIndexFromPrice(price);
-      const existing = indexMap.get(idx);
-      if (!existing || price.price_sale_half_pair < existing) {
-        indexMap.set(idx, price.price_sale_half_pair);
-      }
-    });
-    return Array.from(indexMap.entries())
-      .map(([idx, minHalf]) => ({ index: idx, pairPrice: minHalf * 2 }))
-      .sort((a, b) => parseFloat(a.index) - parseFloat(b.index));
-  }, [allPrices]);
-
-  // Available treatments for current index with price impact
-  const treatmentOptions = useMemo(() => {
-    const pricesForIndex = allPrices.filter(p => getIndexFromPrice(p) === selectedIndex);
-    if (pricesForIndex.length === 0) return [];
-
-    // Base price (no treatments)
-    const basePrices = pricesForIndex.filter(p => !p.addons_detected?.length);
-    const baseHalf = basePrices.length > 0
-      ? Math.min(...basePrices.map(p => p.price_sale_half_pair))
-      : Math.min(...pricesForIndex.map(p => p.price_sale_half_pair));
-
-    // Collect unique treatments
-    const treatmentMap = new Map<string, number>();
-    pricesForIndex.forEach(price => {
-      (price.addons_detected || []).forEach(t => {
-        if (!treatmentMap.has(t)) {
-          const withT = pricesForIndex.filter(p => p.addons_detected?.includes(t));
-          const minWith = Math.min(...withT.map(p => p.price_sale_half_pair));
-          treatmentMap.set(t, (minWith - baseHalf) * 2);
-        }
-      });
-    });
-
-    return Array.from(treatmentMap.entries()).map(([id, impact]) => ({
-      id,
-      ...getTreatmentConfig(id),
-      priceImpact: impact,
-    }));
-  }, [allPrices, selectedIndex]);
-
-  // Always render - show what's available even if limited
-  const hasMultipleIndices = indexOptions.length > 1;
-  const hasTreatments = treatmentOptions.length > 0;
+  // Resolve current SKU for audit display
+  const resolved = useMemo(
+    () => matrix.resolve(selectedIndex, selectedTreatments),
+    [matrix, selectedIndex, selectedTreatments]
+  );
 
   if (!hasMultipleIndices && !hasTreatments) {
-    // Show a minimal indicator that no upgrades are available
     return (
       <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-2 text-center">
         <span className="font-medium">Configuração única</span> — índice {selectedIndex}
+        {resolved && (
+          <span className="block text-[9px] opacity-60 mt-0.5">
+            SKU: {resolved.erpCode}
+          </span>
+        )}
       </div>
     );
   }
 
   return (
     <div className="space-y-2">
-      {/* Index selector - compact chips */}
+      {/* Index selector */}
       {hasMultipleIndices && (
         <div className="space-y-1">
           <span className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wide">
             Índice
           </span>
           <div className="flex flex-wrap gap-1">
-            {indexOptions.map(opt => {
-              const isActive = opt.index === selectedIndex;
-              const basePrice = indexOptions[0]?.pairPrice || 0;
-              const diff = opt.pairPrice - basePrice;
-              return (
-                <TooltipProvider key={opt.index}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => onIndexChange(opt.index)}
-                        className={`
-                          px-2 py-1 rounded-md text-xs font-medium border transition-all
-                          ${isActive 
-                            ? 'bg-primary text-primary-foreground border-primary' 
-                            : 'bg-background border-border hover:border-primary/50 text-foreground'
-                          }
-                        `}
-                      >
-                        {opt.index}
-                        {isActive && <Check className="w-3 h-3 inline ml-1" />}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="font-medium">{INDEX_SHORT_LABELS[opt.index] || opt.index}</p>
-                      <p className="text-xs">R$ {opt.pairPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                      {diff > 0 && <p className="text-xs text-primary">+R$ {diff.toLocaleString('pt-BR')}</p>}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              );
-            })}
+            {matrix.indexOptions.map(opt => (
+              <IndexChip
+                key={opt.index}
+                option={opt}
+                isActive={opt.index === selectedIndex}
+                onClick={() => onIndexChange(opt.index)}
+              />
+            ))}
           </div>
         </div>
       )}
 
-      {/* Treatment toggles - compact */}
-      {treatmentOptions.length > 0 && (
+      {/* Treatment toggles */}
+      {hasTreatments && (
         <div className="space-y-1">
           <span className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wide">
             Upgrades
           </span>
           <div className="flex flex-wrap gap-1">
-            {treatmentOptions.map(t => {
-              const Icon = t.icon;
-              const isActive = selectedTreatments.includes(t.id);
-              return (
-                <TooltipProvider key={t.id}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => onTreatmentToggle(t.id)}
-                        className={`
-                          flex items-center gap-1 px-2 py-1 rounded-md text-xs border transition-all
-                          ${isActive 
-                            ? 'bg-primary/10 text-primary border-primary font-medium' 
-                            : 'bg-background border-border hover:border-primary/50 text-muted-foreground'
-                          }
-                        `}
-                      >
-                        <Icon className="w-3 h-3" />
-                        {t.shortLabel}
-                        {isActive && <Check className="w-3 h-3" />}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="font-medium">{t.label}</p>
-                      {t.priceImpact > 10 && (
-                        <p className="text-xs text-primary">+R$ {t.priceImpact.toLocaleString('pt-BR')}</p>
-                      )}
-                      {t.priceImpact <= 10 && (
-                        <p className="text-xs text-muted-foreground">Incluso nesta configuração</p>
-                      )}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              );
-            })}
+            {matrix.treatmentOptions.map(t => (
+              <TreatmentChip
+                key={t.id}
+                option={t}
+                isActive={selectedTreatments.includes(t.id)}
+                onClick={() => onTreatmentToggle(t.id)}
+              />
+            ))}
           </div>
+        </div>
+      )}
+
+      {/* Audit: resolved SKU */}
+      {resolved && (
+        <div className="text-[9px] text-muted-foreground/50 text-right">
+          SKU: {resolved.erpCode} · R$ {resolved.pairPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
         </div>
       )}
     </div>
   );
 };
+
+// ============================================================================
+// SUB-COMPONENTS
+// ============================================================================
+
+function IndexChip({ option, isActive, onClick }: { 
+  option: IndexOption; isActive: boolean; onClick: () => void 
+}) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={onClick}
+            className={`
+              px-2 py-1 rounded-md text-xs font-medium border transition-all
+              ${isActive 
+                ? 'bg-primary text-primary-foreground border-primary' 
+                : 'bg-background border-border hover:border-primary/50 text-foreground'
+              }
+            `}
+          >
+            {option.index}
+            {isActive && <Check className="w-3 h-3 inline ml-1" />}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="font-medium">{option.label}</p>
+          <p className="text-xs">
+            R$ {option.minPairPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </p>
+          {option.deltaFromBase > 0 && (
+            <p className="text-xs text-primary">
+              +R$ {option.deltaFromBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+          )}
+          <p className="text-[10px] text-muted-foreground mt-1">
+            {option.skuCount} SKU(s) disponíveis
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function TreatmentChip({ option, isActive, onClick }: { 
+  option: TreatmentOption; isActive: boolean; onClick: () => void 
+}) {
+  const Icon = ICON_MAP[option.icon] || Plus;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={onClick}
+            className={`
+              flex items-center gap-1 px-2 py-1 rounded-md text-xs border transition-all
+              ${isActive 
+                ? 'bg-primary/10 text-primary border-primary font-medium' 
+                : 'bg-background border-border hover:border-primary/50 text-muted-foreground'
+              }
+            `}
+          >
+            <Icon className="w-3 h-3" />
+            {option.shortLabel}
+            {isActive && <Check className="w-3 h-3" />}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="font-medium">{option.label}</p>
+          {option.deltaFromBase > 10 ? (
+            <p className="text-xs text-primary">
+              +R$ {option.deltaFromBase.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Incluso nesta configuração</p>
+          )}
+          <p className="text-[10px] text-muted-foreground mt-1">
+            {option.skuCount} SKU(s) · {option.sourceErpCodes[0]}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
