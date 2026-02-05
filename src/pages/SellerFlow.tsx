@@ -19,6 +19,7 @@ import { Progress } from '@/components/ui/progress';
 import { useLensStore } from '@/store/lensStore';
 import { useCatalogLoader } from '@/hooks/useCatalogLoader';
 import { useCatalogResolver } from '@/hooks/useCatalogResolver';
+import { useRecommendationEngine } from '@/hooks/useRecommendationEngine';
 import type { 
   Prescription, 
   Tier, 
@@ -41,14 +42,6 @@ import { FrameStep } from '@/components/anamnesis/FrameStep';
 import { RecommendationsGrid } from '@/components/recommendations/RecommendationsGrid';
 import { BudgetFinalization } from '@/components/budget/BudgetFinalization';
 import { LensCardConfiguration } from '@/components/recommendations/LensCard';
-
-interface FamilyWithPrice {
-  family: Family;
-  bestPrice: Price | null;
-  allPrices: Price[];
-  tier: Tier;
-  score: number;
-}
 
 // Default anamnesis data
 const defaultAnamnesis: AnamnesisData = {
@@ -182,210 +175,48 @@ const SellerFlow = () => {
     }
   };
 
-  // Calculate recommendation score based on anamnesis
-  const calculateScore = (family: Family, price: Price | null): number => {
-    let score = 100;
+  // Build lensData for the recommendation engine
+  const lensDataForEngine: LensData | null = isDataLoaded ? {
+    meta: { schema_version: '', dataset_name: '', generated_at: '', counts: { families: 0, addons: 0, skus_prices: 0 }, notes: [] },
+    scales: {},
+    attribute_defs: attributeDefs,
+    macros,
+    families,
+    addons,
+    products_avulsos: [],
+    prices,
+    technology_library: rawLensData?.technology_library,
+  } : null;
 
-    // High screen usage favors digital/blue filter
-    if (anamnesisData.screenHours === '6-8' || anamnesisData.screenHours === '8+') {
-      if (family.macro.includes('DIGITAL') || price?.addons_detected?.includes('BLUE')) {
-        score += 30;
-      }
-    }
+  // Use the new recommendation engine
+  const { 
+    recommendations, 
+    topRecommendationId, 
+    stats: engineStats,
+    isReady: engineReady,
+  } = useRecommendationEngine({
+    lensData: lensDataForEngine,
+    lensCategory,
+    anamnesisData,
+    prescriptionData,
+  });
 
-    // Light sensitivity favors photochromic or AR
-    if (anamnesisData.visualComplaints.includes('light_sensitivity')) {
-      if (price?.addons_detected?.includes('FOTOSSENSIVEL') || price?.addons_detected?.includes('AR')) {
-        score += 25;
-      }
-    }
-
-    // Eye fatigue favors comfort/advanced tiers
-    if (anamnesisData.visualComplaints.includes('eye_fatigue') || anamnesisData.visualComplaints.includes('end_day_fatigue')) {
-      if (family.macro.includes('CONFORTO') || family.macro.includes('AVANCADO') || family.macro.includes('TOP')) {
-        score += 20;
-      }
-    }
-
-    // Outdoor time favors photochromic
-    if (anamnesisData.outdoorTime === 'yes') {
-      if (price?.addons_detected?.includes('FOTOSSENSIVEL')) {
-        score += 25;
-      }
-    }
-
-    // Night driving favors quality AR
-    if (anamnesisData.nightDriving === 'frequent') {
-      if (price?.addons_detected?.includes('AR')) {
-        score += 20;
-      }
-    }
-
-    // Aesthetic priority favors higher index
-    if (anamnesisData.aestheticPriority === 'high') {
-      if (price?.index && (price.index === '1.74' || price.index === '1.67')) {
-        score += 15;
-      }
-    }
-
-    return score;
-  };
-
-  // Get recommendations organized by tier with scoring
-  const getRecommendationsByTier = useMemo((): Record<Tier, FamilyWithPrice[]> => {
-    const result: Record<Tier, FamilyWithPrice[]> = {
-      essential: [],
-      comfort: [],
-      advanced: [],
-      top: [],
-    };
-
-    // Filter families by category and active status
-    const categoryFamilies = families.filter(f => 
-      f.active && f.category === lensCategory
-    );
-    
-    console.log(`[SellerFlow] Filtering families for category: ${lensCategory}`);
-    console.log(`[SellerFlow] Total families: ${families.length}, Category families: ${categoryFamilies.length}`);
-    
-    // Debug: show unique macros for this category
-    const uniqueMacros = [...new Set(categoryFamilies.map(f => f.macro))];
-    console.log(`[SellerFlow] Unique macros in category: ${JSON.stringify(uniqueMacros)}`);
-
-    // Get priority for suppliers per macro
-    const getPriority = (macroId: string, supplier: string): number => {
-      const priority = supplierPriorities.find(p => p.macroId === macroId);
-      if (!priority) return 999;
-      const idx = priority.suppliers.indexOf(supplier);
-      return idx >= 0 ? idx : 999;
-    };
-
-    // Group by macro and find best price for each family
-    categoryFamilies.forEach(family => {
-      // Use family.tier_target if available (from catalog), otherwise infer from macro
-      const tier = (family as any).tier_target || getTierKey(family.macro);
-      if (!tier) {
-        console.warn(`[SellerFlow] No tier for family: ${family.id}`);
-        return;
-      }
-
-      // Only pass prescription if it has real values (not just initialization defaults)
-      const hasRealPrescription = 
-        prescriptionData.rightSphere !== 0 || 
-        prescriptionData.leftSphere !== 0 ||
-        prescriptionData.rightCylinder !== 0 ||
-        prescriptionData.leftCylinder !== 0;
-      
-      const prescription = hasRealPrescription ? prescriptionData as Prescription : null;
-      const frame = frameData.altura ? frameData as FrameMeasurements : null;
-      
-      const bestPrice = getBestPriceForFamily(family.id, prescription, frame);
-      const allPrices = getCompatiblePrices(family.id, prescription, frame);
-      const score = calculateScore(family, bestPrice);
-      
-      result[tier].push({
-        family,
-        bestPrice,
-        allPrices,
-        tier,
-        score,
-      });
-    });
-
-    // Log tier counts
-    console.log(`[SellerFlow] Recommendations by tier:`, {
-      essential: result.essential.length,
-      comfort: result.comfort.length,
-      advanced: result.advanced.length,
-      top: result.top.length,
-    });
-
-    // Sort each tier by score (highest first), then by supplier priority
-    Object.keys(result).forEach(tier => {
-      result[tier as Tier].sort((a, b) => {
-        // First by score (higher is better)
-        if (b.score !== a.score) return b.score - a.score;
-        // Then by supplier priority
-        const priorityA = getPriority(a.family.macro, a.family.supplier);
-        const priorityB = getPriority(b.family.macro, b.family.supplier);
-        return priorityA - priorityB;
-      });
-    });
-
-    return result;
-  }, [families, lensCategory, prescriptionData, frameData, supplierPriorities, anamnesisData, getBestPriceForFamily, getCompatiblePrices, getTierKey, calculateScore]);
-
-  const recommendations = getRecommendationsByTier;
   const activeAddons = addons.filter(a => a.active && a.rules.categories.includes(lensCategory));
 
-  // Get occupational recommendations for suggestions
-  const occupationalRecommendations = useMemo((): Record<Tier, FamilyWithPrice[]> => {
-    const result: Record<Tier, FamilyWithPrice[]> = {
-      essential: [],
-      comfort: [],
-      advanced: [],
-      top: [],
-    };
+  // Get occupational recommendations using the engine too
+  const { recommendations: occupationalRecommendations } = useRecommendationEngine({
+    lensData: lensDataForEngine,
+    lensCategory: 'OCUPACIONAL',
+    anamnesisData,
+    prescriptionData,
+  });
 
-    const ocFamilies = families.filter(f => f.active && f.category === 'OCUPACIONAL');
-    console.log(`[SellerFlow] Found ${ocFamilies.length} active occupational families`);
-
-    ocFamilies.forEach(family => {
-      const tier = getTierKey(family.macro);
-      if (!tier) {
-        console.warn(`[SellerFlow] No tier for macro: ${family.macro}`);
-        return;
-      }
-
-      // Get all prices for this family - without any prescription filtering for occupational
-      const familyPrices = prices.filter(p => 
-        p.family_id === family.id && 
-        p.active && 
-        !p.blocked
-      );
-      
-      const bestPrice = familyPrices.length > 0 
-        ? [...familyPrices].sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0]
-        : null;
-      
-      console.log(`[SellerFlow] Family ${family.id}: ${familyPrices.length} prices, bestPrice: ${bestPrice?.price_sale_half_pair || 'null'}`);
-
-      const score = calculateScore(family, bestPrice);
-
-      result[tier].push({
-        family,
-        bestPrice,
-        allPrices: familyPrices,
-        tier,
-        score,
-      });
-    });
-
-    const totalWithPrice = Object.values(result).flat().filter(f => f.bestPrice !== null).length;
-    console.log(`[SellerFlow] Occupational recommendations: ${totalWithPrice} with prices`);
-
-    return result;
-  }, [families, prices, getTierKey, calculateScore]);
-
-  // Find the most recommended option across all tiers
-  const getMostRecommended = (): FamilyWithPrice | null => {
-    let best: FamilyWithPrice | null = null;
-    let bestScore = 0;
-    
-    (['comfort', 'advanced'] as Tier[]).forEach(tier => {
-      const tierFamilies = recommendations[tier];
-      if (tierFamilies.length > 0 && tierFamilies[0].bestPrice) {
-        if (tierFamilies[0].score > bestScore) {
-          best = tierFamilies[0];
-          bestScore = tierFamilies[0].score;
-        }
-      }
-    });
-    
-    return best;
-  };
-
-  const mostRecommended = getMostRecommended();
+  // Log engine stats
+  useEffect(() => {
+    if (engineReady) {
+      console.log(`[SellerFlow] RecommendationEngine stats:`, engineStats);
+    }
+  }, [engineReady, engineStats]);
 
   // Handle lens selection (backward compatibility)
   const handleSelectLens = (configuration: LensCardConfiguration) => {
@@ -578,21 +409,12 @@ const SellerFlow = () => {
               onSelectLens={handleSelectLens}
               onSelectProducts={handleSelectProducts}
               selectedFamilyId={selectedConfiguration?.familyId}
-              mostRecommendedId={mostRecommended?.family.id}
+              mostRecommendedId={topRecommendationId || undefined}
               lensCategory={lensCategory}
               attributeDefs={attributeDefs}
               anamnesisData={anamnesisData}
               prescriptionData={prescriptionData}
-              lensData={isDataLoaded ? { 
-                meta: { schema_version: '', dataset_name: '', generated_at: '', counts: { families: 0, addons: 0, skus_prices: 0 }, notes: [] },
-                scales: {},
-                attribute_defs: attributeDefs,
-                macros,
-                families,
-                addons,
-                products_avulsos: [],
-                prices,
-              } : null}
+              lensData={lensDataForEngine}
             />
           </div>
         )}
