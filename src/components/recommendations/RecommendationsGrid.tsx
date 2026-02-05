@@ -271,6 +271,12 @@ export const RecommendationsGrid = ({
   };
 
   const tierOptions = useMemo(() => {
+    const getMinPrice = (f: FamilyWithPrice): number => {
+      if (f.bestPrice?.price_sale_half_pair) return f.bestPrice.price_sale_half_pair;
+      const valid = f.allPrices.filter(p => p.price_sale_half_pair > 0);
+      return valid.length > 0 ? Math.min(...valid.map(p => p.price_sale_half_pair)) : Infinity;
+    };
+
     const options: TierOption[] = TIER_ORDER.map(tier => {
       let tierFamilies = recommendations[tier] || [];
       
@@ -302,11 +308,7 @@ export const RecommendationsGrid = ({
         const scoreA = a.score || 0;
         const scoreB = b.score || 0;
         if (scoreA !== scoreB) return scoreB - scoreA;
-        const priceA = a.bestPrice?.price_sale_half_pair || 
-          Math.min(...a.allPrices.filter(p => p.price_sale_half_pair > 0).map(p => p.price_sale_half_pair)) || Infinity;
-        const priceB = b.bestPrice?.price_sale_half_pair || 
-          Math.min(...b.allPrices.filter(p => p.price_sale_half_pair > 0).map(p => p.price_sale_half_pair)) || Infinity;
-        return priceA - priceB;
+        return getMinPrice(a) - getMinPrice(b);
       });
 
       const primary = highlightedFamilies.length > 0
@@ -318,18 +320,37 @@ export const RecommendationsGrid = ({
         : tierFamilies[0];
       
       const alternativeCount = tierFamilies.length - 1;
-      const startingPrice = primary.bestPrice?.price_sale_half_pair || 
-        Math.min(...primary.allPrices.filter(p => p.price_sale_half_pair > 0).map(p => p.price_sale_half_pair)) || 0;
+      const startingPrice = getMinPrice(primary);
 
       return {
         tier,
         primary,
         alternativeCount,
         config: TIER_CONFIG[tier],
-        startingPrice,
+        startingPrice: startingPrice === Infinity ? 0 : startingPrice,
         isEmpty: false,
       };
     });
+
+    // POST-PROCESS: Fix price inversions between adjacent tiers
+    // If a higher tier shows a lower starting price than a lower tier,
+    // swap the primaries to enforce ascending price order
+    for (let i = 0; i < options.length - 1; i++) {
+      const lower = options[i];
+      const upper = options[i + 1];
+      if (lower.isEmpty || upper.isEmpty) continue;
+      if (lower.startingPrice > 0 && upper.startingPrice > 0 && upper.startingPrice < lower.startingPrice) {
+        // Try to find an alternative in the upper tier that costs more
+        const upperFamilies = (recommendations[upper.tier] || [])
+          .filter(f => f.allPrices.some(p => p.price_sale_half_pair > 0));
+        const costlierAlternative = upperFamilies.find(f => getMinPrice(f) >= lower.startingPrice);
+        if (costlierAlternative) {
+          upper.primary = costlierAlternative;
+          upper.startingPrice = getMinPrice(costlierAlternative);
+        }
+        // If no costlier alternative exists, accept the inversion (data issue)
+      }
+    }
 
     return forceAllTiers ? options : options.filter(o => !o.isEmpty);
   }, [recommendations, supplierFilter, highlightedFamilies, forceAllTiers]);
