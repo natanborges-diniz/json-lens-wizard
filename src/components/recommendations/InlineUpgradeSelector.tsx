@@ -117,12 +117,23 @@ export const InlineUpgradeSelector = ({
     }));
   }, [allPrices, selectedIndex]);
 
-  if (indexOptions.length <= 1 && treatmentOptions.length === 0) return null;
+  // Always render - show what's available even if limited
+  const hasMultipleIndices = indexOptions.length > 1;
+  const hasTreatments = treatmentOptions.length > 0;
+
+  if (!hasMultipleIndices && !hasTreatments) {
+    // Show a minimal indicator that no upgrades are available
+    return (
+      <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-2 text-center">
+        <span className="font-medium">Configuração única</span> — índice {selectedIndex}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">
       {/* Index selector - compact chips */}
-      {indexOptions.length > 1 && (
+      {hasMultipleIndices && (
         <div className="space-y-1">
           <span className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wide">
             Índice
