@@ -130,17 +130,26 @@ export const SimplifiedLensCard = ({
   showScore = true,
 }: SimplifiedLensCardProps) => {
   const [showDetails, setShowDetails] = useState(false);
-  const { getEnrichedFamily } = useCatalogEnricher();
+  const { getEnrichedFamily, getEnrichedPricesForFamily } = useCatalogEnricher();
   const enrichedFamily = getEnrichedFamily(family.id);
   
   const styles = TIER_STYLES[tier];
   const TierIcon = TIER_ICONS[tier];
   const lensCategory = (family.clinical_type || family.category) as ClinicalType;
 
-  // Build OptionMatrix from real SKUs (no prescription filter here - prices already filtered by engine)
+  // Use enriched prices (with Layer D addons_detected populated) for OptionMatrix
+  const enrichedPricesForFamily = getEnrichedPricesForFamily(family.id);
+  const pricesToUse = useMemo(() => {
+    // Prefer enriched prices (have addons_detected from Layer D inference)
+    // Fall back to raw allPrices if enriched not available
+    if (enrichedPricesForFamily.length > 0) return enrichedPricesForFamily;
+    return allPrices;
+  }, [enrichedPricesForFamily, allPrices]);
+
+  // Build OptionMatrix from enriched SKUs (with addons_detected populated)
   const optionMatrix = useMemo(() => 
-    buildOptionMatrix(family.id, allPrices, null),
-    [family.id, allPrices]
+    buildOptionMatrix(family.id, pricesToUse, null),
+    [family.id, pricesToUse]
   );
 
   // Find cheapest price as initial baseline
