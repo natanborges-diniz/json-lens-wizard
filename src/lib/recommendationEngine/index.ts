@@ -5,8 +5,8 @@
  * 1. Catalog Layer (dados do catálogo)
  * 2. Clinical Engine (score clínico - 60%)
  * 3. Commercial Engine (score comercial - 40%)
- * 4. Narrative Engine (a ser implementado Sprint 3)
- * 5. UX Layer (a ser implementado Sprint 2)
+ * 4. Narrative Engine (Sprint 3 - IMPLEMENTADO)
+ * 5. UX Layer (Sprint 2 - IMPLEMENTADO)
  * 
  * Fórmula oficial:
  * final_score = (clinical_score * 0.60) + (commercial_score * 0.40)
@@ -45,6 +45,13 @@ import {
   getRecentAuditLogs, 
   logRecommendationSummary 
 } from './auditLogger';
+import {
+  generateNarratives,
+  generateFamilyNarrative,
+  generateTierComparison,
+  generateOpeningScript,
+  generateClosingScript,
+} from './narrativeEngine';
 
 // Re-export individual engines
 export { calculateClinicalScore, isClinicallyEligible } from './clinicalEngine';
@@ -52,6 +59,20 @@ export { calculateCommercialScore, isCommerciallyViable } from './commercialEngi
 export { determineTierKey, SCORE_WEIGHTS } from './recommendationScorer';
 export { organizeTiersWithFallback, hasCompleteLadder, listFallbacks } from './fallbackStrategy';
 export { createAuditLog, getRecentAuditLogs, logRecommendationSummary } from './auditLogger';
+
+// Re-export narrative engine (Sprint 3)
+export {
+  generateNarratives,
+  generateFamilyNarrative,
+  generateTierComparison,
+  generateOpeningScript,
+  generateClosingScript,
+} from './narrativeEngine';
+export type { 
+  ConsultativeNarrative, 
+  TierComparison, 
+  NarrativeResult 
+} from './narrativeEngine';
 
 // ============================================
 // MAIN RECOMMENDATION FUNCTION
@@ -242,5 +263,13 @@ export default {
     createAuditLog,
     getRecentAuditLogs,
     logRecommendationSummary,
+  },
+  // Narrative Engine (Sprint 3)
+  narrative: {
+    generateNarratives,
+    generateFamilyNarrative,
+    generateTierComparison,
+    generateOpeningScript,
+    generateClosingScript,
   },
 };
