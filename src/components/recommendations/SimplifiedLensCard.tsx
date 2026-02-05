@@ -5,10 +5,11 @@
  * A) knowledge.consumer (Por que esta lente)
  * B) sales_pills reais (sem fallback genérico)
  * C) Tecnologias resolvidas (top 3)
- * D) Tooltip de score breakdown
+ * D) Inline upgrades (índice + tratamentos) com preço dinâmico
+ * E) Tooltip de score breakdown
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { 
   Check, 
   ChevronRight,
@@ -18,7 +19,6 @@ import {
   Zap,
   Eye,
   Sparkles,
-  Info,
   AlertTriangle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -33,6 +33,7 @@ import {
 import { ValueBars } from './ValueBars';
 import { LensDetailsDrawer } from './LensDetailsDrawer';
 import { ScoreIndicator } from './ScoreIndicator';
+import { InlineUpgradeSelector } from './InlineUpgradeSelector';
 import { useCatalogEnricher } from '@/hooks/useCatalogEnricher';
 import type { Family, Price, Addon, Tier, ClinicalType } from '@/types/lens';
 import type { ScoredFamily } from '@/lib/recommendationEngine/types';
@@ -139,7 +140,51 @@ export const SimplifiedLensCard = ({
   const TierIcon = TIER_ICONS[tier];
   const lensCategory = (family.clinical_type || family.category) as ClinicalType;
 
-  // Display name - "Supplier FamilyName"
+  // Find cheapest price as initial baseline
+  const cheapestPrice = useMemo(() => {
+    if (!allPrices.length) return null;
+    return [...allPrices].sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
+  }, [allPrices]);
+
+  // Inline upgrade state
+  const [selectedIndex, setSelectedIndex] = useState<string>(() => 
+    cheapestPrice ? getIndexFromPrice(cheapestPrice) : '1.50'
+  );
+  const [selectedTreatments, setSelectedTreatments] = useState<string[]>(() =>
+    cheapestPrice?.addons_detected || []
+  );
+
+  // Calculate current price based on inline selections
+  const currentPrice = useMemo(() => {
+    if (!allPrices.length) return null;
+    const pricesForIndex = allPrices.filter(p => getIndexFromPrice(p) === selectedIndex);
+    if (pricesForIndex.length === 0) return cheapestPrice;
+
+    if (selectedTreatments.length === 0) {
+      const noTreatment = pricesForIndex.filter(p => !p.addons_detected?.length);
+      const candidates = noTreatment.length > 0 ? noTreatment : pricesForIndex;
+      return candidates.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
+    }
+
+    // Find price matching all selected treatments
+    const matching = pricesForIndex.filter(p => {
+      const detected = p.addons_detected || [];
+      return selectedTreatments.every(t => detected.includes(t));
+    });
+    if (matching.length > 0) {
+      return matching.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
+    }
+
+    // Fallback: cheapest for this index
+    return pricesForIndex.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
+  }, [allPrices, selectedIndex, selectedTreatments, cheapestPrice]);
+
+  const priceDisplay = currentPrice ? currentPrice.price_sale_half_pair * 2 : null;
+  const basePriceDisplay = cheapestPrice ? cheapestPrice.price_sale_half_pair * 2 : null;
+  const hasUpgrade = priceDisplay && basePriceDisplay && priceDisplay > basePriceDisplay;
+  const hasOptions = allPrices.length > 0 && priceDisplay !== null && priceDisplay > 0;
+
+  // Display name
   const displayName = useMemo(() => {
     let familyName = '';
     if (enrichedFamily?.display_name) {
@@ -149,47 +194,34 @@ export const SimplifiedLensCard = ({
     } else {
       familyName = family.id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     }
-    
     if (familyName.toLowerCase().includes(family.supplier.toLowerCase())) {
       return familyName;
     }
     return `${family.supplier} ${familyName}`;
   }, [enrichedFamily, family]);
 
-  // Subtitle
   const subtitle = useMemo(() => {
-    const category = lensCategory === 'PROGRESSIVA' 
-      ? 'Progressiva' 
-      : lensCategory === 'OCUPACIONAL' 
-        ? 'Ocupacional' 
-        : 'Monofocal';
+    const category = lensCategory === 'PROGRESSIVA' ? 'Progressiva' 
+      : lensCategory === 'OCUPACIONAL' ? 'Ocupacional' : 'Monofocal';
     return `${category} • ${TIER_LABELS[tier]} • ${family.supplier}`;
   }, [lensCategory, tier, family.supplier]);
 
-  // A) Knowledge consumer - from engine or enricher
+  // A) Knowledge consumer
   const knowledgeConsumer = useMemo(() => {
     if (scoredFamily?.knowledgeConsumer) return scoredFamily.knowledgeConsumer;
     if (enrichedFamily?.knowledge?.consumer) return enrichedFamily.knowledge.consumer;
     return null;
   }, [scoredFamily, enrichedFamily]);
 
-  // B) Sales pills - REAL data, NO generic fallback
+  // B) Sales pills - REAL data
   const salesPills = useMemo(() => {
-    // Priority 1: From scored family (engine-resolved)
-    if (scoredFamily?.salesPills && scoredFamily.salesPills.length > 0) {
-      return scoredFamily.salesPills.slice(0, 4);
-    }
-    // Priority 2: From enriched family
-    if (enrichedFamily?.sales_pills && enrichedFamily.sales_pills.length > 0) {
-      return enrichedFamily.sales_pills.slice(0, 4);
-    }
-    // Priority 3: Generate from technologies
-    if (scoredFamily?.technologies && scoredFamily.technologies.length > 0) {
+    if (scoredFamily?.salesPills?.length) return scoredFamily.salesPills.slice(0, 4);
+    if (enrichedFamily?.sales_pills?.length) return enrichedFamily.sales_pills.slice(0, 4);
+    if (scoredFamily?.technologies?.length) {
       return scoredFamily.technologies
         .flatMap(t => t.benefits?.slice(0, 1) || [t.name_common])
         .slice(0, 4);
     }
-    // Priority 4: From attributes_base
     if (family.attributes_base) {
       const attrs = Object.entries(family.attributes_base)
         .filter(([_, v]) => typeof v === 'number' && v >= 3)
@@ -197,44 +229,36 @@ export const SimplifiedLensCard = ({
         .slice(0, 3);
       if (attrs.length > 0) return attrs;
     }
-    // Last resort: mark as generic
     return [];
   }, [scoredFamily, enrichedFamily, family]);
 
-  const isGenericPills = salesPills.length === 0;
-
-  // C) Technologies - top 3 resolved
+  // C) Technologies
   const resolvedTechnologies = useMemo(() => {
-    if (scoredFamily?.technologies && scoredFamily.technologies.length > 0) {
-      return scoredFamily.technologies.slice(0, 3);
-    }
-    return [];
+    return scoredFamily?.technologies?.slice(0, 3) || [];
   }, [scoredFamily]);
 
-  // Calculate "a partir de" price
-  const startingPrice = useMemo(() => {
-    if (!allPrices.length) return null;
-    const sorted = [...allPrices].sort((a, b) => 
-      a.price_sale_half_pair - b.price_sale_half_pair
+  // Handlers
+  const handleIndexChange = useCallback((index: string) => {
+    setSelectedIndex(index);
+    setSelectedTreatments([]); // Reset treatments on index change
+  }, []);
+
+  const handleTreatmentToggle = useCallback((treatmentId: string) => {
+    setSelectedTreatments(prev => 
+      prev.includes(treatmentId) 
+        ? prev.filter(t => t !== treatmentId) 
+        : [...prev, treatmentId]
     );
-    return sorted[0];
-  }, [allPrices]);
-
-  const priceDisplay = startingPrice 
-    ? startingPrice.price_sale_half_pair * 2 
-    : null;
-
-  const effectiveBestPrice = bestPrice || startingPrice;
-  const hasOptions = allPrices.length > 0 && priceDisplay !== null && priceDisplay > 0;
+  }, []);
 
   const handleSelect = () => {
-    if (!effectiveBestPrice) return;
+    if (!currentPrice) return;
     onSelect({
       familyId: family.id,
-      selectedPrice: effectiveBestPrice,
-      selectedIndex: getIndexFromPrice(effectiveBestPrice),
-      selectedTreatments: effectiveBestPrice.addons_detected || [],
-      totalPrice: effectiveBestPrice.price_sale_half_pair * 2,
+      selectedPrice: currentPrice,
+      selectedIndex,
+      selectedTreatments,
+      totalPrice: currentPrice.price_sale_half_pair * 2,
     });
   };
 
@@ -253,16 +277,11 @@ export const SimplifiedLensCard = ({
         {/* Header */}
         <CardHeader className={`${styles.bg} rounded-t-lg p-4 space-y-2`}>
           <div className="flex items-center justify-between gap-2">
-            <Badge 
-              variant="outline" 
-              className={`gap-1 ${styles.accent} border-current`}
-            >
+            <Badge variant="outline" className={`gap-1 ${styles.accent} border-current`}>
               <TierIcon className="w-3.5 h-3.5" />
               {TIER_LABELS[tier]}
             </Badge>
-            
             <div className="flex gap-1 items-center">
-              {/* Score indicator with full breakdown tooltip */}
               {showScore && scoredFamily && (
                 <ScoreIndicator score={scoredFamily.score} compact={true} showReasons={true} />
               )}
@@ -279,19 +298,16 @@ export const SimplifiedLensCard = ({
               )}
             </div>
           </div>
-          
           <div>
             <h3 className="font-bold text-foreground text-lg leading-tight line-clamp-1">
               {displayName}
             </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {subtitle}
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
           </div>
         </CardHeader>
 
         <CardContent className="flex-1 flex flex-col p-4 space-y-3">
-          {/* A) Knowledge Consumer - "Por que esta lente" */}
+          {/* A) Knowledge Consumer */}
           {knowledgeConsumer && (
             <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-2.5 line-clamp-3">
               <span className="font-medium text-foreground text-[10px] uppercase tracking-wide block mb-1">
@@ -301,18 +317,12 @@ export const SimplifiedLensCard = ({
             </div>
           )}
 
-          {/* B) Sales Pills - Real data */}
+          {/* B) Sales Pills */}
           <div className="flex flex-wrap gap-1.5">
             {salesPills.map((pill, idx) => (
-              <Badge 
-                key={idx} 
-                variant="secondary" 
-                className="text-xs font-normal"
-              >
-                {pill}
-              </Badge>
+              <Badge key={idx} variant="secondary" className="text-xs font-normal">{pill}</Badge>
             ))}
-            {isGenericPills && (
+            {salesPills.length === 0 && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger>
@@ -329,7 +339,7 @@ export const SimplifiedLensCard = ({
             )}
           </div>
 
-          {/* C) Technologies - Top 3 resolved */}
+          {/* C) Technologies */}
           {resolvedTechnologies.length > 0 && (
             <div className="space-y-1">
               <span className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wide">
@@ -345,9 +355,7 @@ export const SimplifiedLensCard = ({
                           <span className="text-muted-foreground line-clamp-1">
                             <span className="font-medium text-foreground">{tech.name_common}</span>
                             {tech.group && (
-                              <span className="text-[10px] text-muted-foreground ml-1">
-                                ({tech.group})
-                              </span>
+                              <span className="text-[10px] text-muted-foreground ml-1">({tech.group})</span>
                             )}
                           </span>
                         </div>
@@ -357,11 +365,9 @@ export const SimplifiedLensCard = ({
                         <p className="text-xs text-muted-foreground mt-1">
                           {tech.description_short || tech.description_long?.substring(0, 100) || 'Sem descrição disponível'}
                         </p>
-                        {tech.benefits && tech.benefits.length > 0 && (
+                        {tech.benefits?.length > 0 && (
                           <ul className="text-xs mt-1 space-y-0.5">
-                            {tech.benefits.slice(0, 3).map((b, i) => (
-                              <li key={i}>• {b}</li>
-                            ))}
+                            {tech.benefits.slice(0, 3).map((b, i) => <li key={i}>• {b}</li>)}
                           </ul>
                         )}
                       </TooltipContent>
@@ -372,16 +378,31 @@ export const SimplifiedLensCard = ({
             </div>
           )}
 
-          {/* Value Bars - Uses real attributes */}
+          {/* D) Inline Upgrade Selector - Index + Treatments */}
+          <InlineUpgradeSelector
+            allPrices={allPrices}
+            selectedIndex={selectedIndex}
+            selectedTreatments={selectedTreatments}
+            onIndexChange={handleIndexChange}
+            onTreatmentToggle={handleTreatmentToggle}
+          />
+
+          {/* Value Bars */}
           <ValueBars tier={tier} family={enrichedFamily || undefined} scoredFamily={scoredFamily} />
 
-          {/* Price Display */}
+          {/* Price Display - Dynamic based on selections */}
           <div className={`text-center py-3 rounded-lg transition-colors ${
             isSelected ? 'bg-success/10' : 'bg-muted/30'
           }`}>
             {hasOptions && priceDisplay ? (
               <>
-                <div className="text-xs text-muted-foreground mb-1">A partir de</div>
+                {hasUpgrade ? (
+                  <div className="text-xs text-muted-foreground mb-1 line-through">
+                    Base: R$ {basePriceDisplay!.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </div>
+                ) : (
+                  <div className="text-xs text-muted-foreground mb-1">A partir de</div>
+                )}
                 <div className={`text-2xl font-bold ${isSelected ? 'text-success' : 'text-foreground'}`}>
                   R$ {priceDisplay.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </div>
@@ -400,8 +421,8 @@ export const SimplifiedLensCard = ({
             className="text-xs text-primary hover:underline flex items-center gap-1 justify-center"
           >
             <Eye className="w-3 h-3" />
-            Ver detalhes
-            {allPrices.length > 1 && ` (+${allPrices.length} configurações)`}
+            Todas as configurações
+            {allPrices.length > 1 && ` (${allPrices.length} SKUs)`}
           </button>
 
           {/* CTA Button */}
@@ -436,14 +457,14 @@ export const SimplifiedLensCard = ({
         </CardContent>
       </Card>
 
-      {/* Details Drawer */}
+      {/* Details Drawer - full SKU explorer */}
       <LensDetailsDrawer
         open={showDetails}
         onOpenChange={setShowDetails}
         family={family}
         enrichedFamily={enrichedFamily || undefined}
         allPrices={allPrices}
-        bestPrice={effectiveBestPrice}
+        bestPrice={currentPrice}
         tier={tier}
         addons={addons}
         onSelect={onSelect}
