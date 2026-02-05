@@ -27,12 +27,14 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { SimplifiedLensCard, LensCardSelection } from './SimplifiedLensCard';
+import { TierEmptyState } from './TierEmptyState';
 import { BudgetPanel } from './BudgetPanel';
 import { SmartSearch, AIRecommendation, AIResponse } from '@/components/search/SmartSearch';
 import { ProductSuggestionCards } from './ProductSuggestionCards';
 import { AdditionalProductModal } from './AdditionalProductModal';
 import type { Family, Price, Addon, Tier, AttributeDef, AnamnesisData, LensData, Prescription, ClinicalType } from '@/types/lens';
 import type { SelectedProduct, ProductSuggestion } from '@/lib/productSuggestionEngine';
+import type { ScoredFamily } from '@/lib/recommendationEngine/types';
 import { 
   generateProductSuggestions, 
   generateProductId, 
@@ -46,6 +48,8 @@ interface FamilyWithPrice {
   allPrices: Price[];
   tier: Tier;
   score: number;
+  /** Optional: full scored family data from recommendation engine */
+  scoredFamily?: ScoredFamily;
 }
 
 interface RecommendationsGridProps {
@@ -61,6 +65,8 @@ interface RecommendationsGridProps {
   anamnesisData?: AnamnesisData;
   prescriptionData?: Partial<Prescription>;
   lensData?: LensData | null;
+  /** Force 4 tiers display with empty states */
+  forceAllTiers?: boolean;
 }
 
 type ViewMode = 'system' | 'ai' | 'single';
@@ -113,6 +119,7 @@ export const RecommendationsGrid = ({
   anamnesisData,
   prescriptionData,
   lensData,
+  forceAllTiers = true, // Default: always show 4 tiers
 }: RecommendationsGridProps) => {
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
   const [highlightedFamilies, setHighlightedFamilies] = useState<string[]>([]);
@@ -237,15 +244,24 @@ export const RecommendationsGrid = ({
 
   // Get one option per tier (the best one) + alternatives count
   // IMPORTANT: Filter out families with no prices (indisponível) or no valid prices (price = 0)
-  // Also sorts by price to ensure visual coherence within and across tiers
+  // Also sorts by score (from recommendation engine) then price
+  type TierOption = {
+    tier: Tier;
+    primary: FamilyWithPrice | null;
+    alternativeCount: number;
+    config: typeof TIER_CONFIG[Tier];
+    startingPrice: number;
+    isEmpty: boolean;
+    isFallback?: boolean;
+  };
+
   const tierOptions = useMemo(() => {
-    const options = TIER_ORDER.map(tier => {
+    const options: TierOption[] = TIER_ORDER.map(tier => {
       let tierFamilies = recommendations[tier] || [];
       
       // Filter out families without any prices or with only zero prices
       tierFamilies = tierFamilies.filter(f => {
         if (f.allPrices.length === 0) return false;
-        // Check if at least one price is valid (> 0)
         const hasValidPrice = f.allPrices.some(p => p.price_sale_half_pair > 0);
         return hasValidPrice;
       });
@@ -260,10 +276,26 @@ export const RecommendationsGrid = ({
         tierFamilies = tierFamilies.filter(f => highlightedFamilies.includes(f.family.id));
       }
 
-      if (tierFamilies.length === 0) return null;
+      // Empty tier
+      if (tierFamilies.length === 0) {
+        return {
+          tier,
+          primary: null,
+          alternativeCount: 0,
+          config: TIER_CONFIG[tier],
+          startingPrice: 0,
+          isEmpty: true,
+        };
+      }
 
-      // Sort by lowest price (ascending) to pick the most attractive option for this tier
+      // Sort by score (desc) then by price (asc)
       tierFamilies.sort((a, b) => {
+        // Score from recommendation engine (higher is better)
+        const scoreA = a.score || 0;
+        const scoreB = b.score || 0;
+        if (scoreA !== scoreB) return scoreB - scoreA;
+        
+        // Fallback to price
         const priceA = a.bestPrice?.price_sale_half_pair || 
           Math.min(...a.allPrices.filter(p => p.price_sale_half_pair > 0).map(p => p.price_sale_half_pair)) || Infinity;
         const priceB = b.bestPrice?.price_sale_half_pair || 
@@ -271,7 +303,7 @@ export const RecommendationsGrid = ({
         return priceA - priceB;
       });
 
-      // Primary option (first one = lowest price, or first highlighted)
+      // Primary option (highest score, or first highlighted)
       const primary = highlightedFamilies.length > 0
         ? tierFamilies.sort((a, b) => {
             const aIdx = highlightedFamilies.indexOf(a.family.id);
@@ -280,10 +312,7 @@ export const RecommendationsGrid = ({
           })[0]
         : tierFamilies[0];
       
-      // Alternative count
       const alternativeCount = tierFamilies.length - 1;
-
-      // Calculate the starting price for this tier
       const startingPrice = primary.bestPrice?.price_sale_half_pair || 
         Math.min(...primary.allPrices.filter(p => p.price_sale_half_pair > 0).map(p => p.price_sale_half_pair)) || 0;
 
@@ -293,28 +322,26 @@ export const RecommendationsGrid = ({
         alternativeCount,
         config: TIER_CONFIG[tier],
         startingPrice,
+        isEmpty: false,
       };
-    }).filter(Boolean) as Array<{
-      tier: Tier;
-      primary: FamilyWithPrice;
-      alternativeCount: number;
-      config: typeof TIER_CONFIG[Tier];
-      startingPrice: number;
-    }>;
+    });
 
     // Log if pricing seems inverted (warning for data quality)
-    if (options.length >= 2) {
-      for (let i = 0; i < options.length - 1; i++) {
-        if (options[i].startingPrice > options[i + 1].startingPrice) {
+    const nonEmptyOptions = options.filter(o => !o.isEmpty);
+    if (nonEmptyOptions.length >= 2) {
+      for (let i = 0; i < nonEmptyOptions.length - 1; i++) {
+        if (nonEmptyOptions[i].startingPrice > nonEmptyOptions[i + 1].startingPrice) {
           console.warn(
-            `[RecommendationsGrid] Preço invertido: ${options[i].tier} (R$ ${options[i].startingPrice * 2}) > ${options[i + 1].tier} (R$ ${options[i + 1].startingPrice * 2}). Verifique os dados do catálogo.`
+            `[RecommendationsGrid] Preço invertido: ${nonEmptyOptions[i].tier} (R$ ${nonEmptyOptions[i].startingPrice * 2}) > ${nonEmptyOptions[i + 1].tier} (R$ ${nonEmptyOptions[i + 1].startingPrice * 2}). Verifique os dados do catálogo.`
           );
         }
       }
     }
 
-    return options;
-  }, [recommendations, supplierFilter, highlightedFamilies]);
+    // If forceAllTiers, return all 4 tiers (with empty states)
+    // Otherwise filter out empty tiers
+    return forceAllTiers ? options : options.filter(o => !o.isEmpty);
+  }, [recommendations, supplierFilter, highlightedFamilies, forceAllTiers]);
 
   // Get all unique suppliers from available families
   const availableSuppliers = useMemo(() => {
@@ -452,37 +479,56 @@ export const RecommendationsGrid = ({
 
       {/* Main content - 4 cards full width in single row, cart below */}
       <div className="space-y-8">
-        {/* Lens cards grid - force 4 columns that fill available width equally */}
-        {tierOptions.length > 0 ? (
-          <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(tierOptions.length, 4)}, minmax(0, 1fr))` }}>
-            {tierOptions.map(option => {
-              const { tier, primary, alternativeCount } = option;
-              const isRecommended = primary.family.id === mostRecommendedId;
-              const isSelected = selectedProducts.some(
-                p => p.familyId === primary.family.id && p.type === 'primary'
-              );
-              
+        {/* Lens cards grid - always 4 columns for the value ladder */}
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+          {tierOptions.map(option => {
+            const { tier, primary, alternativeCount, isEmpty, isFallback } = option;
+            
+            // Empty state for tier without products
+            if (isEmpty || !primary) {
               return (
-                <SimplifiedLensCard
+                <TierEmptyState
                   key={tier}
-                  family={primary.family}
-                  bestPrice={primary.bestPrice}
-                  allPrices={primary.allPrices}
                   tier={tier}
-                  isRecommended={isRecommended}
-                  isSelected={isSelected}
-                  addons={addons}
-                  onSelect={handleLensSelect}
-                  alternativeCount={alternativeCount}
+                  isFallback={isFallback}
+                  reason={supplierFilter 
+                    ? `Nenhuma opção do fornecedor ${supplierFilter}` 
+                    : 'Sem lentes disponíveis para esta receita'
+                  }
                 />
               );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-12 text-muted-foreground">
+            }
+            
+            const isRecommended = primary.family.id === mostRecommendedId;
+            const isSelected = selectedProducts.some(
+              p => p.familyId === primary.family.id && p.type === 'primary'
+            );
+            
+            return (
+              <SimplifiedLensCard
+                key={tier}
+                family={primary.family}
+                bestPrice={primary.bestPrice}
+                allPrices={primary.allPrices}
+                tier={tier}
+                isRecommended={isRecommended}
+                isSelected={isSelected}
+                addons={addons}
+                onSelect={handleLensSelect}
+                alternativeCount={alternativeCount}
+                scoredFamily={primary.scoredFamily}
+                showScore={true}
+              />
+            );
+          })}
+        </div>
+
+        {/* No options at all message */}
+        {tierOptions.every(o => o.isEmpty) && (
+          <div className="text-center py-12 text-muted-foreground col-span-4">
             <SlidersHorizontal className="w-12 h-12 mx-auto mb-4 opacity-50" />
             <p className="text-lg font-medium">Nenhuma lente encontrada</p>
-            <p className="text-sm">Tente ajustar os filtros</p>
+            <p className="text-sm">Tente ajustar os filtros ou verifique a receita</p>
             {hasFilters && (
               <Button variant="link" onClick={clearFilters} className="mt-2">
                 Limpar filtros
