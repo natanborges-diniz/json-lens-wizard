@@ -615,14 +615,74 @@ export function enrichFamilies(
 
 /**
  * Batch enrich all prices with family context
+ * Includes LAYER D: Deterministic addon inference from description/treatments_raw
+ * when addons_detected is empty (build step, NOT UI)
  */
 export function enrichPrices(
   prices: Price[],
   familiesMap: Map<string, FamilyExtended>
 ): EnrichedPrice[] {
-  return prices.map(price => 
-    enrichPrice(price, familiesMap.get(price.family_id))
-  );
+  // Check if catalog already has addons_detected populated
+  const hasNativeAddons = prices.some(p => p.addons_detected && p.addons_detected.length > 0);
+  
+  return prices.map(price => {
+    let enrichedPrice = price;
+    
+    // LAYER D: Infer addons if catalog doesn't provide them (deterministic, auditable)
+    if (!hasNativeAddons && (!price.addons_detected || price.addons_detected.length === 0)) {
+      const inferred = inferAddonsFromDescription(price);
+      if (inferred.length > 0) {
+        enrichedPrice = { 
+          ...price, 
+          addons_detected: inferred,
+          flags: { ...price.flags, addons_inferred: true },
+        };
+      }
+    }
+    
+    return enrichPrice(enrichedPrice, familiesMap.get(enrichedPrice.family_id));
+  });
+}
+
+// ============================================================================
+// LAYER D: DETERMINISTIC ADDON INFERENCE (build step)
+// ============================================================================
+
+/**
+ * Infer addons from SKU description and treatments_raw.
+ * This runs ONCE at catalog load time, NOT in UI components.
+ * 
+ * Rules:
+ * - Pattern-based, deterministic by supplier
+ * - Produces standardized tags (BLUE, TRANSITIONS, AR_PREMIUM, etc.)
+ * - Logged via flags.addons_inferred = true for audit
+ */
+const ADDON_INFERENCE_PATTERNS: { pattern: RegExp; addonId: string }[] = [
+  // Blue light filters
+  { pattern: /\b(blue\s*(?:uv|guard|protect|light|cut)?|luz\s*azul|blueguard|blue\s*control|bluecontrol)\b/i, addonId: 'BLUE' },
+  // Photochromic - brand specific
+  { pattern: /\b(transitions?|xtractive)\b/i, addonId: 'TRANSITIONS' },
+  { pattern: /\b(sensity)\b/i, addonId: 'SENSITY' },
+  { pattern: /\b(photo\s*fusion)\b/i, addonId: 'PHOTOFUSION' },
+  { pattern: /\b(foto(?:ss?ens[ií]vel|crom[áa]tic[ao])?|photochromic)\b/i, addonId: 'FOTOSSENSIVEL' },
+  // Polarized
+  { pattern: /\b(polarizad[ao]|polarized|xperio|drivewear)\b/i, addonId: 'POLARIZADO' },
+  // AR Premium (brand coatings)
+  { pattern: /\b(crizal|optifog|satin|prevencia|diamond|duravision|super\s*hi[\s-]*vision|hi[\s-]*coat)\b/i, addonId: 'AR_PREMIUM' },
+];
+
+function inferAddonsFromDescription(price: Price): string[] {
+  const desc = (price.description || '');
+  const rawKeys = Object.keys(price.treatments_raw || {}).join(' ');
+  const combined = `${desc} ${rawKeys}`;
+  
+  const detected: string[] = [];
+  for (const { pattern, addonId } of ADDON_INFERENCE_PATTERNS) {
+    if (pattern.test(combined) && !detected.includes(addonId)) {
+      detected.push(addonId);
+    }
+  }
+  return detected;
 }
 
 /**

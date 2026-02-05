@@ -5,8 +5,10 @@
  * A) knowledge.consumer (Por que esta lente)
  * B) sales_pills reais (sem fallback genérico)
  * C) Tecnologias resolvidas (top 3)
- * D) Inline upgrades (índice + tratamentos) com preço dinâmico
+ * D) Inline upgrades via OptionMatrix (índice + tratamentos) com preço dinâmico
  * E) Tooltip de score breakdown
+ * 
+ * RULE: Toggles derived from OptionMatrix (real SKUs only). No UI-side inference.
  */
 
 import { useState, useMemo, useCallback } from 'react';
@@ -34,6 +36,7 @@ import { ValueBars } from './ValueBars';
 import { LensDetailsDrawer } from './LensDetailsDrawer';
 import { ScoreIndicator } from './ScoreIndicator';
 import { InlineUpgradeSelector } from './InlineUpgradeSelector';
+import { buildOptionMatrix, type OptionMatrix } from '@/lib/optionMatrix';
 import { useCatalogEnricher } from '@/hooks/useCatalogEnricher';
 import type { Family, Price, Addon, Tier, ClinicalType } from '@/types/lens';
 import type { ScoredFamily } from '@/lib/recommendationEngine/types';
@@ -110,13 +113,7 @@ const TIER_STYLES: Record<Tier, {
   },
 };
 
-// Get index from price (V3.6.x compatible)
-const getIndexFromPrice = (price: Price): string => {
-  const avail = (price as any).availability;
-  if (avail?.index) return avail.index;
-  if ((price as any).index) return (price as any).index;
-  return '1.50';
-};
+// getIndex helper removed — OptionMatrix handles index extraction internally
 
 export const SimplifiedLensCard = ({
   family,
@@ -140,6 +137,12 @@ export const SimplifiedLensCard = ({
   const TierIcon = TIER_ICONS[tier];
   const lensCategory = (family.clinical_type || family.category) as ClinicalType;
 
+  // Build OptionMatrix from real SKUs (no prescription filter here - prices already filtered by engine)
+  const optionMatrix = useMemo(() => 
+    buildOptionMatrix(family.id, allPrices, null),
+    [family.id, allPrices]
+  );
+
   // Find cheapest price as initial baseline
   const cheapestPrice = useMemo(() => {
     if (!allPrices.length) return null;
@@ -148,38 +151,18 @@ export const SimplifiedLensCard = ({
 
   // Inline upgrade state
   const [selectedIndex, setSelectedIndex] = useState<string>(() => 
-    cheapestPrice ? getIndexFromPrice(cheapestPrice) : '1.50'
+    optionMatrix.indexOptions.length > 0 ? optionMatrix.indexOptions[0].index : '1.50'
   );
-  const [selectedTreatments, setSelectedTreatments] = useState<string[]>(() =>
-    cheapestPrice?.addons_detected || []
+  const [selectedTreatments, setSelectedTreatments] = useState<string[]>([]);
+
+  // Resolve current SKU from OptionMatrix
+  const resolved = useMemo(() => 
+    optionMatrix.resolve(selectedIndex, selectedTreatments),
+    [optionMatrix, selectedIndex, selectedTreatments]
   );
 
-  // Calculate current price based on inline selections
-  const currentPrice = useMemo(() => {
-    if (!allPrices.length) return null;
-    const pricesForIndex = allPrices.filter(p => getIndexFromPrice(p) === selectedIndex);
-    if (pricesForIndex.length === 0) return cheapestPrice;
-
-    if (selectedTreatments.length === 0) {
-      const noTreatment = pricesForIndex.filter(p => !p.addons_detected?.length);
-      const candidates = noTreatment.length > 0 ? noTreatment : pricesForIndex;
-      return candidates.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
-    }
-
-    // Find price matching all selected treatments
-    const matching = pricesForIndex.filter(p => {
-      const detected = p.addons_detected || [];
-      return selectedTreatments.every(t => detected.includes(t));
-    });
-    if (matching.length > 0) {
-      return matching.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
-    }
-
-    // Fallback: cheapest for this index
-    return pricesForIndex.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
-  }, [allPrices, selectedIndex, selectedTreatments, cheapestPrice]);
-
-  const priceDisplay = currentPrice ? currentPrice.price_sale_half_pair * 2 : null;
+  const currentPrice = resolved?.price || cheapestPrice;
+  const priceDisplay = resolved?.pairPrice || (cheapestPrice ? cheapestPrice.price_sale_half_pair * 2 : null);
   const basePriceDisplay = cheapestPrice ? cheapestPrice.price_sale_half_pair * 2 : null;
   const hasUpgrade = priceDisplay && basePriceDisplay && priceDisplay > basePriceDisplay;
   const hasOptions = allPrices.length > 0 && priceDisplay !== null && priceDisplay > 0;
@@ -378,10 +361,9 @@ export const SimplifiedLensCard = ({
             </div>
           )}
 
-          {/* D) Inline Upgrade Selector - Index + Treatments */}
-          {/* Debug removed - toggles working */}
+          {/* D) Inline Upgrade Selector - OptionMatrix driven */}
           <InlineUpgradeSelector
-            allPrices={allPrices}
+            matrix={optionMatrix}
             selectedIndex={selectedIndex}
             selectedTreatments={selectedTreatments}
             onIndexChange={handleIndexChange}
