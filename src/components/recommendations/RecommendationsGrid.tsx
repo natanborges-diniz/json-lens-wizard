@@ -2,11 +2,10 @@
  * RecommendationsGrid - Refatorado para modelo varejo ótico
  * 
  * Layout:
+ * - ConsultativeNarrativePanel (abertura + resumo)
  * - 4 cards (escada) Essential / Comfort / Advanced / Top
- * - Painel lateral fixo "Seu Orçamento" sempre visível
- * - Cards simplificados (5 linhas, sem rolagem)
- * - Comparativo visual com barras 1-5
- * - Upsell baseado em SKUs reais
+ * - TierComparisonCards (deltas entre tiers)
+ * - Budget Panel
  */
 
 import { useState, useMemo, useCallback } from 'react';
@@ -29,12 +28,16 @@ import { Progress } from '@/components/ui/progress';
 import { SimplifiedLensCard, LensCardSelection } from './SimplifiedLensCard';
 import { TierEmptyState } from './TierEmptyState';
 import { BudgetPanel } from './BudgetPanel';
+import { ConsultativeNarrativePanel } from './ConsultativeNarrativePanel';
+import { TierComparisonCard } from './TierComparisonCard';
 import { SmartSearch, AIRecommendation, AIResponse } from '@/components/search/SmartSearch';
 import { ProductSuggestionCards } from './ProductSuggestionCards';
 import { AdditionalProductModal } from './AdditionalProductModal';
+import { useNarrativeEngine } from '@/hooks/useNarrativeEngine';
 import type { Family, Price, Addon, Tier, AttributeDef, AnamnesisData, LensData, Prescription, ClinicalType } from '@/types/lens';
 import type { SelectedProduct, ProductSuggestion } from '@/lib/productSuggestionEngine';
 import type { ScoredFamily } from '@/lib/recommendationEngine/types';
+import type { RecommendationResult } from '@/lib/recommendationEngine/types';
 import { 
   generateProductSuggestions, 
   generateProductId, 
@@ -67,6 +70,8 @@ interface RecommendationsGridProps {
   lensData?: LensData | null;
   /** Force 4 tiers display with empty states */
   forceAllTiers?: boolean;
+  /** Engine result for narrative generation */
+  engineResult?: RecommendationResult | null;
 }
 
 type ViewMode = 'system' | 'ai' | 'single';
@@ -119,25 +124,47 @@ export const RecommendationsGrid = ({
   anamnesisData,
   prescriptionData,
   lensData,
-  forceAllTiers = true, // Default: always show 4 tiers
+  forceAllTiers = true,
+  engineResult,
 }: RecommendationsGridProps) => {
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
   const [highlightedFamilies, setHighlightedFamilies] = useState<string[]>([]);
-  
-  // View mode state
   const [viewMode, setViewMode] = useState<ViewMode>('system');
-
-  // Product cart state
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
   const [showOccupationalModal, setShowOccupationalModal] = useState(false);
   const [showSolarModal, setShowSolarModal] = useState(false);
+
+  // Default anamnesis data if not provided
+  const defaultAnamnesis: AnamnesisData = {
+    primaryUse: 'mixed',
+    screenHours: '3-5',
+    nightDriving: 'sometimes',
+    visualComplaints: [],
+    outdoorTime: 'no',
+    clearLensPreference: 'indifferent',
+    aestheticPriority: 'medium',
+  };
+
+  const effectiveAnamnesis = anamnesisData || defaultAnamnesis;
+
+  // Narrative Engine integration
+  const { 
+    narrativeResult, 
+    tierComparisons, 
+    openingScript,
+  } = useNarrativeEngine({
+    recommendationResult: engineResult || null,
+    anamnesis: effectiveAnamnesis,
+    clinicalType: lensCategory,
+    technologyLibrary: lensData?.technology_library?.items || {},
+  });
 
   // Get all families flat
   const allFamilies = useMemo(() => {
     return Object.values(recommendations).flat();
   }, [recommendations]);
 
-  // Get ALL prices from all families (for upgrade finding in any family)
+  // Get ALL prices from all families
   const allPricesMap = useMemo(() => {
     const map = new Map<string, Price[]>();
     allFamilies.forEach(f => {
@@ -146,22 +173,19 @@ export const RecommendationsGrid = ({
     return map;
   }, [allFamilies]);
 
-  // Get all prices for selected family (for upgrades panel)
+  // Get all prices for selected family
   const allPricesForFamily = useMemo(() => {
     const primaryProduct = selectedProducts.find(p => p.type === 'primary');
     if (!primaryProduct) return [];
-    
     return allPricesMap.get(primaryProduct.familyId) || [];
   }, [selectedProducts, allPricesMap]);
 
-  // Generate product suggestions based on anamnesis
+  // Generate product suggestions
   const productSuggestions = useMemo((): ProductSuggestion[] => {
     if (!anamnesisData || !lensData) return [];
-    
     const ocFamilies = lensData.families.filter(f => 
       f.category === 'OCUPACIONAL' && f.active
     );
-    
     return generateProductSuggestions(anamnesisData, prescriptionData || {}, ocFamilies);
   }, [anamnesisData, prescriptionData, lensData]);
 
@@ -178,7 +202,7 @@ export const RecommendationsGrid = ({
     return selectedProducts.find(p => p.type === 'primary');
   }, [selectedProducts]);
 
-  // Handle lens selection - add to cart as primary
+  // Handle lens selection
   const handleLensSelect = useCallback((config: LensCardSelection) => {
     const family = allFamilies.find(f => f.family.id === config.familyId);
     if (!family) return;
@@ -196,13 +220,11 @@ export const RecommendationsGrid = ({
       selectedPriceErpCode: config.selectedPrice?.erp_code,
     };
 
-    // Replace any existing primary product
     setSelectedProducts(prev => {
       const filtered = prev.filter(p => p.type !== 'primary');
       return [newPrimary, ...filtered];
     });
 
-    // Also call the original handler for backward compatibility
     onSelectLens(config);
   }, [allFamilies, onSelectLens]);
 
@@ -210,8 +232,6 @@ export const RecommendationsGrid = ({
   const handleUpgradeProduct = useCallback((productId: string, upgrade: any) => {
     setSelectedProducts(prev => prev.map(p => {
       if (p.id !== productId) return p;
-      
-      // Update product with upgrade
       return {
         ...p,
         unitPrice: p.unitPrice + upgrade.priceIncrement,
@@ -225,26 +245,21 @@ export const RecommendationsGrid = ({
     }));
   }, []);
 
-  // Add additional product to cart
   const handleAddProduct = useCallback((product: SelectedProduct) => {
     setSelectedProducts(prev => [...prev, product]);
   }, []);
 
-  // Remove product from cart
   const handleRemoveProduct = useCallback((productId: string) => {
     setSelectedProducts(prev => prev.filter(p => p.id !== productId));
   }, []);
 
-  // Handle finalize - send all products
   const handleFinalize = useCallback(() => {
     if (onSelectProducts) {
       onSelectProducts(selectedProducts);
     }
   }, [selectedProducts, onSelectProducts]);
 
-  // Get one option per tier (the best one) + alternatives count
-  // IMPORTANT: Filter out families with no prices (indisponível) or no valid prices (price = 0)
-  // Also sorts by score (from recommendation engine) then price
+  // Get one option per tier
   type TierOption = {
     tier: Tier;
     primary: FamilyWithPrice | null;
@@ -259,24 +274,19 @@ export const RecommendationsGrid = ({
     const options: TierOption[] = TIER_ORDER.map(tier => {
       let tierFamilies = recommendations[tier] || [];
       
-      // Filter out families without any prices or with only zero prices
       tierFamilies = tierFamilies.filter(f => {
         if (f.allPrices.length === 0) return false;
-        const hasValidPrice = f.allPrices.some(p => p.price_sale_half_pair > 0);
-        return hasValidPrice;
+        return f.allPrices.some(p => p.price_sale_half_pair > 0);
       });
       
-      // Apply supplier filter
       if (supplierFilter) {
         tierFamilies = tierFamilies.filter(f => f.family.supplier === supplierFilter);
       }
 
-      // Apply highlight filter from AI search
       if (highlightedFamilies.length > 0) {
         tierFamilies = tierFamilies.filter(f => highlightedFamilies.includes(f.family.id));
       }
 
-      // Empty tier
       if (tierFamilies.length === 0) {
         return {
           tier,
@@ -288,14 +298,10 @@ export const RecommendationsGrid = ({
         };
       }
 
-      // Sort by score (desc) then by price (asc)
       tierFamilies.sort((a, b) => {
-        // Score from recommendation engine (higher is better)
         const scoreA = a.score || 0;
         const scoreB = b.score || 0;
         if (scoreA !== scoreB) return scoreB - scoreA;
-        
-        // Fallback to price
         const priceA = a.bestPrice?.price_sale_half_pair || 
           Math.min(...a.allPrices.filter(p => p.price_sale_half_pair > 0).map(p => p.price_sale_half_pair)) || Infinity;
         const priceB = b.bestPrice?.price_sale_half_pair || 
@@ -303,7 +309,6 @@ export const RecommendationsGrid = ({
         return priceA - priceB;
       });
 
-      // Primary option (highest score, or first highlighted)
       const primary = highlightedFamilies.length > 0
         ? tierFamilies.sort((a, b) => {
             const aIdx = highlightedFamilies.indexOf(a.family.id);
@@ -326,24 +331,10 @@ export const RecommendationsGrid = ({
       };
     });
 
-    // Log if pricing seems inverted (warning for data quality)
-    const nonEmptyOptions = options.filter(o => !o.isEmpty);
-    if (nonEmptyOptions.length >= 2) {
-      for (let i = 0; i < nonEmptyOptions.length - 1; i++) {
-        if (nonEmptyOptions[i].startingPrice > nonEmptyOptions[i + 1].startingPrice) {
-          console.warn(
-            `[RecommendationsGrid] Preço invertido: ${nonEmptyOptions[i].tier} (R$ ${nonEmptyOptions[i].startingPrice * 2}) > ${nonEmptyOptions[i + 1].tier} (R$ ${nonEmptyOptions[i + 1].startingPrice * 2}). Verifique os dados do catálogo.`
-          );
-        }
-      }
-    }
-
-    // If forceAllTiers, return all 4 tiers (with empty states)
-    // Otherwise filter out empty tiers
     return forceAllTiers ? options : options.filter(o => !o.isEmpty);
   }, [recommendations, supplierFilter, highlightedFamilies, forceAllTiers]);
 
-  // Get all unique suppliers from available families
+  // Get all unique suppliers
   const availableSuppliers = useMemo(() => {
     return [...new Set(allFamilies.map(f => f.family.supplier))];
   }, [allFamilies]);
@@ -359,35 +350,35 @@ export const RecommendationsGrid = ({
 
   const hasFilters = supplierFilter || highlightedFamilies.length > 0;
 
-  // Default anamnesis data if not provided
-  const defaultAnamnesis: AnamnesisData = {
-    primaryUse: 'mixed',
-    screenHours: '3-5',
-    nightDriving: 'sometimes',
-    visualComplaints: [],
-    outdoorTime: 'no',
-    clearLensPreference: 'indifferent',
-    aestheticPriority: 'medium',
-  };
-
-  // Current selected tier (based on primary product)
+  // Current selected tier
   const currentTierIndex = useMemo(() => {
     if (!primaryProduct) return -1;
-    const tierOption = tierOptions.find(t => t.primary.family.id === primaryProduct.familyId);
+    const tierOption = tierOptions.find(t => t.primary?.family.id === primaryProduct.familyId);
     return tierOption ? TIER_ORDER.indexOf(tierOption.tier) : -1;
   }, [primaryProduct, tierOptions]);
+
+  // Selected family id for narrative
+  const selectedFamilyForNarrative = primaryProduct?.familyId || mostRecommendedId;
 
   return (
     <div className="space-y-6">
       {/* Smart Search */}
       <SmartSearch
         lensData={lensData || null}
-        anamnesisData={anamnesisData || defaultAnamnesis}
+        anamnesisData={effectiveAnamnesis}
         lensCategory={lensCategory}
         onHighlightFamilies={handleHighlightFamilies}
         onSuggestAddons={() => {}}
         onSelectAIRecommendation={() => {}}
       />
+
+      {/* 1. Consultative Narrative Panel - Opening Script + Summary */}
+      {narrativeResult && (
+        <ConsultativeNarrativePanel
+          narrativeResult={narrativeResult}
+          selectedFamilyId={selectedFamilyForNarrative}
+        />
+      )}
 
       {/* Supplier Filters */}
       <div className="flex flex-wrap gap-2 items-center">
@@ -433,7 +424,7 @@ export const RecommendationsGrid = ({
         )}
       </div>
 
-      {/* Tier Progress Bar - Visual staircase */}
+      {/* Tier Progress Bar */}
       <Card className="p-4 bg-muted/30">
         <div className="flex items-center gap-2 mb-3">
           <ArrowUp className="w-4 h-4 text-muted-foreground" />
@@ -458,7 +449,6 @@ export const RecommendationsGrid = ({
                   ${isCurrent ? 'ring-2 ring-primary ring-offset-2' : ''}
                 `} />
                 
-                {/* Label below */}
                 <div className={`
                   mt-2 text-center text-xs transition-colors
                   ${isCurrent ? 'font-bold text-primary' : isActive ? 'text-foreground' : 'text-muted-foreground'}
@@ -467,7 +457,6 @@ export const RecommendationsGrid = ({
                   {config.label}
                 </div>
                 
-                {/* Tooltip on hover */}
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-popover border rounded shadow-md text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
                   {config.description}
                 </div>
@@ -477,14 +466,13 @@ export const RecommendationsGrid = ({
         </div>
       </Card>
 
-      {/* Main content - 4 cards full width in single row, cart below */}
+      {/* Main content */}
       <div className="space-y-8">
-        {/* Lens cards grid - always 4 columns for the value ladder */}
+        {/* 2. Lens cards grid - 4 columns value ladder */}
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
           {tierOptions.map(option => {
             const { tier, primary, alternativeCount, isEmpty, isFallback } = option;
             
-            // Empty state for tier without products
             if (isEmpty || !primary) {
               return (
                 <TierEmptyState
@@ -523,7 +511,40 @@ export const RecommendationsGrid = ({
           })}
         </div>
 
-        {/* No options at all message */}
+        {/* 3. Tier Comparison Cards - Deltas between tiers */}
+        {tierComparisons.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              O que você ganha ao subir de nível
+            </h3>
+            <div className="grid gap-3 grid-cols-1 md:grid-cols-3">
+              {tierComparisons.map((comparison, idx) => (
+                <TierComparisonCard
+                  key={`${comparison.fromTier}-${comparison.toTier}`}
+                  comparison={comparison}
+                  onSelectUpper={() => {
+                    // Find the primary of the upper tier and select it
+                    const upperOption = tierOptions.find(t => t.tier === comparison.toTier);
+                    if (upperOption?.primary) {
+                      const bestPrice = upperOption.primary.bestPrice || upperOption.primary.allPrices[0];
+                      if (bestPrice) {
+                        handleLensSelect({
+                          familyId: upperOption.primary.family.id,
+                          selectedPrice: bestPrice,
+                          selectedIndex: (bestPrice as any).availability?.index || (bestPrice as any).index || '1.50',
+                          selectedTreatments: bestPrice.addons_detected || [],
+                          totalPrice: bestPrice.price_sale_half_pair * 2,
+                        });
+                      }
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* No options message */}
         {tierOptions.every(o => o.isEmpty) && (
           <div className="text-center py-12 text-muted-foreground col-span-4">
             <SlidersHorizontal className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -537,7 +558,7 @@ export const RecommendationsGrid = ({
           </div>
         )}
 
-        {/* Product Suggestions - only show after primary is selected */}
+        {/* Product Suggestions */}
         {selectedProducts.length > 0 && productSuggestions.length > 0 && (
           <ProductSuggestionCards
             suggestions={productSuggestions}
@@ -548,7 +569,7 @@ export const RecommendationsGrid = ({
           />
         )}
 
-        {/* Budget Panel - full width at the bottom, horizontal layout */}
+        {/* Budget Panel */}
         <div className="w-full">
           <BudgetPanel
             products={selectedProducts}
@@ -561,7 +582,7 @@ export const RecommendationsGrid = ({
         </div>
       </div>
 
-      {/* Modals for additional products */}
+      {/* Modals */}
       <AdditionalProductModal
         open={showOccupationalModal}
         onOpenChange={setShowOccupationalModal}

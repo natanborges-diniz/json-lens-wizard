@@ -194,6 +194,7 @@ const SellerFlow = () => {
     topRecommendationId, 
     stats: engineStats,
     isReady: engineReady,
+    engineResult,
   } = useRecommendationEngine({
     lensData: lensDataForEngine,
     lensCategory,
@@ -415,6 +416,7 @@ const SellerFlow = () => {
               anamnesisData={anamnesisData}
               prescriptionData={prescriptionData}
               lensData={lensDataForEngine}
+              engineResult={engineResult}
             />
           </div>
         )}
@@ -433,6 +435,8 @@ const SellerFlow = () => {
               lensCategory={lensCategory}
               additionalProducts={selectedProducts.filter(p => p.type !== 'primary')}
               onBack={() => setCurrentStep('recommendations')}
+              engineResult={engineResult}
+              lensData={lensDataForEngine}
             />
           </div>
         )}
