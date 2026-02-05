@@ -85,6 +85,9 @@ export interface BudgetDocumentData {
   resolvedAttributes?: ResolvedAttribute[];
   quoteExplanations?: string[];  // From quote_explainer based on anamnesis
   technologiesDetailed?: TechnologyDetailed[];
+  knowledgeConsumer?: string;
+  knowledgeConsultant?: string;
+  salesPills?: string[];
 }
 
 interface BudgetDocumentProps {

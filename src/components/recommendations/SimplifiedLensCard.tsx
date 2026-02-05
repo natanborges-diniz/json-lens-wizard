@@ -1,14 +1,11 @@
 /**
- * SimplifiedLensCard - Card otimizado para varejo (5 linhas, sem rolagem)
+ * SimplifiedLensCard - Card otimizado para varejo (com dados reais do catálogo)
  * 
- * Layout fixo:
- * 1. Título (FAMÍLIA – nome comercial)
- * 2. Subtítulo (tipo + tier + fornecedor)
- * 3. 3 benefícios-chave (pílulas)
- * 4. Preço "a partir de" (SKU mínimo compatível)
- * 5. CTA ("Escolher" / "Melhor opção")
- * 
- * Tudo o resto fica em drawer/modal.
+ * Exibe obrigatoriamente:
+ * A) knowledge.consumer (Por que esta lente)
+ * B) sales_pills reais (sem fallback genérico)
+ * C) Tecnologias resolvidas (top 3)
+ * D) Tooltip de score breakdown
  */
 
 import { useState, useMemo } from 'react';
@@ -19,14 +16,23 @@ import {
   Shield,
   ThumbsUp,
   Zap,
-  Eye
+  Eye,
+  Sparkles,
+  Info,
+  AlertTriangle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { ValueBars } from './ValueBars';
 import { LensDetailsDrawer } from './LensDetailsDrawer';
-import { ScoreBadge } from './ScoreIndicator';
+import { ScoreIndicator } from './ScoreIndicator';
 import { useCatalogEnricher } from '@/hooks/useCatalogEnricher';
 import type { Family, Price, Addon, Tier, ClinicalType } from '@/types/lens';
 import type { ScoredFamily } from '@/lib/recommendationEngine/types';
@@ -42,9 +48,7 @@ interface SimplifiedLensCardProps {
   onSelect: (config: LensCardSelection) => void;
   alternativeCount?: number;
   onViewAlternatives?: () => void;
-  /** Scored family data from recommendation engine */
   scoredFamily?: ScoredFamily;
-  /** Show score indicator */
   showScore?: boolean;
 }
 
@@ -135,29 +139,24 @@ export const SimplifiedLensCard = ({
   const TierIcon = TIER_ICONS[tier];
   const lensCategory = (family.clinical_type || family.category) as ClinicalType;
 
-  // Get display name - always show "Supplier FamilyName" (e.g., "Zeiss Choice")
+  // Display name - "Supplier FamilyName"
   const displayName = useMemo(() => {
-    // Get the family name part
     let familyName = '';
     if (enrichedFamily?.display_name) {
       familyName = enrichedFamily.display_name;
     } else if (family.name_original) {
       familyName = family.name_original;
     } else {
-      // Humanize ID as fallback
       familyName = family.id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     }
     
-    // If family name already contains supplier, return as is
     if (familyName.toLowerCase().includes(family.supplier.toLowerCase())) {
       return familyName;
     }
-    
-    // Otherwise, prepend supplier: "Zeiss Choice"
     return `${family.supplier} ${familyName}`;
   }, [enrichedFamily, family]);
 
-  // Get subtitle
+  // Subtitle
   const subtitle = useMemo(() => {
     const category = lensCategory === 'PROGRESSIVA' 
       ? 'Progressiva' 
@@ -167,26 +166,52 @@ export const SimplifiedLensCard = ({
     return `${category} • ${TIER_LABELS[tier]} • ${family.supplier}`;
   }, [lensCategory, tier, family.supplier]);
 
-  // Get 3 sales pills
-  const salesPills = useMemo(() => {
-    const pills: string[] = [];
-    
-    // From sales_pills
-    if (enrichedFamily?.sales_pills) {
-      pills.push(...enrichedFamily.sales_pills.slice(0, 3));
-    }
-    
-    // Fallback defaults if not enough
-    const defaults = ['Nitidez', 'Proteção UV', 'Durabilidade'];
-    while (pills.length < 3 && defaults.length > 0) {
-      const next = defaults.shift()!;
-      if (!pills.includes(next)) pills.push(next);
-    }
-    
-    return pills.slice(0, 3);
-  }, [enrichedFamily]);
+  // A) Knowledge consumer - from engine or enricher
+  const knowledgeConsumer = useMemo(() => {
+    if (scoredFamily?.knowledgeConsumer) return scoredFamily.knowledgeConsumer;
+    if (enrichedFamily?.knowledge?.consumer) return enrichedFamily.knowledge.consumer;
+    return null;
+  }, [scoredFamily, enrichedFamily]);
 
-  // Calculate "a partir de" price - use allPrices for display
+  // B) Sales pills - REAL data, NO generic fallback
+  const salesPills = useMemo(() => {
+    // Priority 1: From scored family (engine-resolved)
+    if (scoredFamily?.salesPills && scoredFamily.salesPills.length > 0) {
+      return scoredFamily.salesPills.slice(0, 4);
+    }
+    // Priority 2: From enriched family
+    if (enrichedFamily?.sales_pills && enrichedFamily.sales_pills.length > 0) {
+      return enrichedFamily.sales_pills.slice(0, 4);
+    }
+    // Priority 3: Generate from technologies
+    if (scoredFamily?.technologies && scoredFamily.technologies.length > 0) {
+      return scoredFamily.technologies
+        .flatMap(t => t.benefits?.slice(0, 1) || [t.name_common])
+        .slice(0, 4);
+    }
+    // Priority 4: From attributes_base
+    if (family.attributes_base) {
+      const attrs = Object.entries(family.attributes_base)
+        .filter(([_, v]) => typeof v === 'number' && v >= 3)
+        .map(([k]) => k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()))
+        .slice(0, 3);
+      if (attrs.length > 0) return attrs;
+    }
+    // Last resort: mark as generic
+    return [];
+  }, [scoredFamily, enrichedFamily, family]);
+
+  const isGenericPills = salesPills.length === 0;
+
+  // C) Technologies - top 3 resolved
+  const resolvedTechnologies = useMemo(() => {
+    if (scoredFamily?.technologies && scoredFamily.technologies.length > 0) {
+      return scoredFamily.technologies.slice(0, 3);
+    }
+    return [];
+  }, [scoredFamily]);
+
+  // Calculate "a partir de" price
   const startingPrice = useMemo(() => {
     if (!allPrices.length) return null;
     const sorted = [...allPrices].sort((a, b) => 
@@ -199,17 +224,11 @@ export const SimplifiedLensCard = ({
     ? startingPrice.price_sale_half_pair * 2 
     : null;
 
-  // Effective best price: use bestPrice if available, otherwise cheapest from allPrices
   const effectiveBestPrice = bestPrice || startingPrice;
-
-  // Check if we have any options available
-  // A family has options if it has prices AND at least one has a valid price
   const hasOptions = allPrices.length > 0 && priceDisplay !== null && priceDisplay > 0;
 
-  // Handle selection - auto-select best SKU or cheapest available
   const handleSelect = () => {
     if (!effectiveBestPrice) return;
-    
     onSelect({
       familyId: family.id,
       selectedPrice: effectiveBestPrice,
@@ -231,10 +250,9 @@ export const SimplifiedLensCard = ({
         }
         hover:shadow-md hover:-translate-y-0.5
       `}>
-        {/* Header - Tier badge + Recommended badge */}
+        {/* Header */}
         <CardHeader className={`${styles.bg} rounded-t-lg p-4 space-y-2`}>
           <div className="flex items-center justify-between gap-2">
-            {/* Tier badge */}
             <Badge 
               variant="outline" 
               className={`gap-1 ${styles.accent} border-current`}
@@ -243,11 +261,10 @@ export const SimplifiedLensCard = ({
               {TIER_LABELS[tier]}
             </Badge>
             
-            {/* Status badges */}
             <div className="flex gap-1 items-center">
-              {/* Score indicator */}
+              {/* Score indicator with full breakdown tooltip */}
               {showScore && scoredFamily && (
-                <ScoreBadge score={scoredFamily.score.final} />
+                <ScoreIndicator score={scoredFamily.score} compact={true} showReasons={true} />
               )}
               {isSelected && (
                 <Badge className="bg-success text-success-foreground text-xs gap-1">
@@ -263,7 +280,6 @@ export const SimplifiedLensCard = ({
             </div>
           </div>
           
-          {/* Title and Subtitle */}
           <div>
             <h3 className="font-bold text-foreground text-lg leading-tight line-clamp-1">
               {displayName}
@@ -274,8 +290,18 @@ export const SimplifiedLensCard = ({
           </div>
         </CardHeader>
 
-        <CardContent className="flex-1 flex flex-col p-4 space-y-4">
-          {/* 3 Sales Pills */}
+        <CardContent className="flex-1 flex flex-col p-4 space-y-3">
+          {/* A) Knowledge Consumer - "Por que esta lente" */}
+          {knowledgeConsumer && (
+            <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-2.5 line-clamp-3">
+              <span className="font-medium text-foreground text-[10px] uppercase tracking-wide block mb-1">
+                Por que esta lente
+              </span>
+              {knowledgeConsumer}
+            </div>
+          )}
+
+          {/* B) Sales Pills - Real data */}
           <div className="flex flex-wrap gap-1.5">
             {salesPills.map((pill, idx) => (
               <Badge 
@@ -286,10 +312,68 @@ export const SimplifiedLensCard = ({
                 {pill}
               </Badge>
             ))}
+            {isGenericPills && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Badge variant="outline" className="text-xs text-muted-foreground gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      Dados parciais
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">Esta família não possui pílulas de venda no catálogo.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
           </div>
 
-          {/* Value Bars - Visual comparison (4 axes) */}
-          <ValueBars tier={tier} family={enrichedFamily || undefined} />
+          {/* C) Technologies - Top 3 resolved */}
+          {resolvedTechnologies.length > 0 && (
+            <div className="space-y-1">
+              <span className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wide">
+                Tecnologias
+              </span>
+              <div className="space-y-1">
+                {resolvedTechnologies.map((tech, idx) => (
+                  <TooltipProvider key={idx}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-start gap-1.5 text-xs">
+                          <Sparkles className="w-3 h-3 text-primary shrink-0 mt-0.5" />
+                          <span className="text-muted-foreground line-clamp-1">
+                            <span className="font-medium text-foreground">{tech.name_common}</span>
+                            {tech.group && (
+                              <span className="text-[10px] text-muted-foreground ml-1">
+                                ({tech.group})
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        <p className="font-medium">{tech.name_common}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {tech.description_short || tech.description_long?.substring(0, 100) || 'Sem descrição disponível'}
+                        </p>
+                        {tech.benefits && tech.benefits.length > 0 && (
+                          <ul className="text-xs mt-1 space-y-0.5">
+                            {tech.benefits.slice(0, 3).map((b, i) => (
+                              <li key={i}>• {b}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Value Bars - Uses real attributes */}
+          <ValueBars tier={tier} family={enrichedFamily || undefined} scoredFamily={scoredFamily} />
 
           {/* Price Display */}
           <div className={`text-center py-3 rounded-lg transition-colors ${

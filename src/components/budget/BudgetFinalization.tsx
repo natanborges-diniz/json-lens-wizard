@@ -26,11 +26,14 @@ import { useCatalogResolver } from '@/hooks/useCatalogResolver';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import type { FamilyExtended, AnamnesisData, AttributeDef, Prescription, FrameMeasurements, LensCategory } from '@/types/lens';
+import type { FamilyExtended, AnamnesisData, AttributeDef, Prescription, FrameMeasurements, LensCategory, LensData } from '@/types/lens';
 import type { SelectedProduct } from '@/lib/productSuggestionEngine';
+import type { RecommendationResult } from '@/lib/recommendationEngine/types';
 import { LensCardConfiguration } from '@/components/recommendations/LensCard';
 import { BudgetSummaryDialog } from './BudgetSummaryDialog';
 import type { BudgetDocumentData } from './BudgetDocument';
+import { useBudgetGenerator } from '@/hooks/useBudgetGenerator';
+import { useCatalogEnricher } from '@/hooks/useCatalogEnricher';
 
 interface BudgetFinalizationProps {
   configuration: LensCardConfiguration;
@@ -44,6 +47,8 @@ interface BudgetFinalizationProps {
   lensCategory?: LensCategory;
   additionalProducts?: SelectedProduct[];
   onBack: () => void;
+  engineResult?: RecommendationResult | null;
+  lensData?: LensData | null;
 }
 
 const paymentMethods = [
@@ -69,6 +74,8 @@ export const BudgetFinalization = ({
   lensCategory = 'PROGRESSIVA',
   additionalProducts = [],
   onBack,
+  engineResult,
+  lensData,
 }: BudgetFinalizationProps) => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -93,6 +100,10 @@ export const BudgetFinalization = ({
     resolveAttributeLabel,
     resolveFamilyDisplay,
   } = useCatalogResolver();
+
+  // Enriched data for consultative budget
+  const { getEnrichedFamily } = useCatalogEnricher();
+  const enrichedFamily = getEnrichedFamily(family.id);
 
   // Get technologies for this family from JSON
   const technologies = getTechnologiesForFamily(family);
@@ -316,6 +327,9 @@ ${notes ? `\nObs: ${notes}` : ''}
         resolvedAttributes,
         quoteExplanations: explanations.length > 0 ? explanations : undefined,
         technologiesDetailed: technologiesDetailed.length > 0 ? technologiesDetailed : undefined,
+        knowledgeConsumer: enrichedFamily?.knowledge?.consumer || undefined,
+        knowledgeConsultant: enrichedFamily?.knowledge?.consultant?.join('\n') || undefined,
+        salesPills: enrichedFamily?.sales_pills || undefined,
       };
 
       setBudgetDocumentData(documentData);
