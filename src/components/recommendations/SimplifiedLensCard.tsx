@@ -26,8 +26,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ValueBars } from './ValueBars';
 import { LensDetailsDrawer } from './LensDetailsDrawer';
+import { ScoreBadge } from './ScoreIndicator';
 import { useCatalogEnricher } from '@/hooks/useCatalogEnricher';
 import type { Family, Price, Addon, Tier, ClinicalType } from '@/types/lens';
+import type { ScoredFamily } from '@/lib/recommendationEngine/types';
 
 interface SimplifiedLensCardProps {
   family: Family;
@@ -40,6 +42,10 @@ interface SimplifiedLensCardProps {
   onSelect: (config: LensCardSelection) => void;
   alternativeCount?: number;
   onViewAlternatives?: () => void;
+  /** Scored family data from recommendation engine */
+  scoredFamily?: ScoredFamily;
+  /** Show score indicator */
+  showScore?: boolean;
 }
 
 export interface LensCardSelection {
@@ -118,6 +124,8 @@ export const SimplifiedLensCard = ({
   onSelect,
   alternativeCount = 0,
   onViewAlternatives,
+  scoredFamily,
+  showScore = true,
 }: SimplifiedLensCardProps) => {
   const [showDetails, setShowDetails] = useState(false);
   const { getEnrichedFamily } = useCatalogEnricher();
@@ -236,7 +244,11 @@ export const SimplifiedLensCard = ({
             </Badge>
             
             {/* Status badges */}
-            <div className="flex gap-1">
+            <div className="flex gap-1 items-center">
+              {/* Score indicator */}
+              {showScore && scoredFamily && (
+                <ScoreBadge score={scoredFamily.score.final} />
+              )}
               {isSelected && (
                 <Badge className="bg-success text-success-foreground text-xs gap-1">
                   <Check className="w-3 h-3" />
