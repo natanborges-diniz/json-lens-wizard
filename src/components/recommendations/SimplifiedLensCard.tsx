@@ -379,6 +379,16 @@ export const SimplifiedLensCard = ({
           )}
 
           {/* D) Inline Upgrade Selector - Index + Treatments */}
+          {(() => {
+            // Debug: log allPrices count and unique indices
+            const indices = new Set(allPrices.map(p => {
+              const avail = (p as any).availability;
+              return avail?.index || (p as any).index || '1.50';
+            }));
+            const addons = new Set(allPrices.flatMap(p => p.addons_detected || []));
+            console.log(`[InlineUpgrade] ${family.id}: ${allPrices.length} SKUs, indices=[${[...indices]}], addons=[${[...addons]}]`);
+            return null;
+          })()}
           <InlineUpgradeSelector
             allPrices={allPrices}
             selectedIndex={selectedIndex}
