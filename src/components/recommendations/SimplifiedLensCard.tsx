@@ -1,14 +1,14 @@
 /**
- * SimplifiedLensCard - Card otimizado para varejo (com dados reais do catálogo)
+ * SimplifiedLensCard - Card otimizado para varejo (dados reais do catálogo v3.6.2.2)
  * 
- * Exibe obrigatoriamente:
- * A) knowledge.consumer (Por que esta lente)
- * B) sales_pills reais (sem fallback genérico)
- * C) Tecnologias resolvidas (top 3)
- * D) Inline upgrades via OptionMatrix (índice + tratamentos) com preço dinâmico
- * E) Tooltip de score breakdown
- * 
- * RULE: Toggles derived from OptionMatrix (real SKUs only). No UI-side inference.
+ * v3.6.2.2 RULES:
+ * - display_name from family.display_name (NEVER concatenate from SKU)
+ * - index from prices[].index_value
+ * - addons from prices[].addons_detected[]
+ * - toggles from families[].options
+ * - addons[] library for labels
+ * - NO inference from description/regex
+ * - Debug tooltip: family_id + sku_id + index_value + addons_detected
  */
 
 import { useState, useMemo, useCallback } from 'react';
@@ -21,7 +21,8 @@ import {
   Zap,
   Eye,
   Sparkles,
-  AlertTriangle
+  AlertTriangle,
+  Bug
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,7 +39,8 @@ import { ScoreIndicator } from './ScoreIndicator';
 import { InlineUpgradeSelector } from './InlineUpgradeSelector';
 import { buildOptionMatrix, type OptionMatrix } from '@/lib/optionMatrix';
 import { useCatalogEnricher } from '@/hooks/useCatalogEnricher';
-import type { Family, Price, Addon, Tier, ClinicalType } from '@/types/lens';
+import { useLensStore } from '@/store/lensStore';
+import type { Family, Price, Addon, Tier, ClinicalType, CatalogAddon, FamilyExtended } from '@/types/lens';
 import type { ScoredFamily } from '@/lib/recommendationEngine/types';
 
 interface SimplifiedLensCardProps {
@@ -64,7 +66,6 @@ export interface LensCardSelection {
   totalPrice: number;
 }
 
-// Tier icons
 const TIER_ICONS: Record<Tier, React.ElementType> = {
   essential: Shield,
   comfort: ThumbsUp,
@@ -72,7 +73,6 @@ const TIER_ICONS: Record<Tier, React.ElementType> = {
   top: Crown,
 };
 
-// Tier labels (PT-BR)
 const TIER_LABELS: Record<Tier, string> = {
   essential: 'Essential',
   comfort: 'Conforto',
@@ -80,40 +80,14 @@ const TIER_LABELS: Record<Tier, string> = {
   top: 'Premium',
 };
 
-// Tier colors
 const TIER_STYLES: Record<Tier, {
-  bg: string;
-  border: string;
-  accent: string;
-  selectedRing: string;
+  bg: string; border: string; accent: string; selectedRing: string;
 }> = {
-  essential: {
-    bg: 'bg-slate-50 dark:bg-slate-900/50',
-    border: 'border-slate-200 dark:border-slate-700',
-    accent: 'text-slate-600 dark:text-slate-400',
-    selectedRing: 'ring-slate-400',
-  },
-  comfort: {
-    bg: 'bg-blue-50 dark:bg-blue-900/20',
-    border: 'border-blue-200 dark:border-blue-800',
-    accent: 'text-blue-600 dark:text-blue-400',
-    selectedRing: 'ring-blue-400',
-  },
-  advanced: {
-    bg: 'bg-purple-50 dark:bg-purple-900/20',
-    border: 'border-purple-200 dark:border-purple-800',
-    accent: 'text-purple-600 dark:text-purple-400',
-    selectedRing: 'ring-purple-400',
-  },
-  top: {
-    bg: 'bg-amber-50 dark:bg-amber-900/20',
-    border: 'border-amber-200 dark:border-amber-800',
-    accent: 'text-amber-600 dark:text-amber-400',
-    selectedRing: 'ring-amber-400',
-  },
+  essential: { bg: 'bg-slate-50 dark:bg-slate-900/50', border: 'border-slate-200 dark:border-slate-700', accent: 'text-slate-600 dark:text-slate-400', selectedRing: 'ring-slate-400' },
+  comfort: { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800', accent: 'text-blue-600 dark:text-blue-400', selectedRing: 'ring-blue-400' },
+  advanced: { bg: 'bg-purple-50 dark:bg-purple-900/20', border: 'border-purple-200 dark:border-purple-800', accent: 'text-purple-600 dark:text-purple-400', selectedRing: 'ring-purple-400' },
+  top: { bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800', accent: 'text-amber-600 dark:text-amber-400', selectedRing: 'ring-amber-400' },
 };
-
-// getIndex helper removed — OptionMatrix handles index extraction internally
 
 export const SimplifiedLensCard = ({
   family,
@@ -130,41 +104,31 @@ export const SimplifiedLensCard = ({
   showScore = true,
 }: SimplifiedLensCardProps) => {
   const [showDetails, setShowDetails] = useState(false);
-  const { getEnrichedFamily, getEnrichedPricesForFamily } = useCatalogEnricher();
+  const { getEnrichedFamily } = useCatalogEnricher();
+  const storeAddons = useLensStore(s => s.addons);
   const enrichedFamily = getEnrichedFamily(family.id);
+  const familyExt = (family as FamilyExtended);
   
   const styles = TIER_STYLES[tier];
   const TierIcon = TIER_ICONS[tier];
   const lensCategory = (family.clinical_type || family.category) as ClinicalType;
 
-  // Use enriched prices (with Layer D addons_detected populated) for OptionMatrix
-  const enrichedPricesForFamily = getEnrichedPricesForFamily(family.id);
-  const pricesToUse = useMemo(() => {
-    // Prefer enriched prices (have addons_detected from Layer D inference)
-    // Fall back to raw allPrices if enriched not available
-    if (enrichedPricesForFamily.length > 0) return enrichedPricesForFamily;
-    return allPrices;
-  }, [enrichedPricesForFamily, allPrices]);
-
-  // Build OptionMatrix from enriched SKUs (with addons_detected populated)
+  // v3.6.2.2: Build OptionMatrix with family options & addons library (NO inference)
   const optionMatrix = useMemo(() => 
-    buildOptionMatrix(family.id, pricesToUse, null),
-    [family.id, pricesToUse]
+    buildOptionMatrix(family.id, allPrices, null, familyExt, storeAddons as CatalogAddon[]),
+    [family.id, allPrices, familyExt, storeAddons]
   );
 
-  // Find cheapest price as initial baseline
   const cheapestPrice = useMemo(() => {
     if (!allPrices.length) return null;
     return [...allPrices].sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
   }, [allPrices]);
 
-  // Inline upgrade state
   const [selectedIndex, setSelectedIndex] = useState<string>(() => 
     optionMatrix.indexOptions.length > 0 ? optionMatrix.indexOptions[0].index : '1.50'
   );
   const [selectedTreatments, setSelectedTreatments] = useState<string[]>([]);
 
-  // Resolve current SKU from OptionMatrix
   const resolved = useMemo(() => 
     optionMatrix.resolve(selectedIndex, selectedTreatments),
     [optionMatrix, selectedIndex, selectedTreatments]
@@ -176,43 +140,44 @@ export const SimplifiedLensCard = ({
   const hasUpgrade = priceDisplay && basePriceDisplay && priceDisplay > basePriceDisplay;
   const hasOptions = allPrices.length > 0 && priceDisplay !== null && priceDisplay > 0;
 
-  // Display name
+  // v3.6.2.2: Display name from family.display_name (NEVER concatenate from SKU)
   const displayName = useMemo(() => {
-    let familyName = '';
-    if (enrichedFamily?.display_name) {
-      familyName = enrichedFamily.display_name;
-    } else if (family.name_original) {
-      familyName = family.name_original;
-    } else {
-      familyName = family.id.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    }
-    if (familyName.toLowerCase().includes(family.supplier.toLowerCase())) {
-      return familyName;
-    }
-    return `${family.supplier} ${familyName}`;
-  }, [enrichedFamily, family]);
+    // Priority 1: display_name from catalog
+    if (familyExt.display_name) return familyExt.display_name;
+    if (enrichedFamily?.display_name) return enrichedFamily.display_name;
+    // Priority 2: display_name_short
+    if (familyExt.display_name_short) return familyExt.display_name_short;
+    // Priority 3: name_original
+    if (family.name_original) return family.name_original;
+    // Last resort
+    return family.id.replace(/_/g, ' ');
+  }, [familyExt, enrichedFamily, family]);
+
+  // Prepend supplier if not already in name
+  const fullDisplayName = useMemo(() => {
+    if (displayName.toUpperCase().includes(family.supplier.toUpperCase())) return displayName;
+    return `${family.supplier} ${displayName}`;
+  }, [displayName, family.supplier]);
 
   const subtitle = useMemo(() => {
+    // v3.6.2.2: Use catalog subtitle if available
+    if (familyExt.display_subtitle) return `${familyExt.display_subtitle} • ${family.supplier}`;
     const category = lensCategory === 'PROGRESSIVA' ? 'Progressiva' 
       : lensCategory === 'OCUPACIONAL' ? 'Ocupacional' : 'Monofocal';
     return `${category} • ${TIER_LABELS[tier]} • ${family.supplier}`;
-  }, [lensCategory, tier, family.supplier]);
+  }, [familyExt, lensCategory, tier, family.supplier]);
 
-  // A) Knowledge consumer
   const knowledgeConsumer = useMemo(() => {
     if (scoredFamily?.knowledgeConsumer) return scoredFamily.knowledgeConsumer;
     if (enrichedFamily?.knowledge?.consumer) return enrichedFamily.knowledge.consumer;
     return null;
   }, [scoredFamily, enrichedFamily]);
 
-  // B) Sales pills - REAL data
   const salesPills = useMemo(() => {
     if (scoredFamily?.salesPills?.length) return scoredFamily.salesPills.slice(0, 4);
     if (enrichedFamily?.sales_pills?.length) return enrichedFamily.sales_pills.slice(0, 4);
     if (scoredFamily?.technologies?.length) {
-      return scoredFamily.technologies
-        .flatMap(t => t.benefits?.slice(0, 1) || [t.name_common])
-        .slice(0, 4);
+      return scoredFamily.technologies.flatMap(t => t.benefits?.slice(0, 1) || [t.name_common]).slice(0, 4);
     }
     if (family.attributes_base) {
       const attrs = Object.entries(family.attributes_base)
@@ -224,22 +189,18 @@ export const SimplifiedLensCard = ({
     return [];
   }, [scoredFamily, enrichedFamily, family]);
 
-  // C) Technologies
   const resolvedTechnologies = useMemo(() => {
     return scoredFamily?.technologies?.slice(0, 3) || [];
   }, [scoredFamily]);
 
-  // Handlers
   const handleIndexChange = useCallback((index: string) => {
     setSelectedIndex(index);
-    setSelectedTreatments([]); // Reset treatments on index change
+    setSelectedTreatments([]);
   }, []);
 
   const handleTreatmentToggle = useCallback((treatmentId: string) => {
     setSelectedTreatments(prev => 
-      prev.includes(treatmentId) 
-        ? prev.filter(t => t !== treatmentId) 
-        : [...prev, treatmentId]
+      prev.includes(treatmentId) ? prev.filter(t => t !== treatmentId) : [...prev, treatmentId]
     );
   }, []);
 
@@ -279,27 +240,24 @@ export const SimplifiedLensCard = ({
               )}
               {isSelected && (
                 <Badge className="bg-success text-success-foreground text-xs gap-1">
-                  <Check className="w-3 h-3" />
-                  Selecionada
+                  <Check className="w-3 h-3" />Selecionada
                 </Badge>
               )}
               {isRecommended && !isSelected && (
-                <Badge className="bg-primary text-primary-foreground text-xs">
-                  Melhor opção
-                </Badge>
+                <Badge className="bg-primary text-primary-foreground text-xs">Melhor opção</Badge>
               )}
             </div>
           </div>
           <div>
             <h3 className="font-bold text-foreground text-lg leading-tight line-clamp-1">
-              {displayName}
+              {fullDisplayName}
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
           </div>
         </CardHeader>
 
         <CardContent className="flex-1 flex flex-col p-4 space-y-3">
-          {/* A) Knowledge Consumer */}
+          {/* Knowledge Consumer */}
           {knowledgeConsumer && (
             <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-2.5 line-clamp-3">
               <span className="font-medium text-foreground text-[10px] uppercase tracking-wide block mb-1">
@@ -309,7 +267,7 @@ export const SimplifiedLensCard = ({
             </div>
           )}
 
-          {/* B) Sales Pills */}
+          {/* Sales Pills */}
           <div className="flex flex-wrap gap-1.5">
             {salesPills.map((pill, idx) => (
               <Badge key={idx} variant="secondary" className="text-xs font-normal">{pill}</Badge>
@@ -319,8 +277,7 @@ export const SimplifiedLensCard = ({
                 <Tooltip>
                   <TooltipTrigger>
                     <Badge variant="outline" className="text-xs text-muted-foreground gap-1">
-                      <AlertTriangle className="w-3 h-3" />
-                      Dados parciais
+                      <AlertTriangle className="w-3 h-3" />Dados parciais
                     </Badge>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -331,7 +288,7 @@ export const SimplifiedLensCard = ({
             )}
           </div>
 
-          {/* C) Technologies */}
+          {/* Technologies */}
           {resolvedTechnologies.length > 0 && (
             <div className="space-y-1">
               <span className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wide">
@@ -346,9 +303,7 @@ export const SimplifiedLensCard = ({
                           <Sparkles className="w-3 h-3 text-primary shrink-0 mt-0.5" />
                           <span className="text-muted-foreground line-clamp-1">
                             <span className="font-medium text-foreground">{tech.name_common}</span>
-                            {tech.group && (
-                              <span className="text-[10px] text-muted-foreground ml-1">({tech.group})</span>
-                            )}
+                            {tech.group && <span className="text-[10px] text-muted-foreground ml-1">({tech.group})</span>}
                           </span>
                         </div>
                       </TooltipTrigger>
@@ -370,7 +325,7 @@ export const SimplifiedLensCard = ({
             </div>
           )}
 
-          {/* D) Inline Upgrade Selector - OptionMatrix driven */}
+          {/* Inline Upgrade Selector - OptionMatrix driven (v3.6.2.2) */}
           <InlineUpgradeSelector
             matrix={optionMatrix}
             selectedIndex={selectedIndex}
@@ -382,7 +337,7 @@ export const SimplifiedLensCard = ({
           {/* Value Bars */}
           <ValueBars tier={tier} family={enrichedFamily || undefined} scoredFamily={scoredFamily} />
 
-          {/* Price Display - Dynamic based on selections */}
+          {/* Price Display */}
           <div className={`text-center py-3 rounded-lg transition-colors ${
             isSelected ? 'bg-success/10' : 'bg-muted/30'
           }`}>
@@ -406,6 +361,31 @@ export const SimplifiedLensCard = ({
               </div>
             )}
           </div>
+
+          {/* Debug Tooltip (dev mode) */}
+          {import.meta.env.DEV && resolved && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center justify-center gap-1 text-[9px] text-muted-foreground/40 cursor-help">
+                    <Bug className="w-3 h-3" />
+                    <span>debug</span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-sm font-mono text-[10px]">
+                  <div className="space-y-0.5">
+                    <p><strong>family_id:</strong> {family.id}</p>
+                    <p><strong>sku_id:</strong> {resolved.erpCode}</p>
+                    <p><strong>index_value:</strong> {(resolved.price as any).index_value ?? 'N/A'}</p>
+                    <p><strong>addons_detected:</strong> {JSON.stringify(resolved.price.addons_detected || [])}</p>
+                    <p><strong>pair_price:</strong> R$ {resolved.pairPrice.toFixed(2)}</p>
+                    <p><strong>options.indexes:</strong> {JSON.stringify(familyExt.options?.indexes_available || [])}</p>
+                    <p><strong>options.addons:</strong> {JSON.stringify(familyExt.options?.addons_available || [])}</p>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
 
           {/* View Details Link */}
           <button
@@ -432,24 +412,17 @@ export const SimplifiedLensCard = ({
               }`}
             >
               {isSelected ? (
-                <>
-                  <Check className="w-4 h-4 mr-2" />
-                  Selecionada
-                </>
+                <><Check className="w-4 h-4 mr-2" />Selecionada</>
               ) : isRecommended ? (
                 'Escolher Esta Lente'
               ) : (
-                <>
-                  Selecionar
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </>
+                <>Selecionar<ChevronRight className="w-4 h-4 ml-1" /></>
               )}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Details Drawer - full SKU explorer */}
       <LensDetailsDrawer
         open={showDetails}
         onOpenChange={setShowDetails}

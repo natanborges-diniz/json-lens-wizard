@@ -1,17 +1,17 @@
 /**
  * OptionMatrix - Builds selectable options from real SKUs/Prices
  * 
- * RULES:
- * 1. Options derived ONLY from active, unblocked prices compatible with prescription
- * 2. Toggle appears ONLY if count >= 1 real SKU backs it
- * 3. Prices come from actual SKU prices (no inference, no calculation)
- * 4. Audit trail: every option references source SKU erp_codes
- * 
- * This module does NOT infer treatments. It reads `addons_detected` as-is.
- * If the catalog needs inference, that must happen in catalogEnricher (build step).
+ * v3.6.2.2 RULES:
+ * 1. Uses prices[].index_value as index source (NOT inferred from description)
+ * 2. Uses prices[].addons_detected[] as addon source (NOT inferred by regex)
+ * 3. Uses families[].options to know WHAT toggles to show per family
+ * 4. Uses addons[] library for labels/names
+ * 5. Toggle appears ONLY if count >= 1 real SKU backs it
+ * 6. Prices from actual SKU (no inference, no calculation)
+ * 7. Audit trail: every option references source SKU erp_codes
  */
 
-import type { Price, Prescription } from '@/types/lens';
+import type { Price, FamilyExtended, CatalogAddon } from '@/types/lens';
 
 // ============================================================================
 // TYPES
@@ -30,7 +30,7 @@ export interface TreatmentOption {
   id: string;
   label: string;
   shortLabel: string;
-  icon: string; // icon key for UI mapping
+  icon: string;
   minPairPrice: number;
   deltaFromBase: number;
   skuCount: number;
@@ -43,7 +43,6 @@ export interface OptionMatrix {
   compatiblePriceCount: number;
   indexOptions: IndexOption[];
   treatmentOptions: TreatmentOption[];
-  /** Find the best matching SKU for given selections */
   resolve: (index: string, treatments: string[]) => ResolvedSku | null;
 }
 
@@ -68,34 +67,41 @@ const INDEX_LABELS: Record<string, string> = {
   '1.74': 'Super Fino (1.74)',
 };
 
-const TREATMENT_DISPLAY: Record<string, { label: string; shortLabel: string; icon: string }> = {
-  'BLUE': { label: 'Filtro Luz Azul', shortLabel: 'Blue', icon: 'eye' },
-  'BLUEGUARD': { label: 'BlueGuard', shortLabel: 'BlueG', icon: 'eye' },
-  'BLUECONTROL': { label: 'BlueControl', shortLabel: 'BlueC', icon: 'eye' },
-  'BLUE_UV_FILTER': { label: 'Blue UV Filter', shortLabel: 'BlueUV', icon: 'eye' },
-  'FOTOSSENSIVEL': { label: 'Fotossensível', shortLabel: 'Foto', icon: 'sun' },
-  'FOTO': { label: 'Fotossensível', shortLabel: 'Foto', icon: 'sun' },
-  'PHOTOCHROMIC': { label: 'Fotossensível', shortLabel: 'Foto', icon: 'sun' },
-  'TRANSITIONS': { label: 'Transitions', shortLabel: 'Trans.', icon: 'sun' },
-  'SENSITY': { label: 'Sensity', shortLabel: 'Sensity', icon: 'sun' },
-  'PHOTOFUSION': { label: 'PhotoFusion', shortLabel: 'Photo', icon: 'sun' },
-  'AR': { label: 'Antirreflexo', shortLabel: 'AR', icon: 'sparkles' },
-  'AR_PREMIUM': { label: 'AR Premium', shortLabel: 'AR+', icon: 'sparkles' },
-  'AR_BASICO': { label: 'AR Básico', shortLabel: 'AR', icon: 'sparkles' },
-  'POLARIZADO': { label: 'Polarizado', shortLabel: 'Polar.', icon: 'shield' },
-  'POLARIZED': { label: 'Polarizado', shortLabel: 'Polar.', icon: 'shield' },
+// Fallback icons by addon group
+const GROUP_ICON_MAP: Record<string, string> = {
+  'Blue': 'eye',
+  'AR': 'sparkles',
+  'Photo': 'sun',
+  'Sun': 'shield',
+  'Protection': 'shield',
 };
 
 // ============================================================================
 // HELPERS
 // ============================================================================
 
-/** Extract refractive index from price (V3.6.x compatible) */
+/** Get the refractive index from price using index_value (v3.6.2.2) */
 const getIndex = (price: Price): string => {
+  // v3.6.2.2: Use formal index_value field
+  if ((price as any).index_value != null) {
+    return String((price as any).index_value);
+  }
+  // Fallback: availability.index
   const avail = (price as any).availability;
   if (avail?.index) return avail.index;
-  if ((price as any).index) return (price as any).index;
+  // Legacy fallback
+  if (price.index) return price.index;
   return '1.50';
+};
+
+/** Normalize index string for consistent comparison (1.5 -> 1.50) */
+const normalizeIndex = (idx: string): string => {
+  const num = parseFloat(idx);
+  if (isNaN(num)) return idx;
+  // 1.5 -> 1.50, 1.59 -> 1.59, 1.6 -> 1.60
+  if (num === 1.5) return '1.50';
+  if (num === 1.6) return '1.60';
+  return num.toFixed(2);
 };
 
 /** Check if a price is compatible with a prescription */
@@ -103,9 +109,8 @@ function isPrescriptionCompatible(
   price: Price,
   prescription: { sphere: number; cylinder: number; addition?: number } | null
 ): boolean {
-  if (!prescription) return true; // No prescription = show all
+  if (!prescription) return true;
   
-  // Check specs (legacy)
   const specs = price.specs;
   if (specs) {
     if (prescription.sphere < specs.sphere_min || prescription.sphere > specs.sphere_max) return false;
@@ -115,13 +120,18 @@ function isPrescriptionCompatible(
     }
   }
   
-  // Check availability (new schema)
   const avail = (price as any).availability;
   if (avail?.sphere) {
-    if (prescription.sphere < avail.sphere.min || prescription.sphere > avail.sphere.max) return false;
-    if (avail.cylinder && (prescription.cylinder < avail.cylinder.min || prescription.cylinder > avail.cylinder.max)) return false;
+    // Null min/max = unrestricted
+    if (avail.sphere.min != null && prescription.sphere < avail.sphere.min) return false;
+    if (avail.sphere.max != null && prescription.sphere > avail.sphere.max) return false;
+    if (avail.cylinder) {
+      if (avail.cylinder.min != null && prescription.cylinder < avail.cylinder.min) return false;
+      if (avail.cylinder.max != null && prescription.cylinder > avail.cylinder.max) return false;
+    }
     if (prescription.addition !== undefined && avail.addition) {
-      if (prescription.addition < avail.addition.min || prescription.addition > avail.addition.max) return false;
+      if (avail.addition.min != null && prescription.addition < avail.addition.min) return false;
+      if (avail.addition.max != null && prescription.addition > avail.addition.max) return false;
     }
   }
   
@@ -134,26 +144,30 @@ function isPrescriptionCompatible(
 
 /**
  * Build OptionMatrix for a family from its real prices.
+ * v3.6.2.2: Uses index_value and addons_detected directly - NO inference.
  * 
  * @param familyId - The family ID
  * @param allFamilyPrices - ALL prices for this family (pre-filtered by family_id)
  * @param prescription - Client prescription (null = no filter)
- * @returns OptionMatrix with real options backed by SKUs
+ * @param family - Family object (optional, for options metadata)
+ * @param addonsLibrary - Addons library (optional, for labels)
  */
 export function buildOptionMatrix(
   familyId: string,
   allFamilyPrices: Price[],
-  prescription: { sphere: number; cylinder: number; addition?: number } | null = null
+  prescription: { sphere: number; cylinder: number; addition?: number } | null = null,
+  family?: FamilyExtended | null,
+  addonsLibrary?: CatalogAddon[]
 ): OptionMatrix {
   // Step 1: Filter to active, unblocked, prescription-compatible prices
   const compatible = allFamilyPrices.filter(p => 
     p.active && !p.blocked && isPrescriptionCompatible(p, prescription)
   );
 
-  // Step 2: Build index options from compatible prices
+  // Step 2: Build index options from compatible prices using index_value
   const indexMap = new Map<string, { minHalf: number; erpCodes: string[] }>();
   compatible.forEach(price => {
-    const idx = getIndex(price);
+    const idx = normalizeIndex(getIndex(price));
     const existing = indexMap.get(idx);
     if (!existing) {
       indexMap.set(idx, { minHalf: price.price_sale_half_pair, erpCodes: [price.erp_code] });
@@ -180,6 +194,9 @@ export function buildOptionMatrix(
   }));
 
   // Step 3: Build treatment options from addons_detected on compatible prices
+  // Only show addons that are in the family.options.addons_available (if defined)
+  const allowedAddons = family?.options?.addons_available;
+  
   const treatmentMap = new Map<string, { minHalf: number; erpCodes: string[] }>();
   
   // Find base price (no addons) for delta calculation
@@ -190,6 +207,9 @@ export function buildOptionMatrix(
 
   compatible.forEach(price => {
     (price.addons_detected || []).forEach(addonId => {
+      // Filter by family.options.addons_available if defined
+      if (allowedAddons && !allowedAddons.includes(addonId)) return;
+      
       const existing = treatmentMap.get(addonId);
       if (!existing) {
         treatmentMap.set(addonId, { minHalf: price.price_sale_half_pair, erpCodes: [price.erp_code] });
@@ -202,17 +222,23 @@ export function buildOptionMatrix(
     });
   });
 
+  // Build addon map for label resolution
+  const addonMap = new Map<string, CatalogAddon>();
+  if (addonsLibrary) {
+    addonsLibrary.forEach(a => addonMap.set(a.id, a));
+  }
+
   const treatmentOptions: TreatmentOption[] = Array.from(treatmentMap.entries()).map(([id, data]) => {
-    const display = TREATMENT_DISPLAY[id] || { 
-      label: id.replace(/_/g, ' '), 
-      shortLabel: id.substring(0, 5), 
-      icon: 'plus' 
-    };
+    const addonDef = addonMap.get(id);
+    const label = addonDef?.name || addonDef?.name_common || id.replace(/^ADDON_/, '').replace(/_/g, ' ');
+    const shortLabel = label.length > 8 ? label.substring(0, 8) : label;
+    const icon = addonDef?.group ? (GROUP_ICON_MAP[addonDef.group] || 'plus') : 'plus';
+    
     return {
       id,
-      label: display.label,
-      shortLabel: display.shortLabel,
-      icon: display.icon,
+      label,
+      shortLabel,
+      icon,
       minPairPrice: data.minHalf * 2,
       deltaFromBase: (data.minHalf - baseHalf) * 2,
       skuCount: data.erpCodes.length,
@@ -222,7 +248,8 @@ export function buildOptionMatrix(
 
   // Step 4: Resolver function
   const resolve = (index: string, treatments: string[]): ResolvedSku | null => {
-    const candidates = compatible.filter(p => getIndex(p) === index);
+    const normalizedIdx = normalizeIndex(index);
+    const candidates = compatible.filter(p => normalizeIndex(getIndex(p)) === normalizedIdx);
     if (candidates.length === 0) return null;
 
     // Try exact match: all requested treatments present
@@ -237,7 +264,7 @@ export function buildOptionMatrix(
           price: best,
           erpCode: best.erp_code,
           pairPrice: best.price_sale_half_pair * 2,
-          matchedIndex: index,
+          matchedIndex: normalizedIdx,
           matchedTreatments: treatments,
         };
       }
@@ -249,7 +276,7 @@ export function buildOptionMatrix(
       price: cheapest,
       erpCode: cheapest.erp_code,
       pairPrice: cheapest.price_sale_half_pair * 2,
-      matchedIndex: index,
+      matchedIndex: normalizedIdx,
       matchedTreatments: [],
     };
   };

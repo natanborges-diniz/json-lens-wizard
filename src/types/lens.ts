@@ -75,17 +75,38 @@ export interface Price {
   manufacturing_type: string; // Legacy field (LS, SF, PRONTA)
   process?: ProcessType; // New official field per Prompt Canônico V1
   index: string;
+  index_value?: number; // v3.6.2.2: formal refractive index (1.5, 1.59, 1.6, 1.67, 1.74)
   price_purchase_half_pair: number;
   price_sale_half_pair: number;
   active: boolean;
   blocked: boolean;
   specs: PriceSpec;
   treatments_raw?: Record<string, string>;
-  addons_detected?: string[];
+  addons_detected?: string[]; // v3.6.2.2: formal addon IDs (ADDON_BLUE, ADDON_AR_PREMIUM, etc.)
   attribute_overrides?: Record<string, number>;
   flags?: Record<string, boolean>;
   // ERP code for internal system integration (visible to seller, hidden from client)
   erp_integration_code?: string;
+}
+
+// v3.6.2.2: Family options - what toggles to show per family
+export interface FamilyOptions {
+  indexes_available: number[];
+  addons_available: string[];
+}
+
+// v3.6.2.2: Addon library entry
+export interface CatalogAddon {
+  id: string;
+  name?: string;
+  name_common?: string;
+  description_client?: string;
+  group?: string;
+  attribute_impacts?: { attribute_id: string; delta: number }[];
+  impact?: Record<string, number>;
+  name_commercial?: Record<string, string>;
+  rules?: { categories: string[]; only_if?: string };
+  active: boolean;
 }
 
 // Extended macro with display configuration (optional, from JSON)
@@ -106,6 +127,16 @@ export interface FamilyExtended extends Family {
   availability_status?: string; // e.g. "SEM_SKU_NO_ERP" for auto-disabled families
   tier_target?: 'essential' | 'comfort' | 'advanced' | 'top'; // Direct tier from catalog
   tier_confidence?: 'high' | 'medium' | 'low'; // Confidence level of tier assignment
+  // v3.6.2.2 fields
+  display_name?: string;
+  display_name_short?: string;
+  display_subtitle?: string;
+  options?: FamilyOptions;
+  knowledge_refs?: string[];
+  family_name_commercial?: string;
+  family_name_erp?: string;
+  family_short_name?: string;
+  comparison_tags?: string[];
 }
 
 // Technology Library types
