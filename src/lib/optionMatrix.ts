@@ -67,6 +67,22 @@ const INDEX_LABELS: Record<string, string> = {
   '1.74': 'Super Fino (1.74)',
 };
 
+// Friendly short labels for common addon IDs
+const ADDON_SHORT_LABELS: Record<string, string> = {
+  'ADDON_BLUE': 'Filtro Azul',
+  'ADDON_BLUE_UV': 'Filtro Azul UV',
+  'ADDON_AR': 'Antirreflexo',
+  'ADDON_AR_PREMIUM': 'AR Premium',
+  'ADDON_PHOTO': 'Fotossensível',
+  'ADDON_PHOTO_GRAY': 'Foto Cinza',
+  'ADDON_PHOTO_BROWN': 'Foto Marrom',
+  'ADDON_TRANSITIONS': 'Transitions',
+  'ADDON_POLAR': 'Polarizada',
+  'ADDON_MIRROR': 'Espelhada',
+  'ADDON_DLC': 'DLC',
+  'ADDON_HIDRO': 'Hidrofóbico',
+};
+
 // Fallback icons by addon group
 const GROUP_ICON_MAP: Record<string, string> = {
   'Blue': 'eye',
@@ -231,7 +247,8 @@ export function buildOptionMatrix(
   const treatmentOptions: TreatmentOption[] = Array.from(treatmentMap.entries()).map(([id, data]) => {
     const addonDef = addonMap.get(id);
     const label = addonDef?.name || addonDef?.name_common || id.replace(/^ADDON_/, '').replace(/_/g, ' ');
-    const shortLabel = label.length > 8 ? label.substring(0, 8) : label;
+    // Use a more readable short label - up to 16 chars, or use a friendly alias
+    const shortLabel = ADDON_SHORT_LABELS[id] || (label.length > 16 ? label.substring(0, 14) + '…' : label);
     const icon = addonDef?.group ? (GROUP_ICON_MAP[addonDef.group] || 'plus') : 'plus';
     
     return {

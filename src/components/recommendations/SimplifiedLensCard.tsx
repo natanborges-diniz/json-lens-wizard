@@ -249,7 +249,7 @@ export const SimplifiedLensCard = ({
             </div>
           </div>
           <div>
-            <h3 className="font-bold text-foreground text-lg leading-tight line-clamp-1">
+            <h3 className="font-bold text-foreground text-base leading-tight line-clamp-2">
               {fullDisplayName}
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
