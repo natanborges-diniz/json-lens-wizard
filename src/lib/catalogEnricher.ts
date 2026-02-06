@@ -622,20 +622,18 @@ export function enrichPrices(
   prices: Price[],
   familiesMap: Map<string, FamilyExtended>
 ): EnrichedPrice[] {
-  // Check if catalog already has addons_detected populated
-  const hasNativeAddons = prices.some(p => p.addons_detected && p.addons_detected.length > 0);
-  
   return prices.map(price => {
     let enrichedPrice = price;
     
-    // LAYER D: Infer addons if catalog doesn't provide them (deterministic, auditable)
-    if (!hasNativeAddons && (!price.addons_detected || price.addons_detected.length === 0)) {
+    // LAYER D: Infer addons PER PRICE if it doesn't already have them (deterministic, auditable)
+    // Each price is checked individually — native addons on other prices don't block inference
+    if (!price.addons_detected || price.addons_detected.length === 0) {
       const inferred = inferAddonsFromDescription(price);
       if (inferred.length > 0) {
         enrichedPrice = { 
           ...price, 
           addons_detected: inferred,
-          flags: { ...price.flags, addons_inferred: true },
+          flags: { ...(price as any).flags, addons_inferred: true },
         };
       }
     }
