@@ -147,19 +147,10 @@ export const SimplifiedLensCard = ({
   }, [enrichedPricesForFamily, allPrices]);
 
   // Build OptionMatrix from enriched SKUs (with addons_detected populated)
-  const optionMatrix = useMemo(() => {
-    const matrix = buildOptionMatrix(family.id, pricesToUse, null);
-    // DEBUG: Log enriched prices addons for diagnosis
-    if (family.id.toLowerCase().includes('comfort') || family.id.toLowerCase().includes('varilux')) {
-      const addonsFound = pricesToUse.filter(p => p.addons_detected?.length);
-      console.log(`[OptionMatrix DEBUG] ${family.id}: ${pricesToUse.length} prices, ${addonsFound.length} with addons, indices: ${matrix.indexOptions.map(o => o.index).join(',')}, treatments: ${matrix.treatmentOptions.map(t => t.id).join(',')}`);
-      if (addonsFound.length === 0) {
-        const sample = pricesToUse.slice(0, 3).map(p => ({ erp: p.erp_code, desc: p.description?.substring(0, 60), addons: p.addons_detected, flags: (p as any).flags }));
-        console.log(`[OptionMatrix DEBUG] ${family.id} sample prices:`, sample);
-      }
-    }
-    return matrix;
-  }, [family.id, pricesToUse]);
+  const optionMatrix = useMemo(() => 
+    buildOptionMatrix(family.id, pricesToUse, null),
+    [family.id, pricesToUse]
+  );
 
   // Find cheapest price as initial baseline
   const cheapestPrice = useMemo(() => {
