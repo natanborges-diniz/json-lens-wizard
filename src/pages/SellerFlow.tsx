@@ -202,7 +202,7 @@ const SellerFlow = () => {
     prescriptionData,
   });
 
-  const activeAddons = addons.filter(a => a.active && a.rules.categories.includes(lensCategory));
+  const activeAddons = addons.filter(a => a.active && a.rules?.categories?.includes(lensCategory));
 
   // Get occupational recommendations using the engine too
   const { recommendations: occupationalRecommendations } = useRecommendationEngine({
