@@ -155,6 +155,38 @@ function isPrescriptionCompatible(
 }
 
 // ============================================================================
+// RESOLVER HELPER
+// ============================================================================
+
+function buildResolver(compatible: Price[]) {
+  return (index: string, treatments: string[]): ResolvedSku | null => {
+    const normalizedIdx = normalizeIndex(index);
+    const candidates = compatible.filter(p => normalizeIndex(getIndex(p)) === normalizedIdx);
+    if (candidates.length === 0) return null;
+
+    if (treatments.length > 0) {
+      const exact = candidates.filter(p => {
+        const detected = p.addons_detected || [];
+        return treatments.every(t => detected.includes(t));
+      });
+      if (exact.length > 0) {
+        const best = exact.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
+        return {
+          price: best, erpCode: best.erp_code, pairPrice: best.price_sale_half_pair * 2,
+          matchedIndex: normalizedIdx, matchedTreatments: treatments,
+        };
+      }
+    }
+
+    const cheapest = candidates.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
+    return {
+      price: cheapest, erpCode: cheapest.erp_code, pairPrice: cheapest.price_sale_half_pair * 2,
+      matchedIndex: normalizedIdx, matchedTreatments: [],
+    };
+  };
+}
+
+// ============================================================================
 // MAIN BUILDER
 // ============================================================================
 
@@ -210,8 +242,22 @@ export function buildOptionMatrix(
   }));
 
   // Step 3: Build treatment options from addons_detected on compatible prices
-  // Only show addons that are in the family.options.addons_available (if defined)
+  // v3.6.2.3: ONLY show addons listed in family.options.addons_available (REQUIRED)
   const allowedAddons = family?.options?.addons_available;
+  
+  // If family has no options.addons_available defined, show NO treatment toggles
+  if (!allowedAddons || allowedAddons.length === 0) {
+    // No addons defined for this family = no treatment toggles
+    const resolve = buildResolver(compatible);
+    return {
+      familyId,
+      prescriptionUsed: prescription,
+      compatiblePriceCount: compatible.length,
+      indexOptions,
+      treatmentOptions: [],
+      resolve,
+    };
+  }
   
   const treatmentMap = new Map<string, { minHalf: number; erpCodes: string[] }>();
   
@@ -223,8 +269,8 @@ export function buildOptionMatrix(
 
   compatible.forEach(price => {
     (price.addons_detected || []).forEach(addonId => {
-      // Filter by family.options.addons_available if defined
-      if (allowedAddons && !allowedAddons.includes(addonId)) return;
+      // v3.6.2.3: STRICT filter - only show if in family.options.addons_available
+      if (!allowedAddons.includes(addonId)) return;
       
       const existing = treatmentMap.get(addonId);
       if (!existing) {
@@ -263,40 +309,8 @@ export function buildOptionMatrix(
     };
   });
 
-  // Step 4: Resolver function
-  const resolve = (index: string, treatments: string[]): ResolvedSku | null => {
-    const normalizedIdx = normalizeIndex(index);
-    const candidates = compatible.filter(p => normalizeIndex(getIndex(p)) === normalizedIdx);
-    if (candidates.length === 0) return null;
-
-    // Try exact match: all requested treatments present
-    if (treatments.length > 0) {
-      const exact = candidates.filter(p => {
-        const detected = p.addons_detected || [];
-        return treatments.every(t => detected.includes(t));
-      });
-      if (exact.length > 0) {
-        const best = exact.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
-        return {
-          price: best,
-          erpCode: best.erp_code,
-          pairPrice: best.price_sale_half_pair * 2,
-          matchedIndex: normalizedIdx,
-          matchedTreatments: treatments,
-        };
-      }
-    }
-
-    // Fallback: cheapest for this index (no treatment match)
-    const cheapest = candidates.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
-    return {
-      price: cheapest,
-      erpCode: cheapest.erp_code,
-      pairPrice: cheapest.price_sale_half_pair * 2,
-      matchedIndex: normalizedIdx,
-      matchedTreatments: [],
-    };
-  };
+  // Step 4: Resolver function (reuse helper)
+  const resolve = buildResolver(compatible);
 
   return {
     familyId,
