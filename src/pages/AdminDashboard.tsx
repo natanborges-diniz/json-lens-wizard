@@ -859,7 +859,7 @@ const AdminDashboard = () => {
                         </Button>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-medium text-foreground">{family.name_original}</span>
+                            <span className="font-medium text-foreground">{(family as any).display_name || (family as any).name_display || family.name_original}</span>
                             <Badge className={macroToBadgeClass[family.macro] || 'bg-muted'}>
                               {macroToTier[family.macro] || family.macro}
                             </Badge>
@@ -924,7 +924,7 @@ const AdminDashboard = () => {
                         </Button>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-medium text-foreground">{family.name_original}</span>
+                            <span className="font-medium text-foreground">{(family as any).display_name || (family as any).name_display || family.name_original}</span>
                             <Badge className={macroToBadgeClass[family.macro] || 'bg-muted'}>
                               {macroToTier[family.macro] || family.macro}
                             </Badge>
@@ -990,7 +990,7 @@ const AdminDashboard = () => {
                           </Button>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-medium text-foreground">{family.name_original}</span>
+                              <span className="font-medium text-foreground">{(family as any).display_name || (family as any).name_display || family.name_original}</span>
                               <Badge className={macroToBadgeClass[family.macro] || 'bg-cyan-100 text-cyan-700'}>
                                 {macroToTier[family.macro] || family.macro}
                               </Badge>

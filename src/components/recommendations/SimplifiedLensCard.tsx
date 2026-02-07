@@ -140,14 +140,15 @@ export const SimplifiedLensCard = ({
   const hasUpgrade = priceDisplay && basePriceDisplay && priceDisplay > basePriceDisplay;
   const hasOptions = allPrices.length > 0 && priceDisplay !== null && priceDisplay > 0;
 
-  // v3.6.2.5: Display name from catalog — NO inference, NO formatting
-  // Priority: display_name_short → display_name → name_original
+  // v3.6.2.6: Display name from catalog — NO inference, NO abbreviation
+  // Priority: enrichedFamily.display_name → family.display_name → family.name_display → humanize(name_original)
   const displayName = useMemo(() => {
-    if (familyExt.display_name_short) return familyExt.display_name_short;
-    if (familyExt.display_name) return familyExt.display_name;
-    if (family.name_original) return family.name_original;
-    return family.id.replace(/_/g, ' ');
-  }, [familyExt, family]);
+    return enrichedFamily?.display_name 
+      || familyExt.display_name 
+      || familyExt.name_display 
+      || familyExt.name_original?.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) 
+      || family.id;
+  }, [enrichedFamily, familyExt, family]);
 
   // Prepend supplier if not already in name
   const fullDisplayName = useMemo(() => {

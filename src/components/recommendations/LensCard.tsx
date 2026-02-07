@@ -268,7 +268,7 @@ export const LensCard = ({
         {/* Product Name */}
         <div>
           <h3 className="font-bold text-foreground text-lg leading-tight">
-            {enrichedFamily?.display_name || family.name_original}
+            {enrichedFamily?.display_name || (family as any).name_display || family.name_original?.toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()) || family.id}
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
             {enrichedFamily?.display_subtitle || `${family.category} · ${family.supplier}`}

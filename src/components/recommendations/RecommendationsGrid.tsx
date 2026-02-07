@@ -211,7 +211,7 @@ export const RecommendationsGrid = ({
       id: generateProductId(),
       type: 'primary',
       familyId: config.familyId,
-      familyName: family.family.name_original,
+      familyName: (family.family as any).display_name || (family.family as any).name_display || family.family.name_original,
       supplier: family.family.supplier,
       selectedIndex: config.selectedIndex,
       selectedTreatments: config.selectedTreatments,

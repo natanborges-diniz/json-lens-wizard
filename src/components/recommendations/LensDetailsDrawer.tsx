@@ -260,8 +260,8 @@ export const LensDetailsDrawer = ({
     onOpenChange(false);
   };
 
-  // Display name
-  const displayName = enrichedFamily?.display_name || family.name_original;
+  // v3.6.2.6: Display name — never render name_original raw
+  const displayName = enrichedFamily?.display_name || (family as any).name_display || family.name_original?.toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()) || family.id;
   const subtitle = `${lensCategory === 'PROGRESSIVA' ? 'Progressiva' : lensCategory === 'OCUPACIONAL' ? 'Ocupacional' : 'Monofocal'} · ${tier.charAt(0).toUpperCase() + tier.slice(1)} · ${family.supplier}`;
 
   // Total SKU count
