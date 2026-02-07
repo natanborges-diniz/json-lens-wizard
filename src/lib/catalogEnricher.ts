@@ -70,34 +70,25 @@ const TIER_LABELS: Record<string, string> = {
 
 /**
  * LAYER A.1: Get display_name for family
- * v3.6.2.2: Use family.display_name directly if available. NEVER concatenate from SKU.
+ * v3.6.2.5: Use display_name_short → display_name → name_original. 
+ * NO inference, NO title-case, NO abbreviation expansion.
  */
 export function generateFamilyDisplayName(family: FamilyExtended): string {
-  // v3.6.2.2: Catalog provides display_name directly
+  if (family.display_name_short) return family.display_name_short;
   if (family.display_name) return family.display_name;
   if (family.family_name_commercial) return family.family_name_commercial;
-  if (family.name_original && !family.name_original.includes('_')) return family.name_original;
-  
-  // Last resort: humanize ID
-  const supplierPrefixes = ['ZEISS_', 'ESSILOR_', 'HOYA_', 'RODENSTOCK_', 'TOKAI_', 'VARILUX_'];
-  let cleanId = family.id;
-  for (const prefix of supplierPrefixes) {
-    if (cleanId.startsWith(prefix)) {
-      cleanId = cleanId.substring(prefix.length);
-      break;
-    }
-  }
-  return cleanId.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  if (family.name_original) return family.name_original;
+  return family.id;
 }
 
 /**
  * LAYER A.2: Generate display_subtitle for family
+ * v3.6.2.5: Use catalog's display_subtitle directly. NO formatting.
  */
 export function generateFamilyDisplaySubtitle(
   family: FamilyExtended, 
   tierKey: 'essential' | 'comfort' | 'advanced' | 'top'
 ): string {
-  // v3.6.2.2: Use catalog's display_subtitle if available
   if (family.display_subtitle) return family.display_subtitle;
   
   const clinicalType = family.clinical_type || family.category;
