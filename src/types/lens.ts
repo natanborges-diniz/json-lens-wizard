@@ -131,6 +131,7 @@ export interface FamilyExtended extends Family {
   // v3.6.2.2 fields
   display_name?: string;
   display_name_short?: string;
+  display_name_long?: string;
   display_subtitle?: string;
   options?: FamilyOptions;
   knowledge_refs?: string[];

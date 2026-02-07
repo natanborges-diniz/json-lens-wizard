@@ -140,18 +140,14 @@ export const SimplifiedLensCard = ({
   const hasUpgrade = priceDisplay && basePriceDisplay && priceDisplay > basePriceDisplay;
   const hasOptions = allPrices.length > 0 && priceDisplay !== null && priceDisplay > 0;
 
-  // v3.6.2.2: Display name from family.display_name (NEVER concatenate from SKU)
+  // v3.6.2.5: Display name from catalog — NO inference, NO formatting
+  // Priority: display_name_short → display_name → name_original
   const displayName = useMemo(() => {
-    // Priority 1: display_name from catalog
-    if (familyExt.display_name) return familyExt.display_name;
-    if (enrichedFamily?.display_name) return enrichedFamily.display_name;
-    // Priority 2: display_name_short
     if (familyExt.display_name_short) return familyExt.display_name_short;
-    // Priority 3: name_original
+    if (familyExt.display_name) return familyExt.display_name;
     if (family.name_original) return family.name_original;
-    // Last resort
     return family.id.replace(/_/g, ' ');
-  }, [familyExt, enrichedFamily, family]);
+  }, [familyExt, family]);
 
   // Prepend supplier if not already in name
   const fullDisplayName = useMemo(() => {
@@ -160,8 +156,8 @@ export const SimplifiedLensCard = ({
   }, [displayName, family.supplier]);
 
   const subtitle = useMemo(() => {
-    // v3.6.2.2: Use catalog subtitle if available
-    if (familyExt.display_subtitle) return `${familyExt.display_subtitle} • ${family.supplier}`;
+    // v3.6.2.5: Use catalog subtitle directly (no appending supplier)
+    if (familyExt.display_subtitle) return familyExt.display_subtitle;
     const category = lensCategory === 'PROGRESSIVA' ? 'Progressiva' 
       : lensCategory === 'OCUPACIONAL' ? 'Ocupacional' : 'Monofocal';
     return `${category} • ${TIER_LABELS[tier]} • ${family.supplier}`;

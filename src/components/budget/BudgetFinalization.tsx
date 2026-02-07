@@ -159,7 +159,7 @@ export const BudgetFinalization = ({
     const text = `
 ORÇAMENTO - ${customerName || 'Cliente'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Lente: ${family.name_original} (${family.supplier})
+Lente: ${(family as any).display_name_short || (family as any).display_name || family.name_original} (${family.supplier})
 Índice: ${configuration.selectedIndex}
 ${configuration.selectedTreatments.length > 0 ? `Tratamentos: ${configuration.selectedTreatments.join(', ')}` : ''}
 ${techText}
@@ -186,7 +186,7 @@ ${notes ? `\nObs: ${notes}` : ''}
           anamnesisData,
           prescriptionData: prescriptionData || {},
           lensCategory,
-          familyName: family.name_original,
+          familyName: (family as any).display_name_short || (family as any).display_name || family.name_original,
           supplier: family.supplier,
           selectedIndex: configuration.selectedIndex,
           selectedTreatments: configuration.selectedTreatments,
@@ -261,7 +261,7 @@ ${notes ? `\nObs: ${notes}` : ''}
         .insert({
           service_id: service.id,
           family_id: family.id,
-          family_name: family.name_original,
+          family_name: (family as any).display_name_short || (family as any).display_name || family.name_original,
           supplier: family.supplier,
           selected_index: configuration.selectedIndex,
           selected_treatments: configuration.selectedTreatments,
@@ -302,7 +302,7 @@ ${notes ? `\nObs: ${notes}` : ''}
         budgetId: budget.id,
         createdAt: new Date(),
         validUntil: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days
-        familyName: family.name_original,
+        familyName: (family as any).display_name_short || (family as any).display_name || family.name_original,
         supplier: family.supplier,
         lensCategory,
         selectedIndex: configuration.selectedIndex,
@@ -370,7 +370,7 @@ ${notes ? `\nObs: ${notes}` : ''}
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <h3 className="font-bold text-lg">{family.name_original}</h3>
+                <h3 className="font-bold text-lg">{(family as any).display_name_short || (family as any).display_name || family.name_original}</h3>
                 <Badge variant="outline">{family.supplier}</Badge>
               </div>
 
