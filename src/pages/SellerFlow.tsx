@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -100,29 +100,32 @@ const SellerFlow = () => {
     rawLensData,
   } = useLensStore();
 
-  // Load data on mount using centralized loader - cloud is single source of truth
+  // Load data on mount - only once per component lifecycle
+  const hasLoadedRef = useRef(false);
   useEffect(() => {
+    if (hasLoadedRef.current) return;
+    if (families.length > 0) {
+      hasLoadedRef.current = true;
+      return;
+    }
+    hasLoadedRef.current = true;
     const loadData = async () => {
-      // Only load if we don't have data yet
-      if (families.length === 0) {
-        setIsLoading(true);
-        try {
-          const success = await loadCatalog();
-          console.log('[SellerFlow] Catalog loaded:', success);
-          
-          if (!success) {
-            toast.error('Erro ao carregar dados das lentes');
-          }
-        } catch (error) {
-          console.error('[SellerFlow] Error loading lens data:', error);
+      setIsLoading(true);
+      try {
+        const success = await loadCatalog();
+        console.log('[SellerFlow] Catalog loaded:', success);
+        if (!success) {
           toast.error('Erro ao carregar dados das lentes');
-        } finally {
-          setIsLoading(false);
         }
+      } catch (error) {
+        console.error('[SellerFlow] Error loading lens data:', error);
+        toast.error('Erro ao carregar dados das lentes');
+      } finally {
+        setIsLoading(false);
       }
     };
     loadData();
-  }, [loadCatalog, families.length]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debug: verificar integridade dos dados carregados
   useEffect(() => {
