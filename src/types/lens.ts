@@ -68,6 +68,7 @@ export interface PriceSpec {
 export interface Price {
   family_id: string;
   erp_code: string;
+  sku_erp?: string; // v3.6.2.7: prioritized SKU code for display (source: ERP)
   description: string;
   supplier: string;
   lens_category_raw: string; // Legacy field
