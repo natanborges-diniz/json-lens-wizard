@@ -285,10 +285,10 @@ function generateWhyThisLens(context: BudgetContext): string {
   const typeLabel = CLINICAL_TYPE_LABELS[clinicalType];
   
   if (parts.length === 0) {
-    return `Selecionamos as ${typeLabel} ${family.name_original} da ${family.supplier}, que oferecem excelente qualidade para suas necessidades.`;
+    return `Selecionamos as ${typeLabel} ${(family as any).display_name || (family as any).name_display || family.name_original} da ${family.supplier}, que oferecem excelente qualidade para suas necessidades.`;
   }
 
-  return `${parts.join(', ')}, selecionamos as ${typeLabel} ${family.name_original} da ${family.supplier}.`;
+  return `${parts.join(', ')}, selecionamos as ${typeLabel} ${(family as any).display_name || (family as any).name_display || family.name_original} da ${family.supplier}.`;
 }
 
 /**
@@ -354,7 +354,7 @@ function generateValueSummary(
     currency: 'BRL' 
   });
 
-  let summary = `Suas ${typeLabel} **${family.name_original}** (${family.supplier}) com índice ${selectedIndex}`;
+  let summary = `Suas ${typeLabel} **${(family as any).display_name || (family as any).name_display || family.name_original}** (${family.supplier}) com índice ${selectedIndex}`;
   
   if (selectedTreatments.length > 0) {
     summary += ` e ${selectedTreatments.length} tratamento(s)`;
@@ -465,7 +465,7 @@ function composeWhatsAppText(params: {
   });
 
   let text = `👓 *ORÇAMENTO - ${(customerName || 'Cliente').toUpperCase()}*\n\n`;
-  text += `Lente: *${family.name_original}* (${family.supplier})\n`;
+  text += `Lente: *${(family as any).display_name || (family as any).name_display || family.name_original}* (${family.supplier})\n`;
   text += `Tipo: ${typeLabel}\n\n`;
 
   if (benefits.length > 0) {
@@ -529,7 +529,7 @@ export function prepareBudgetAIPayload(context: BudgetContext): Record<string, u
     anamnesisData: anamnesis,
     prescriptionData: prescription || {},
     lensCategory: clinicalType,
-    familyName: family.name_original,
+    familyName: (family as any).display_name || (family as any).name_display || family.name_original,
     supplier: family.supplier,
     selectedIndex,
     selectedTreatments,

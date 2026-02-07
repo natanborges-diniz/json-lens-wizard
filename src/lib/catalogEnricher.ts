@@ -69,15 +69,25 @@ const TIER_LABELS: Record<string, string> = {
 };
 
 /**
+ * Humanize a technical name_original as last-resort fallback.
+ * e.g. "VARILUX LIBE 3.0 BLUE" → "Varilux Libe 3.0 Blue"
+ */
+function humanizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .replace(/\b(\d)/g, '$1'); // keep digits as-is
+}
+
+/**
  * LAYER A.1: Get display_name for family
- * v3.6.2.5: Use display_name_short → display_name → name_original. 
- * NO inference, NO title-case, NO abbreviation expansion.
+ * v3.6.2.6: display_name → name_display → humanize(name_original).
+ * NEVER render name_original raw. NO abbreviation, NO expansion.
  */
 export function generateFamilyDisplayName(family: FamilyExtended): string {
-  if (family.display_name_short) return family.display_name_short;
   if (family.display_name) return family.display_name;
-  if (family.family_name_commercial) return family.family_name_commercial;
-  if (family.name_original) return family.name_original;
+  if (family.name_display) return family.name_display;
+  if (family.name_original) return humanizeName(family.name_original);
   return family.id;
 }
 

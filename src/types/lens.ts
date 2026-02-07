@@ -128,10 +128,11 @@ export interface FamilyExtended extends Family {
   availability_status?: string; // e.g. "SEM_SKU_NO_ERP" for auto-disabled families
   tier_target?: 'essential' | 'comfort' | 'advanced' | 'top'; // Direct tier from catalog
   tier_confidence?: 'high' | 'medium' | 'low'; // Confidence level of tier assignment
-  // v3.6.2.2 fields
+  // v3.6.2.6 fields
   display_name?: string;
   display_name_short?: string;
   display_name_long?: string;
+  name_display?: string; // v3.6.2.6: normalized commercial name (e.g. "Varilux Liberty 3.0 Blue")
   display_subtitle?: string;
   options?: FamilyOptions;
   knowledge_refs?: string[];
