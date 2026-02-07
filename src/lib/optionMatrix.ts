@@ -12,6 +12,7 @@
  */
 
 import type { Price, FamilyExtended, CatalogAddon } from '@/types/lens';
+import { resolveSkuCode } from '@/lib/skuCodeResolver';
 
 // ============================================================================
 // TYPES
@@ -172,7 +173,7 @@ function buildResolver(compatible: Price[]) {
       if (exact.length > 0) {
         const best = exact.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
         return {
-          price: best, erpCode: best.erp_code, pairPrice: best.price_sale_half_pair * 2,
+          price: best, erpCode: resolveSkuCode(best) || best.erp_code, pairPrice: best.price_sale_half_pair * 2,
           matchedIndex: normalizedIdx, matchedTreatments: treatments,
         };
       }
@@ -180,7 +181,7 @@ function buildResolver(compatible: Price[]) {
 
     const cheapest = candidates.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair)[0];
     return {
-      price: cheapest, erpCode: cheapest.erp_code, pairPrice: cheapest.price_sale_half_pair * 2,
+      price: cheapest, erpCode: resolveSkuCode(cheapest) || cheapest.erp_code, pairPrice: cheapest.price_sale_half_pair * 2,
       matchedIndex: normalizedIdx, matchedTreatments: [],
     };
   };

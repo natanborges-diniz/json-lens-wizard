@@ -372,7 +372,9 @@ export const SimplifiedLensCard = ({
                 <TooltipContent side="bottom" className="max-w-sm font-mono text-[10px]">
                   <div className="space-y-0.5">
                     <p><strong>family_id:</strong> {family.id}</p>
-                    <p><strong>sku_id:</strong> {resolved.erpCode}</p>
+                    <p><strong>sku_erp:</strong> {resolved.price.sku_erp ?? 'N/A'}</p>
+                    <p><strong>erp_code:</strong> {resolved.price.erp_code}</p>
+                    <p><strong>resolved_sku:</strong> {resolved.erpCode}</p>
                     <p><strong>index_value:</strong> {(resolved.price as any).index_value ?? 'N/A'}</p>
                     <p><strong>addons_detected:</strong> {JSON.stringify(resolved.price.addons_detected || [])}</p>
                     <p><strong>pair_price:</strong> R$ {resolved.pairPrice.toFixed(2)}</p>

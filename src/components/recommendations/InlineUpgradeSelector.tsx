@@ -16,6 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { resolveSkuCode } from '@/lib/skuCodeResolver';
 import type { OptionMatrix, IndexOption, TreatmentOption } from '@/lib/optionMatrix';
 
 interface InlineUpgradeSelectorProps {
@@ -58,9 +59,9 @@ export const InlineUpgradeSelector = ({
         <span className="block text-[10px] text-muted-foreground/70 mt-0.5">
           Sem upgrades disponíveis para esta receita
         </span>
-        {resolved && (
+        {resolved && resolveSkuCode(resolved.price) && (
           <span className="block text-[9px] opacity-60 mt-0.5">
-            SKU: {resolved.erpCode}
+            SKU: {resolveSkuCode(resolved.price)}
           </span>
         )}
       </div>
@@ -108,9 +109,9 @@ export const InlineUpgradeSelector = ({
       )}
 
       {/* Audit: resolved SKU */}
-      {resolved && (
+      {resolved && resolveSkuCode(resolved.price) && (
         <div className="text-[9px] text-muted-foreground/50 text-right">
-          SKU: {resolved.erpCode} · R$ {resolved.pairPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          SKU: {resolveSkuCode(resolved.price)} · R$ {resolved.pairPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
         </div>
       )}
     </div>
