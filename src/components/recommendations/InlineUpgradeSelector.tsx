@@ -59,11 +59,15 @@ export const InlineUpgradeSelector = ({
         <span className="block text-[10px] text-muted-foreground/70 mt-0.5">
           Sem upgrades disponíveis para esta receita
         </span>
-        {resolved && resolveSkuCode(resolved.price) && (
-          <span className="block text-[9px] opacity-60 mt-0.5">
-            SKU: {resolveSkuCode(resolved.price)}
-          </span>
-        )}
+        {resolved && (() => {
+          const sku = resolveSkuCode(resolved.price);
+          console.log('[SKU-DEBUG] resolved.price:', { erp_code: resolved.price.erp_code, sku_erp: (resolved.price as any).sku_erp, erpCode: resolved.erpCode, resolved_sku: sku, family_id: resolved.price.family_id });
+          return sku ? (
+            <span className="block text-[9px] opacity-60 mt-0.5">
+              SKU: {sku}
+            </span>
+          ) : null;
+        })()}
       </div>
     );
   }
@@ -109,11 +113,15 @@ export const InlineUpgradeSelector = ({
       )}
 
       {/* Audit: resolved SKU */}
-      {resolved && resolveSkuCode(resolved.price) && (
-        <div className="text-[9px] text-muted-foreground/50 text-right">
-          SKU: {resolveSkuCode(resolved.price)} · R$ {resolved.pairPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-        </div>
-      )}
+      {resolved && (() => {
+        const sku = resolveSkuCode(resolved.price);
+        console.log('[SKU-DEBUG-FULL] resolved:', { erp_code: resolved.price.erp_code, sku_erp: (resolved.price as any).sku_erp, erpCode: resolved.erpCode, resolved_sku: sku, family_id: resolved.price.family_id, description: resolved.price.description });
+        return sku ? (
+          <div className="text-[9px] text-muted-foreground/50 text-right">
+            SKU: {sku} · R$ {resolved.pairPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </div>
+        ) : null;
+      })()}
     </div>
   );
 };
