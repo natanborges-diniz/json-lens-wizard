@@ -192,12 +192,13 @@ function buildResolver(compatible: Price[]) {
 
 /**
  * Build OptionMatrix for a family from its real prices.
- * v3.6.2.2: Uses index_value and addons_detected directly - NO inference.
+ * v3.6.2.4: Uses family.options.indexes_available & addons_available as ONLY source.
+ * Delta calculation preserves same index for accurate comparison.
  * 
  * @param familyId - The family ID
  * @param allFamilyPrices - ALL prices for this family (pre-filtered by family_id)
  * @param prescription - Client prescription (null = no filter)
- * @param family - Family object (optional, for options metadata)
+ * @param family - Family object (REQUIRED for options metadata)
  * @param addonsLibrary - Addons library (optional, for labels)
  */
 export function buildOptionMatrix(
@@ -212,10 +213,19 @@ export function buildOptionMatrix(
     p.active && !p.blocked && isPrescriptionCompatible(p, prescription)
   );
 
-  // Step 2: Build index options from compatible prices using index_value
+  // Step 2: Build index options ONLY from family.options.indexes_available
+  const allowedIndexes = family?.options?.indexes_available;
+  
   const indexMap = new Map<string, { minHalf: number; erpCodes: string[] }>();
   compatible.forEach(price => {
     const idx = normalizeIndex(getIndex(price));
+    
+    // v3.6.2.4: If family defines indexes_available, ONLY show those
+    if (allowedIndexes && allowedIndexes.length > 0) {
+      const idxAllowed = allowedIndexes.some(ai => normalizeIndex(String(ai)) === idx);
+      if (!idxAllowed) return;
+    }
+    
     const existing = indexMap.get(idx);
     if (!existing) {
       indexMap.set(idx, { minHalf: price.price_sale_half_pair, erpCodes: [price.erp_code] });
@@ -241,13 +251,11 @@ export function buildOptionMatrix(
     sourceErpCodes: data.erpCodes,
   }));
 
-  // Step 3: Build treatment options from addons_detected on compatible prices
-  // v3.6.2.3: ONLY show addons listed in family.options.addons_available (REQUIRED)
+  // Step 3: Build treatment options from family.options.addons_available (REQUIRED)
   const allowedAddons = family?.options?.addons_available;
   
-  // If family has no options.addons_available defined, show NO treatment toggles
+  // If family has no options.addons_available, NO treatment toggles
   if (!allowedAddons || allowedAddons.length === 0) {
-    // No addons defined for this family = no treatment toggles
     const resolve = buildResolver(compatible);
     return {
       familyId,
@@ -259,25 +267,54 @@ export function buildOptionMatrix(
     };
   }
   
-  const treatmentMap = new Map<string, { minHalf: number; erpCodes: string[] }>();
+  // v3.6.2.4: Delta calculation — compare base SKU vs addon SKU at SAME index
+  // Build per-index base prices (SKUs with no addons)
+  const baseByIndex = new Map<string, number>();
+  compatible.forEach(p => {
+    if ((p.addons_detected || []).length === 0) {
+      const idx = normalizeIndex(getIndex(p));
+      const existing = baseByIndex.get(idx);
+      if (!existing || p.price_sale_half_pair < existing) {
+        baseByIndex.set(idx, p.price_sale_half_pair);
+      }
+    }
+  });
   
-  // Find base price (no addons) for delta calculation
-  const basePrices = compatible.filter(p => !p.addons_detected?.length);
-  const baseHalf = basePrices.length > 0
-    ? Math.min(...basePrices.map(p => p.price_sale_half_pair))
-    : (compatible.length > 0 ? Math.min(...compatible.map(p => p.price_sale_half_pair)) : 0);
+  // Global base price fallback
+  const globalBaseHalf = compatible.length > 0
+    ? Math.min(...compatible.map(p => p.price_sale_half_pair))
+    : 0;
 
+  const treatmentMap = new Map<string, { 
+    minHalf: number; 
+    erpCodes: string[];
+    bestDelta: number; // best delta maintaining same index
+  }>();
+  
   compatible.forEach(price => {
     (price.addons_detected || []).forEach(addonId => {
-      // v3.6.2.3: STRICT filter - only show if in family.options.addons_available
+      // v3.6.2.4: STRICT filter - only if in family.options.addons_available
       if (!allowedAddons.includes(addonId)) return;
+      
+      const idx = normalizeIndex(getIndex(price));
+      const sameIndexBase = baseByIndex.get(idx);
+      const delta = sameIndexBase != null
+        ? (price.price_sale_half_pair - sameIndexBase) * 2
+        : (price.price_sale_half_pair - globalBaseHalf) * 2;
       
       const existing = treatmentMap.get(addonId);
       if (!existing) {
-        treatmentMap.set(addonId, { minHalf: price.price_sale_half_pair, erpCodes: [price.erp_code] });
+        treatmentMap.set(addonId, { 
+          minHalf: price.price_sale_half_pair, 
+          erpCodes: [price.erp_code],
+          bestDelta: delta,
+        });
       } else {
         if (price.price_sale_half_pair < existing.minHalf) {
           existing.minHalf = price.price_sale_half_pair;
+        }
+        if (delta < existing.bestDelta) {
+          existing.bestDelta = delta;
         }
         existing.erpCodes.push(price.erp_code);
       }
@@ -292,8 +329,8 @@ export function buildOptionMatrix(
 
   const treatmentOptions: TreatmentOption[] = Array.from(treatmentMap.entries()).map(([id, data]) => {
     const addonDef = addonMap.get(id);
-    const label = addonDef?.name || addonDef?.name_common || id.replace(/^ADDON_/, '').replace(/_/g, ' ');
-    // Use a more readable short label - up to 16 chars, or use a friendly alias
+    // v3.6.2.4: Use label_short from addons_definitions if available
+    const label = addonDef?.label_short || addonDef?.name || addonDef?.name_common || id.replace(/^ADDON_/, '').replace(/_/g, ' ');
     const shortLabel = ADDON_SHORT_LABELS[id] || (label.length > 16 ? label.substring(0, 14) + '…' : label);
     const icon = addonDef?.group ? (GROUP_ICON_MAP[addonDef.group] || 'plus') : 'plus';
     
@@ -303,13 +340,12 @@ export function buildOptionMatrix(
       shortLabel,
       icon,
       minPairPrice: data.minHalf * 2,
-      deltaFromBase: (data.minHalf - baseHalf) * 2,
+      deltaFromBase: Math.max(0, data.bestDelta), // never negative
       skuCount: data.erpCodes.length,
       sourceErpCodes: data.erpCodes,
     };
   });
 
-  // Step 4: Resolver function (reuse helper)
   const resolve = buildResolver(compatible);
 
   return {

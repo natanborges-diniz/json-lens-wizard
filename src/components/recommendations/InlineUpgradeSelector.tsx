@@ -55,6 +55,9 @@ export const InlineUpgradeSelector = ({
     return (
       <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-2 text-center">
         <span className="font-medium">Configuração única</span> — índice {selectedIndex}
+        <span className="block text-[10px] text-muted-foreground/70 mt-0.5">
+          Sem upgrades disponíveis para esta receita
+        </span>
         {resolved && (
           <span className="block text-[9px] opacity-60 mt-0.5">
             SKU: {resolved.erpCode}

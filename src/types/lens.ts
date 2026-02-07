@@ -100,6 +100,7 @@ export interface CatalogAddon {
   id: string;
   name?: string;
   name_common?: string;
+  label_short?: string;
   description_client?: string;
   group?: string;
   attribute_impacts?: { attribute_id: string; delta: number }[];
