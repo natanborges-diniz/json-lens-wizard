@@ -58,32 +58,35 @@ interface LensDetailsDrawerProps {
   onViewAlternatives?: () => void;
 }
 
-// Get index from price
+// v3.6.2.3: Get index from price.index_value (NO inference from description)
 const getIndexFromPrice = (price: Price): string => {
+  if ((price as any).index_value != null) return String((price as any).index_value);
   const avail = (price as any).availability;
   if (avail?.index) return avail.index;
   if ((price as any).index) return (price as any).index;
   return '1.50';
 };
 
-// Treatment label mapping for display
+// v3.6.2.3: Treatment labels from ADDON_SHORT_LABELS (no string inference)
 const TREATMENT_LABELS: Record<string, string> = {
-  'BLUE': 'Filtro Luz Azul',
-  'FOTO': 'Fotossensível',
-  'AR': 'Antirreflexo Premium',
-  'POLA': 'Polarizado',
-  'HMC': 'Tratamento HMC',
-  'UC': 'Ultra Clean',
-  'TRANSITIONS': 'Transitions',
-  'PHOTOCHROMIC': 'Fotocromático',
+  'ADDON_BLUE': 'Filtro Luz Azul',
+  'ADDON_BLUE_UV': 'Filtro Azul UV',
+  'ADDON_AR': 'Antirreflexo',
+  'ADDON_AR_PREMIUM': 'AR Premium',
+  'ADDON_PHOTO': 'Fotossensível',
+  'ADDON_PHOTO_GRAY': 'Foto Cinza',
+  'ADDON_PHOTO_BROWN': 'Foto Marrom',
+  'ADDON_TRANSITIONS': 'Transitions',
+  'ADDON_POLAR': 'Polarizada',
+  'ADDON_MIRROR': 'Espelhada',
+  'ADDON_DLC': 'DLC',
+  'ADDON_HIDRO': 'Hidrofóbico',
 };
 
 const getTreatmentLabel = (id: string): string => {
-  for (const [key, label] of Object.entries(TREATMENT_LABELS)) {
-    if (id.toUpperCase().includes(key)) return label;
-  }
-  // Capitalize first letter as fallback
-  return id.charAt(0).toUpperCase() + id.slice(1).toLowerCase();
+  if (TREATMENT_LABELS[id]) return TREATMENT_LABELS[id];
+  // Fallback: humanize the ID (no inference from description)
+  return id.replace(/^ADDON_/, '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 };
 
 // Index labels

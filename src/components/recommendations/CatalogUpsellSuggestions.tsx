@@ -1,12 +1,10 @@
 /**
  * CatalogUpsellSuggestions - Upsell baseado no catálogo
  * 
- * Mostra "Você pode adicionar..." baseado em:
- * - addons disponíveis no catálogo
- * - technology_refs da família
- * - compatibility rules
- * 
- * O frontend apenas exibe, não decide.
+ * v3.6.2.3: Shows upsells ONLY from family.options.addons_available
+ * Uses catalog.addons[] for labels/icons
+ * Uses price.addons_detected for availability check and delta calculation
+ * NO inference from description/regex
  */
 
 import { useMemo } from 'react';
@@ -28,7 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import type { Addon, Price, ClinicalType } from '@/types/lens';
+import type { Addon, Price, ClinicalType, FamilyExtended } from '@/types/lens';
 import type { EnrichedFamily } from '@/lib/catalogEnricher';
 
 // Category icons for addons
@@ -103,105 +101,66 @@ export const CatalogUpsellSuggestions = ({
   // Find available upsells from catalog data
   const availableUpsells = useMemo((): AvailableUpsell[] => {
     const upsells: AvailableUpsell[] = [];
+    const familyExt = family as unknown as FamilyExtended;
+    const allowedAddons = familyExt.options?.addons_available;
     
-    // 1. From addons in catalog (filtered by category compatibility)
-    const compatibleAddons = addons.filter(addon => {
-      if (!addon.active) return false;
-      if (!addon.rules.categories.includes(lensCategory)) return false;
-      // Check if family supports this addon
-      if (addon.rules.only_if) {
-        // Check if family has required technology
-        const hasTech = family.technology_refs?.includes(addon.rules.only_if);
-        if (!hasTech) return false;
-      }
-      return true;
-    });
+    // v3.6.2.3: ONLY show addons from family.options.addons_available
+    if (!allowedAddons || allowedAddons.length === 0) return [];
     
-    compatibleAddons.forEach(addon => {
-      upsells.push({
-        id: addon.id,
-        type: 'addon',
-        name: addon.name_common,
-        description: addon.description_client,
-        icon: ADDON_CATEGORY_ICONS[addon.id.toUpperCase()] || ADDON_CATEGORY_ICONS.default,
-        isAvailable: true,
-        isIncluded: selectedTreatments.includes(addon.id),
-      });
-    });
-    
-    // 2. From detected treatments in SKUs (that are not yet selected)
-    const allTreatments = new Set<string>();
-    allPrices.forEach(p => {
-      (p.addons_detected || []).forEach(t => allTreatments.add(t));
-    });
-    
-    allTreatments.forEach(treatmentId => {
-      // Skip if already added from addons
-      if (upsells.some(u => u.id === treatmentId)) return;
-      
-      // Check if group exists
-      const group = Object.entries(ADDON_GROUPS).find(([key]) => 
-        treatmentId.toUpperCase().includes(key)
+    // For each allowed addon, check if real SKUs exist with that addon
+    allowedAddons.forEach(addonId => {
+      // Check if any SKU in this family has this addon detected
+      const skusWithAddon = allPrices.filter(p => 
+        (p.addons_detected || []).includes(addonId)
       );
+      if (skusWithAddon.length === 0) return; // No real SKU backs it
       
-      if (group) {
-        const [key, config] = group;
-        
-        // Calculate price impact
-        let priceImpact: number | undefined;
-        if (currentPrice) {
-          const withTreatment = allPrices.filter(p => 
-            (p.addons_detected || []).includes(treatmentId)
-          );
-          if (withTreatment.length > 0) {
-            const minWithTreatment = Math.min(...withTreatment.map(p => p.price_sale_half_pair));
-            priceImpact = (minWithTreatment - currentPrice.price_sale_half_pair) * 2;
-          }
-        }
-        
-        upsells.push({
-          id: treatmentId,
-          type: 'treatment',
-          name: config.label,
-          description: config.description,
-          icon: config.icon,
-          priceImpact: priceImpact && priceImpact > 0 ? priceImpact : undefined,
-          isAvailable: true,
-          isIncluded: selectedTreatments.includes(treatmentId),
-        });
+      // Calculate price impact from current price
+      let priceImpact: number | undefined;
+      if (currentPrice) {
+        const minWithAddon = Math.min(...skusWithAddon.map(p => p.price_sale_half_pair));
+        const delta = (minWithAddon - currentPrice.price_sale_half_pair) * 2;
+        if (delta > 0) priceImpact = delta;
       }
+      
+      // Get label from ADDON_SHORT_LABELS or humanize
+      const ADDON_LABELS: Record<string, { label: string; icon: React.ElementType; desc: string }> = {
+        'ADDON_BLUE': { label: 'Filtro de Luz Azul', icon: Eye, desc: 'Protege contra luz azul de telas' },
+        'ADDON_BLUE_UV': { label: 'Filtro Azul UV', icon: Eye, desc: 'Proteção azul + UV completa' },
+        'ADDON_AR': { label: 'Antirreflexo', icon: Sparkles, desc: 'Visão mais clara e menos reflexos' },
+        'ADDON_AR_PREMIUM': { label: 'AR Premium', icon: Sparkles, desc: 'Antirreflexo de alta performance' },
+        'ADDON_PHOTO': { label: 'Fotossensível', icon: Sun, desc: 'Escurece automaticamente ao sol' },
+        'ADDON_PHOTO_GRAY': { label: 'Foto Cinza', icon: Sun, desc: 'Fotossensível tom cinza' },
+        'ADDON_PHOTO_BROWN': { label: 'Foto Marrom', icon: Sun, desc: 'Fotossensível tom marrom' },
+        'ADDON_TRANSITIONS': { label: 'Transitions', icon: Sun, desc: 'Tecnologia Transitions adaptável' },
+        'ADDON_POLAR': { label: 'Polarizada', icon: Shield, desc: 'Elimina reflexos intensos' },
+        'ADDON_MIRROR': { label: 'Espelhada', icon: Shield, desc: 'Lente com acabamento espelhado' },
+        'ADDON_DLC': { label: 'DLC', icon: Sparkles, desc: 'Tratamento Diamond-Like Carbon' },
+        'ADDON_HIDRO': { label: 'Hidrofóbico', icon: Sparkles, desc: 'Repele água e oleosidade' },
+      };
+      
+      const info = ADDON_LABELS[addonId];
+      
+      upsells.push({
+        id: addonId,
+        type: 'treatment',
+        name: info?.label || addonId.replace(/^ADDON_/, '').replace(/_/g, ' '),
+        description: info?.desc || 'Upgrade disponível para esta família',
+        icon: info?.icon || Plus,
+        priceImpact,
+        isAvailable: true,
+        isIncluded: selectedTreatments.includes(addonId),
+      });
     });
     
-    // 3. From family's technology_refs (technologies that could enhance the lens)
-    if (family.technology_refs) {
-      family.technology_refs.forEach(techRef => {
-        // Skip if already in upsells
-        if (upsells.some(u => u.id === techRef)) return;
-        
-        // Only add if it's a treatment/enhancement technology
-        if (techRef.includes('BLUE') || techRef.includes('PHOTO') || techRef.includes('AR')) {
-          upsells.push({
-            id: techRef,
-            type: 'technology',
-            name: techRef.replace(/_/g, ' '),
-            description: 'Tecnologia disponível para esta família',
-            icon: Sparkles,
-            isAvailable: true,
-            isIncluded: false,
-          });
-        }
-      });
-    }
-    
-    // Filter out already included and sort by available first
+    // Filter out already included and sort
     return upsells
       .filter(u => !u.isIncluded)
       .sort((a, b) => {
-        if (a.isAvailable !== b.isAvailable) return a.isAvailable ? -1 : 1;
         if (a.priceImpact && b.priceImpact) return a.priceImpact - b.priceImpact;
         return 0;
       });
-  }, [family, allPrices, currentPrice, addons, lensCategory, selectedTreatments]);
+  }, [family, allPrices, currentPrice, selectedTreatments]);
 
   if (availableUpsells.length === 0) {
     return null;
