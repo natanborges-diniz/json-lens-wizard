@@ -214,15 +214,18 @@ export function buildOptionMatrix(
     p.active && !p.blocked && isPrescriptionCompatible(p, prescription)
   );
 
-  // Step 2: Build index options ONLY from family.options.indexes_available
+  // Step 2: Build index options
+  // v3.6.2.5: If family.options.indexes_available is defined, use it as filter.
+  // Otherwise, derive ALL unique indexes from compatible SKUs (no text inference).
   const allowedIndexes = family?.options?.indexes_available;
+  const hasExplicitIndexes = allowedIndexes && allowedIndexes.length > 0;
   
   const indexMap = new Map<string, { minHalf: number; erpCodes: string[] }>();
   compatible.forEach(price => {
     const idx = normalizeIndex(getIndex(price));
     
-    // v3.6.2.4: If family defines indexes_available, ONLY show those
-    if (allowedIndexes && allowedIndexes.length > 0) {
+    // If family defines indexes_available, ONLY show those
+    if (hasExplicitIndexes) {
       const idxAllowed = allowedIndexes.some(ai => normalizeIndex(String(ai)) === idx);
       if (!idxAllowed) return;
     }
@@ -252,11 +255,22 @@ export function buildOptionMatrix(
     sourceErpCodes: data.erpCodes,
   }));
 
-  // Step 3: Build treatment options from family.options.addons_available (REQUIRED)
+  // Step 3: Build treatment options
+  // v3.6.2.5: If family.options.addons_available is defined, use it as filter.
+  // Otherwise, derive ALL unique addons from compatible SKUs' addons_detected[].
   const allowedAddons = family?.options?.addons_available;
+  const hasExplicitAddons = allowedAddons && allowedAddons.length > 0;
   
-  // If family has no options.addons_available, NO treatment toggles
-  if (!allowedAddons || allowedAddons.length === 0) {
+  // Collect all unique addon IDs from compatible SKUs
+  const allDetectedAddons = new Set<string>();
+  if (!hasExplicitAddons) {
+    compatible.forEach(p => {
+      (p.addons_detected || []).forEach(a => allDetectedAddons.add(a));
+    });
+  }
+  
+  // If no explicit addons AND no detected addons, skip treatments
+  if (!hasExplicitAddons && allDetectedAddons.size === 0) {
     const resolve = buildResolver(compatible);
     return {
       familyId,
@@ -294,8 +308,9 @@ export function buildOptionMatrix(
   
   compatible.forEach(price => {
     (price.addons_detected || []).forEach(addonId => {
-      // v3.6.2.4: STRICT filter - only if in family.options.addons_available
-      if (!allowedAddons.includes(addonId)) return;
+      // v3.6.2.5: Filter by explicit list OR accept all detected
+      if (hasExplicitAddons && !allowedAddons.includes(addonId)) return;
+      if (!hasExplicitAddons && !allDetectedAddons.has(addonId)) return;
       
       const idx = normalizeIndex(getIndex(price));
       const sameIndexBase = baseByIndex.get(idx);
