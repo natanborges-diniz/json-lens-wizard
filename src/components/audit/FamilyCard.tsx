@@ -190,7 +190,7 @@ export const FamilyCard = ({
         {/* Family Info */}
         <div className="flex-1 min-w-0">
           <p className="font-medium text-foreground truncate">
-            {family.name_original}
+            {family.display_name || family.name_display || family.name_original}
           </p>
           <p className="text-xs text-muted-foreground font-mono">{family.id}</p>
         </div>
