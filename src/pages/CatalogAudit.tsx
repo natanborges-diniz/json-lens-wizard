@@ -47,7 +47,7 @@ import { ExportDialog } from '@/components/audit/ExportDialog';
 import { IntegrityExportButton } from '@/components/audit/IntegrityExportButton';
 import { ClassificationReportDialog } from '@/components/audit/ClassificationReportDialog';
 import { MatchingRulesEditor } from '@/components/audit/MatchingRulesEditor';
-import { CatalogVersionBadge } from '@/components/audit/CatalogVersionBadge';
+import { CatalogVersionBadge, saveCatalogVersion } from '@/components/audit/CatalogVersionBadge';
 import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
 import { CatalogRestoreDialog } from '@/components/audit/CatalogRestoreDialog';
 import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
@@ -625,13 +625,16 @@ const CatalogAudit = () => {
     if (pendingChanges.length === 0) return;
     
     // Update the store with local changes
+    const updatedFamilies = localFamilies;
+    const updatedTechLib = Object.keys(localTechnologies).length > 0 
+      ? { items: localTechnologies } 
+      : rawLensData?.technology_library;
+    
     if (rawLensData) {
       const updatedData: LensData = {
         ...rawLensData,
-        families: localFamilies,
-        technology_library: Object.keys(localTechnologies).length > 0 
-          ? { items: localTechnologies } 
-          : rawLensData.technology_library,
+        families: updatedFamilies,
+        technology_library: updatedTechLib,
       };
       loadLensData(updatedData);
     }
@@ -639,6 +642,20 @@ const CatalogAudit = () => {
     // Save to cloud
     const success = await saveCatalogToCloud();
     if (success) {
+      // Register a new catalog version so the badge stays current
+      const store = useLensStore.getState();
+      await saveCatalogVersion({
+        schemaVersion: store.schemaVersion || '1.2',
+        datasetName: 'Edição Manual',
+        importMode: 'increment',
+        familiesCount: store.families.filter(f => f.active).length,
+        pricesCount: store.prices.filter(p => p.active && !p.blocked).length,
+        addonsCount: store.addons?.length || 0,
+        technologiesCount: Object.keys(localTechnologies).length,
+        changesSummary: { manual_changes: pendingChanges.length },
+        notes: [`${pendingChanges.length} alterações manuais aplicadas`],
+      });
+      
       toast.success(`${pendingChanges.length} alterações salvas com sucesso!`);
       setPendingChanges([]);
     } else {
@@ -656,29 +673,21 @@ const CatalogAudit = () => {
     toast.info('Alterações descartadas');
   };
 
-  // Reload original catalog from JSON (fixes encoding issues)
-  const reloadOriginalCatalog = async () => {
+  // Reload catalog from cloud (single source of truth)
+  const reloadFromCloud = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/data/lenses.json');
-      const arrayBuffer = await response.arrayBuffer();
-      const decoder = new TextDecoder('utf-8');
-      const text = decoder.decode(arrayBuffer);
-      const data: LensData = JSON.parse(text);
-      
-      loadLensData(data);
-      setLocalFamilies(data.families || []);
-      if (data.technology_library?.items) {
-        setLocalTechnologies(data.technology_library.items);
-      }
-      setPendingChanges([]);
-      
-      // Force save to cloud with correct encoding
-      const success = await saveCatalogToCloud();
-      if (success) {
-        toast.success('Catálogo original recarregado e salvo com encoding correto!');
+      const cloudLoaded = await loadCatalogFromCloud();
+      if (cloudLoaded) {
+        const store = useLensStore.getState();
+        setLocalFamilies(store.families);
+        if (store.technologyLibrary?.items) {
+          setLocalTechnologies(store.technologyLibrary.items);
+        }
+        setPendingChanges([]);
+        toast.success('Catálogo recarregado da nuvem');
       } else {
-        toast.success('Catálogo recarregado (erro ao salvar na nuvem)');
+        toast.error('Catálogo não encontrado na nuvem');
       }
     } catch (error) {
       console.error('Error reloading catalog:', error);
@@ -862,7 +871,7 @@ const CatalogAudit = () => {
             <Button 
               variant="ghost" 
               size="sm"
-              onClick={reloadOriginalCatalog}
+              onClick={reloadFromCloud}
               disabled={isLoading}
               className="gap-1.5 text-xs"
               title="Recarregar catálogo original (corrige encoding)"
