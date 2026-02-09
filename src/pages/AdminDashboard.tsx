@@ -1050,7 +1050,7 @@ const AdminDashboard = () => {
                         <div>
                           <h4 className="font-medium text-foreground">{addon.name_common}</h4>
                           <div className="flex gap-1 mt-1">
-                            {addon.rules.categories.map(cat => (
+                            {(addon.rules?.categories || []).map(cat => (
                               <Badge key={cat} variant="outline" className="text-xs">
                                 {cat}
                               </Badge>
