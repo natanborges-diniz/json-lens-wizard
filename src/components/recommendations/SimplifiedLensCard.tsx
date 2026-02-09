@@ -36,9 +36,8 @@ import {
 import { ValueBars } from './ValueBars';
 import { LensDetailsDrawer } from './LensDetailsDrawer';
 import { ScoreIndicator } from './ScoreIndicator';
-import { SkuListPanel } from './SkuListPanel';
+import { InlineUpgradeSelector } from './InlineUpgradeSelector';
 import { buildOptionMatrix, type OptionMatrix } from '@/lib/optionMatrix';
-import { resolveSkuCode } from '@/lib/skuCodeResolver';
 import { useCatalogEnricher } from '@/hooks/useCatalogEnricher';
 import { useLensStore } from '@/store/lensStore';
 import type { Family, Price, Addon, Tier, ClinicalType, CatalogAddon, FamilyExtended } from '@/types/lens';
@@ -323,15 +322,13 @@ export const SimplifiedLensCard = ({
             </div>
           )}
 
-          {/* SKU List - all available configurations */}
-          <SkuListPanel
-            allPrices={allPrices}
-            selectedPriceId={currentPrice ? resolveSkuCode(currentPrice) || (currentPrice as any).id : undefined}
-            onSelectSku={(price) => {
-              const idx = ((price as any).availability?.index || (price as any).index_value || '1.50').toString();
-              setSelectedIndex(idx);
-              setSelectedTreatments(price.addons_detected || []);
-            }}
+          {/* Inline Upgrade Selector - OptionMatrix driven (v3.6.2.2) */}
+          <InlineUpgradeSelector
+            matrix={optionMatrix}
+            selectedIndex={selectedIndex}
+            selectedTreatments={selectedTreatments}
+            onIndexChange={handleIndexChange}
+            onTreatmentToggle={handleTreatmentToggle}
           />
 
           {/* Value Bars */}
