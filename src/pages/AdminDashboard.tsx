@@ -1075,7 +1075,7 @@ const AdminDashboard = () => {
                       <div className="space-y-1">
                         <p className="text-xs font-medium text-muted-foreground">Nomes comerciais:</p>
                         <div className="flex flex-wrap gap-1">
-                          {Object.entries(addon.name_commercial).map(([supplier, name]) => (
+                          {Object.entries(addon.name_commercial || {}).map(([supplier, name]) => (
                             <Badge key={supplier} variant="secondary" className="text-xs">
                               {supplier}: {name}
                             </Badge>
