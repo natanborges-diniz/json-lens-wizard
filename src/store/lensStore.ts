@@ -24,6 +24,7 @@ import {
   type ImportSummary 
 } from '@/lib/catalogImporter';
 import { supabase } from '@/integrations/supabase/client';
+import { normalizeMacros } from '@/lib/catalogEnricher';
 
 // Debounce helper for auto-save
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -199,7 +200,7 @@ export const useLensStore = create<LensState>()(
             schemaVersion: result.mergedData.meta?.schema_version || '1.0',
             scales: result.mergedData.scales || {},
             attributeDefs: result.mergedData.attribute_defs || [],
-            macros: result.mergedData.macros || [],
+            macros: normalizeMacros(result.mergedData.macros || []),
             families: result.mergedData.families || [],
             addons: result.mergedData.addons || [],
             prices: result.mergedData.prices || [],
@@ -265,7 +266,7 @@ export const useLensStore = create<LensState>()(
           schemaVersion: previousData.meta?.schema_version || '1.0',
           scales: previousData.scales || {},
           attributeDefs: previousData.attribute_defs || [],
-          macros: previousData.macros || [],
+          macros: normalizeMacros(previousData.macros || []),
           families: previousData.families || [],
           addons: previousData.addons || [],
           prices: previousData.prices || [],
@@ -320,7 +321,7 @@ export const useLensStore = create<LensState>()(
           schemaVersion: data.meta?.schema_version || '1.0',
           scales: data.scales || {},
           attributeDefs: data.attribute_defs || [],
-          macros: data.macros || [],
+          macros: normalizeMacros(data.macros || []),
           families: data.families || [],
           addons: data.addons || [],
           prices: data.prices || [],
