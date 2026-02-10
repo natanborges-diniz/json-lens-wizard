@@ -11,15 +11,18 @@
  * - Debug tooltip: family_id + sku_id + index_value + addons_detected
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { 
   Check, 
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Crown,
   Shield,
   ThumbsUp,
   Zap,
   Eye,
+  LayoutGrid,
   Sparkles,
   AlertTriangle,
   Bug
@@ -87,6 +90,35 @@ const TIER_STYLES: Record<Tier, {
   comfort: { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800', accent: 'text-blue-600 dark:text-blue-400', selectedRing: 'ring-blue-400' },
   advanced: { bg: 'bg-purple-50 dark:bg-purple-900/20', border: 'border-purple-200 dark:border-purple-800', accent: 'text-purple-600 dark:text-purple-400', selectedRing: 'ring-purple-400' },
   top: { bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800', accent: 'text-amber-600 dark:text-amber-400', selectedRing: 'ring-amber-400' },
+};
+
+// Expandable "Por que esta lente" block
+const KnowledgeConsumerBlock = ({ text }: { text: string }) => {
+  const [expanded, setExpanded] = useState(false);
+  const needsExpand = text.length > 120;
+
+  return (
+    <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-2.5">
+      <span className="font-medium text-foreground text-[10px] uppercase tracking-wide block mb-1">
+        Por que esta lente
+      </span>
+      <p className={needsExpand && !expanded ? 'line-clamp-3' : ''}>
+        {text}
+      </p>
+      {needsExpand && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="mt-1 flex items-center gap-0.5 text-primary hover:underline text-[10px] font-medium"
+        >
+          {expanded ? (
+            <><ChevronUp className="w-3 h-3" />Ver menos</>
+          ) : (
+            <><ChevronDown className="w-3 h-3" />Ver mais</>
+          )}
+        </button>
+      )}
+    </div>
+  );
 };
 
 export const SimplifiedLensCard = ({
@@ -254,14 +286,9 @@ export const SimplifiedLensCard = ({
         </CardHeader>
 
         <CardContent className="flex-1 flex flex-col p-4 space-y-3">
-          {/* Knowledge Consumer */}
+          {/* Knowledge Consumer - Expandable */}
           {knowledgeConsumer && (
-            <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-2.5 line-clamp-3">
-              <span className="font-medium text-foreground text-[10px] uppercase tracking-wide block mb-1">
-                Por que esta lente
-              </span>
-              {knowledgeConsumer}
-            </div>
+            <KnowledgeConsumerBlock text={knowledgeConsumer} />
           )}
 
           {/* Sales Pills */}
@@ -386,15 +413,25 @@ export const SimplifiedLensCard = ({
             </TooltipProvider>
           )}
 
-          {/* View Details Link */}
-          <button
-            onClick={() => setShowDetails(true)}
-            className="text-xs text-primary hover:underline flex items-center gap-1 justify-center"
-          >
-            <Eye className="w-3 h-3" />
-            Todas as configurações
-            {allPrices.length > 1 && ` (${allPrices.length} SKUs)`}
-          </button>
+          {/* View Alternatives / Details */}
+          <div className="flex flex-col gap-1.5 items-center">
+            {alternativeCount > 0 && onViewAlternatives && (
+              <button
+                onClick={onViewAlternatives}
+                className="text-xs text-primary hover:underline flex items-center gap-1 justify-center font-medium"
+              >
+                <LayoutGrid className="w-3 h-3" />
+                Ver {alternativeCount} {alternativeCount === 1 ? 'lente equivalente' : 'lentes equivalentes'}
+              </button>
+            )}
+            <button
+              onClick={() => setShowDetails(true)}
+              className="text-xs text-muted-foreground hover:text-primary hover:underline flex items-center gap-1 justify-center"
+            >
+              <Eye className="w-3 h-3" />
+              Detalhes e configurações
+            </button>
+          </div>
 
           {/* CTA Button */}
           <div className="mt-auto pt-2">
