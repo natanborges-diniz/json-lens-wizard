@@ -68,6 +68,44 @@ const TIER_LABELS: Record<string, string> = {
   'top': 'Top de Mercado',
 };
 
+// Legacy tier keyword mapping for macro name normalization
+const LEGACY_TIER_KEYWORDS: Record<string, string> = {
+  'Classic': 'Essential',
+  'CLASSIC': 'ESSENTIAL',
+  'classic': 'essential',
+  'Premium': 'Top',
+  'PREMIUM': 'TOP',
+  'premium': 'top',
+  'Standard': 'Comfort',
+  'STANDARD': 'COMFORT',
+  'standard': 'comfort',
+};
+
+/**
+ * Normalize legacy tier keywords in macro names.
+ * e.g. "LENTES ZEISS Classic" → "LENTES ZEISS Essential"
+ */
+export function normalizeMacroName(name: string): string {
+  let normalized = name;
+  for (const [legacy, standard] of Object.entries(LEGACY_TIER_KEYWORDS)) {
+    // Replace as whole word only
+    const regex = new RegExp(`\\b${legacy}\\b`, 'g');
+    normalized = normalized.replace(regex, standard);
+  }
+  return normalized;
+}
+
+/**
+ * Normalize all macro names in an array, updating name_client and description_client.
+ */
+export function normalizeMacros<T extends { name_client: string; description_client?: string }>(macros: T[]): T[] {
+  return macros.map(m => ({
+    ...m,
+    name_client: normalizeMacroName(m.name_client),
+    description_client: m.description_client ? normalizeMacroName(m.description_client) : m.description_client,
+  }));
+}
+
 /**
  * Humanize a technical name_original as last-resort fallback.
  * e.g. "VARILUX LIBE 3.0 BLUE" → "Varilux Libe 3.0 Blue"
