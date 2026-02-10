@@ -19,10 +19,11 @@ import type { CommercialScore, TierKey, TIER_WEIGHTS } from './types';
 
 /** Peso máximo para cada componente */
 const WEIGHTS = {
-  AVAILABILITY: 25,
+  AVAILABILITY: 20,
   TIER_POSITION: 25,
-  DATA_RICHNESS: 25,
-  TECHNOLOGY: 25,
+  DATA_RICHNESS: 20,
+  TECHNOLOGY: 20,
+  SUPPLIER_PRIORITY: 15,
 };
 
 /** Pontuação base por tier (maior = melhor margem comercial) */
@@ -206,17 +207,42 @@ function calculateTechnologyScore(
 // ============================================
 
 /**
+ * Calcula score de prioridade do fornecedor
+ */
+function calculateSupplierPriorityScore(
+  family: FamilyExtended,
+  supplierPriorities?: string[]
+): { score: number; reasons: string[] } {
+  if (!supplierPriorities || supplierPriorities.length === 0) {
+    return { score: WEIGHTS.SUPPLIER_PRIORITY * 0.5, reasons: ['Sem prioridade de fornecedor configurada'] };
+  }
+
+  const index = supplierPriorities.indexOf(family.supplier);
+  if (index === -1) {
+    return { score: WEIGHTS.SUPPLIER_PRIORITY * 0.3, reasons: [`Fornecedor ${family.supplier} não está na lista de prioridades`] };
+  }
+
+  // First position gets full score, linear decay
+  const positionRatio = 1 - (index / supplierPriorities.length);
+  const score = WEIGHTS.SUPPLIER_PRIORITY * positionRatio;
+  const reasons = [`Fornecedor ${family.supplier}: posição #${index + 1} de ${supplierPriorities.length} (+${Math.round(score)} pts)`];
+
+  return { score, reasons };
+}
+
+/**
  * Calcula o score comercial para uma família
  */
 export function calculateCommercialScore(
   family: FamilyExtended,
   prices: Price[],
   tierKey: TierKey,
-  technologyLibrary?: Record<string, Technology>
+  technologyLibrary?: Record<string, Technology>,
+  supplierPriorities?: string[]
 ): CommercialScore {
   const allReasons: string[] = [];
   
-  // 1. Score de disponibilidade (25 pts)
+  // 1. Score de disponibilidade (20 pts)
   const availabilityResult = calculateAvailabilityScore(family, prices);
   allReasons.push(...availabilityResult.reasons);
   
@@ -224,16 +250,20 @@ export function calculateCommercialScore(
   const tierResult = calculateTierScore(tierKey);
   allReasons.push(...tierResult.reasons);
   
-  // 3. Score de riqueza de dados (25 pts)
+  // 3. Score de riqueza de dados (20 pts)
   const dataResult = calculateDataRichnessScore(family);
   allReasons.push(...dataResult.reasons);
   
-  // 4. Score de tecnologias (25 pts)
+  // 4. Score de tecnologias (20 pts)
   const techResult = calculateTechnologyScore(family, technologyLibrary);
   allReasons.push(...techResult.reasons);
   
+  // 5. Score de prioridade do fornecedor (15 pts)
+  const supplierResult = calculateSupplierPriorityScore(family, supplierPriorities);
+  allReasons.push(...supplierResult.reasons);
+  
   // Total
-  const total = availabilityResult.score + tierResult.score + dataResult.score + techResult.score;
+  const total = availabilityResult.score + tierResult.score + dataResult.score + techResult.score + supplierResult.score;
   
   return {
     total: Math.round(total * 100) / 100,
@@ -242,6 +272,7 @@ export function calculateCommercialScore(
       tierPosition: Math.round(tierResult.score * 100) / 100,
       dataRichness: Math.round(dataResult.score * 100) / 100,
       technologyCount: Math.round(techResult.score * 100) / 100,
+      supplierPriority: Math.round(supplierResult.score * 100) / 100,
     },
     reasons: allReasons,
   };

@@ -192,14 +192,15 @@ export function calculateRecommendationScore(
   prices: Price[],
   anamnesis: AnamnesisData,
   prescription: Partial<Prescription>,
-  technologyLibrary?: Record<string, Technology>
+  technologyLibrary?: Record<string, Technology>,
+  supplierPriorities?: string[]
 ): RecommendationScore {
   // Determinar tier
   const tierKey = determineTierKey(family);
   
   // Calcular scores
   const clinicalScore = calculateClinicalScore(family, prices, anamnesis, prescription, tierKey);
-  const commercialScore = calculateCommercialScore(family, prices, tierKey, technologyLibrary);
+  const commercialScore = calculateCommercialScore(family, prices, tierKey, technologyLibrary, supplierPriorities);
   
   // Aplicar fórmula oficial
   const finalScore = (clinicalScore.total * SCORE_WEIGHTS.CLINICAL) + 
@@ -238,9 +239,10 @@ export function scoreFamilyComplete(
   prices: Price[],
   anamnesis: AnamnesisData,
   prescription: Partial<Prescription>,
-  technologyLibrary?: Record<string, Technology>
+  technologyLibrary?: Record<string, Technology>,
+  supplierPriorities?: string[]
 ): ScoredFamily {
-  const score = calculateRecommendationScore(family, prices, anamnesis, prescription, technologyLibrary);
+  const score = calculateRecommendationScore(family, prices, anamnesis, prescription, technologyLibrary, supplierPriorities);
   const { price, compatiblePrices } = findStartingPrice(family, prices, prescription);
   const enrichedData = extractFamilyData(family, technologyLibrary);
   
@@ -261,12 +263,13 @@ export function scoreAndRankFamilies(
   prices: Price[],
   anamnesis: AnamnesisData,
   prescription: Partial<Prescription>,
-  technologyLibrary?: Record<string, Technology>
+  technologyLibrary?: Record<string, Technology>,
+  supplierPriorities?: string[]
 ): ScoredFamily[] {
   // Processar todas as famílias
   const scoredFamilies = families
     .filter(f => f.active !== false)
-    .map(family => scoreFamilyComplete(family, prices, anamnesis, prescription, technologyLibrary));
+    .map(family => scoreFamilyComplete(family, prices, anamnesis, prescription, technologyLibrary, supplierPriorities));
   
   // Agrupar por tier
   const byTier: Record<TierKey, ScoredFamily[]> = {

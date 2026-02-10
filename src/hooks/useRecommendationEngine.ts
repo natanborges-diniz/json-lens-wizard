@@ -9,7 +9,7 @@
  * - Logs de auditoria
  */
 
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { 
   generateRecommendations, 
   type RecommendationInput,
@@ -30,6 +30,7 @@ import type {
   FamilyExtended,
   LensData,
 } from '@/types/lens';
+import { supabase } from '@/integrations/supabase/client';
 
 interface UseRecommendationEngineProps {
   lensData: LensData | null;
@@ -74,6 +75,22 @@ export function useRecommendationEngine({
   filters,
 }: UseRecommendationEngineProps): UseRecommendationEngineResult {
   
+  // Load supplier priorities from company settings
+  const [supplierPriorities, setSupplierPriorities] = useState<string[]>([]);
+  
+  useEffect(() => {
+    supabase
+      .from('company_settings')
+      .select('supplier_priorities')
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.supplier_priorities && Array.isArray(data.supplier_priorities)) {
+          setSupplierPriorities(data.supplier_priorities as string[]);
+        }
+      });
+  }, []);
+  
   // Default anamnesis if not provided
   const defaultAnamnesis: AnamnesisData = {
     primaryUse: 'mixed',
@@ -115,6 +132,7 @@ export function useRecommendationEngine({
         ? Object.fromEntries(Object.entries(lensData.technology_library)) as Record<string, Technology>
         : {},
       filters: filters,
+      supplierPriorities,
     };
 
     // Generate recommendations
@@ -156,7 +174,7 @@ export function useRecommendationEngine({
       topRecommendationId: result.topRecommendation?.family.id || null,
       isReady: true,
     };
-  }, [lensData, lensCategory, effectiveAnamnesis, effectivePrescription, filters]);
+  }, [lensData, lensCategory, effectiveAnamnesis, effectivePrescription, filters, supplierPriorities]);
 
   const stats = engineResult?.stats || {
     totalFamiliesAnalyzed: 0,

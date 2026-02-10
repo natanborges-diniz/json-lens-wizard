@@ -209,7 +209,8 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
     input.prices,
     input.anamnesis,
     input.prescription,
-    techLib
+    techLib,
+    input.supplierPriorities
   );
   
   // 4. Aplicar filtros de preço (pós-score)

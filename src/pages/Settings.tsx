@@ -21,6 +21,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { LogoUpload } from '@/components/settings/LogoUpload';
+import { SupplierPriorityManager } from '@/components/settings/SupplierPriorityManager';
 
 interface CompanySettings {
   id: string;
@@ -36,6 +37,7 @@ interface CompanySettings {
   slogan: string | null;
   footer_text: string | null;
   budget_terms: string | null;
+  supplier_priorities: string[] | null;
 }
 
 const Settings = () => {
@@ -67,7 +69,14 @@ const Settings = () => {
           .maybeSingle();
 
         if (error) throw error;
-        setSettings(data);
+        if (data) {
+          setSettings({
+            ...data,
+            supplier_priorities: Array.isArray(data.supplier_priorities) 
+              ? (data.supplier_priorities as string[]) 
+              : [],
+          });
+        }
       } catch (error) {
         console.error('Error fetching settings:', error);
         toast.error('Erro ao carregar configurações');
@@ -101,6 +110,7 @@ const Settings = () => {
           slogan: settings.slogan,
           footer_text: settings.footer_text,
           budget_terms: settings.budget_terms,
+          supplier_priorities: settings.supplier_priorities,
         })
         .eq('id', settings.id);
 
@@ -114,7 +124,7 @@ const Settings = () => {
     }
   };
 
-  const updateField = (field: keyof CompanySettings, value: string) => {
+  const updateField = (field: keyof CompanySettings, value: any) => {
     if (!settings) return;
     setSettings({ ...settings, [field]: value });
   };
@@ -324,6 +334,12 @@ const Settings = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Supplier Priority */}
+          <SupplierPriorityManager
+            savedPriorities={settings.supplier_priorities || []}
+            onChange={(priorities) => updateField('supplier_priorities' as keyof CompanySettings, priorities as any)}
+          />
 
           {/* Budget Settings */}
           <Card>
