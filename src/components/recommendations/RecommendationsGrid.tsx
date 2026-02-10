@@ -525,6 +525,9 @@ export const RecommendationsGrid = ({
                 addons={addons}
                 onSelect={handleLensSelect}
                 alternativeCount={alternativeCount}
+                onViewAlternatives={alternativeCount > 0 ? () => {
+                  // TODO: open alternatives drawer/modal for this tier
+                } : undefined}
                 scoredFamily={primary.scoredFamily}
                 showScore={true}
               />
