@@ -153,9 +153,9 @@ export default function CatalogAuditPage() {
       if (!rawLensData && families.length === 0) {
         const cloudLoaded = await loadCatalogFromCloud();
         if (!cloudLoaded) {
-          const response = await fetch('/data/lenses.json');
-          const data = await response.json();
-          loadLensData(data);
+          toast.info('Nenhum catálogo encontrado no cloud. Faça o upload na área de importação.');
+          setIsLoading(false);
+          return;
         }
       }
       

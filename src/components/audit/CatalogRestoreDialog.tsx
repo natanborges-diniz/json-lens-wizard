@@ -125,12 +125,8 @@ export function CatalogRestoreDialog({
           .download('catalog-default.json');
 
         if (currentError || !currentCatalog) {
-          // Final fallback: Load from local file
-          const response = await fetch('/data/lenses.json');
-          const arrayBuffer = await response.arrayBuffer();
-          const decoder = new TextDecoder('utf-8');
-          const text = decoder.decode(arrayBuffer);
-          restoredData = JSON.parse(text);
+          // PLAN 3 §5.1: Cloud-Only — no local fallback
+          throw new Error('Catálogo não encontrado no cloud. Faça o upload primeiro.');
         } else {
           const arrayBuffer = await currentCatalog.arrayBuffer();
           const decoder = new TextDecoder('utf-8');

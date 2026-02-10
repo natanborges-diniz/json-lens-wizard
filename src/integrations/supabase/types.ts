@@ -36,6 +36,7 @@ export type Database = {
           selected_index: string
           selected_treatments: string[] | null
           service_id: string
+          store_id: string | null
           subtotal: number
           supplier: string
           total_discount: number | null
@@ -62,6 +63,7 @@ export type Database = {
           selected_index: string
           selected_treatments?: string[] | null
           service_id: string
+          store_id?: string | null
           subtotal: number
           supplier: string
           total_discount?: number | null
@@ -88,6 +90,7 @@ export type Database = {
           selected_index?: string
           selected_treatments?: string[] | null
           service_id?: string
+          store_id?: string | null
           subtotal?: number
           supplier?: string
           total_discount?: number | null
@@ -99,6 +102,13 @@ export type Database = {
             columns: ["service_id"]
             isOneToOne: false
             referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "budgets_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
             referencedColumns: ["id"]
           },
         ]
