@@ -328,23 +328,18 @@ function mergeIncrementData(currentData: LensData, incrementData: Partial<LensDa
 
 /**
  * Reseta o status de itens inativos durante a importação.
- * Isso é necessário porque SKUs podem mudar entre importações,
- * então o status inativo anterior não é mais relevante.
  */
 export function resetInactiveStatesOnImport(data: LensData): LensData {
   console.log('[CatalogImporter] Resetting inactive states for new import...');
   
   const resetData: LensData = {
     ...data,
-    // Reset all prices to active (not blocked) for new imports
     prices: data.prices.map(price => ({
       ...price,
       active: true,
       blocked: false,
     })),
-    // Keep family active states - these are managed manually
     families: data.families,
-    // Keep addon active states - these are managed manually
     addons: data.addons,
   };
   
@@ -354,6 +349,44 @@ export function resetInactiveStatesOnImport(data: LensData): LensData {
   });
   
   return resetData;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// AUTO-DEACTIVATION (PLAN 3 §5.2)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Families without any active, non-blocked prices are automatically deactivated.
+ * This ensures the catalog never surfaces families with no purchasable SKUs.
+ */
+function deactivateFamiliesWithoutActivePrices(data: LensData): LensData {
+  const activePricesByFamily = new Map<string, number>();
+  
+  // Count active, non-blocked prices per family
+  data.prices.forEach(price => {
+    if (price.active && !price.blocked) {
+      activePricesByFamily.set(price.family_id, (activePricesByFamily.get(price.family_id) || 0) + 1);
+    }
+  });
+  
+  let deactivatedCount = 0;
+  const deactivatedIds: string[] = [];
+  
+  const updatedFamilies = data.families.map(family => {
+    const activePrices = activePricesByFamily.get(family.id) || 0;
+    if (activePrices === 0 && family.active) {
+      deactivatedCount++;
+      deactivatedIds.push(family.id);
+      return { ...family, active: false };
+    }
+    return family;
+  });
+  
+  if (deactivatedCount > 0) {
+    console.log(`[CatalogImporter] PLAN 3 §5.2: Auto-deactivated ${deactivatedCount} families without active prices:`, deactivatedIds);
+  }
+  
+  return { ...data, families: updatedFamilies };
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -543,6 +576,9 @@ export function executeImport(
     }
     mergedData = mergeIncrementData(currentData, importData as Partial<LensData>);
   }
+
+  // PLAN 3 §5.2: Auto-deactivate families without active prices
+  mergedData = deactivateFamiliesWithoutActivePrices(mergedData);
 
   // Validar integridade do resultado final
   const finalIntegrityCheck = validateReferentialIntegrity(mergedData);

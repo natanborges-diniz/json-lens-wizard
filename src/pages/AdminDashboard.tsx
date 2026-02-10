@@ -138,41 +138,27 @@ const AdminDashboard = () => {
     loadCatalogFromCloud
   } = useLensStore();
 
-  // Load data on mount - try cloud first, then fallback to lenses.json
+  // Load data on mount - cloud only (PLAN 3 §5.1 Cloud-Only)
   useEffect(() => {
     const loadData = async () => {
-      // Check if we actually have data, not just the isDataLoaded flag
       if (families.length === 0) {
         setIsLoading(true);
         try {
-          // Try to load from cloud first
           const cloudLoaded = await loadCatalogFromCloud();
-          
           if (!cloudLoaded) {
-            // Fallback to local lenses.json
-            console.log('No cloud catalog found, loading from lenses.json...');
-            const response = await fetch('/data/lenses.json');
-            const data: LensData = await response.json();
-            console.log('Loading initial data from lenses.json:', data.families?.length, 'families');
-            loadLensData(data);
+            console.warn('[AdminDashboard] No cloud catalog found. Admin must upload via import.');
+            toast.info('Nenhum catálogo encontrado. Faça o upload na aba Importação.');
           }
         } catch (error) {
-          console.error('Error loading lens data:', error);
-          // Final fallback
-          try {
-            const response = await fetch('/data/lenses.json');
-            const data: LensData = await response.json();
-            loadLensData(data);
-          } catch (e) {
-            console.error('Failed to load fallback data:', e);
-          }
+          console.error('Error loading catalog from cloud:', error);
+          toast.error('Erro ao carregar catálogo. Tente novamente.');
         } finally {
           setIsLoading(false);
         }
       }
     };
     loadData();
-  }, [families.length, loadLensData, loadCatalogFromCloud]);
+  }, [families.length, loadCatalogFromCloud]);
 
 
   // Sanitize JSON string BEFORE parsing - replace NaN, Infinity, -Infinity with null
