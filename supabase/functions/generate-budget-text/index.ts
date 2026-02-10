@@ -109,7 +109,7 @@ serve(async (req) => {
       'essential': 'Essencial - boa qualidade para o dia a dia',
       'comfort': 'Conforto - equilíbrio ideal entre qualidade e preço',
       'advanced': 'Avançada - alta tecnologia para usuários exigentes',
-      'top': 'Premium - o melhor disponível no mercado',
+      'top': 'Top - o melhor disponível no mercado',
     };
 
     const customerContext = `

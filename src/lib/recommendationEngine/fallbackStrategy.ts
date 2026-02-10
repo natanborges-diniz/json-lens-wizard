@@ -19,13 +19,9 @@ import type {
 
 const TIER_ORDER: TierKey[] = ['essential', 'comfort', 'advanced', 'top'];
 
-/** Estratégias de fallback por tier */
-const FALLBACK_STRATEGIES: Record<TierKey, TierKey[]> = {
-  essential: ['comfort', 'advanced', 'top'],      // Busca para cima
-  comfort: ['essential', 'advanced', 'top'],      // Busca para baixo primeiro
-  advanced: ['comfort', 'top', 'essential'],      // Busca adjacentes
-  top: ['advanced', 'comfort', 'essential'],      // Busca para baixo
-};
+// REMOVED: FALLBACK_STRATEGIES cross-tier lookup (PLAN 3 §4.3)
+// Fallback NEVER promotes families from other tiers.
+// Only relaxes eligibility within the SAME tier, or marks as unavailable.
 
 // ============================================
 // HELPER FUNCTIONS
@@ -70,7 +66,9 @@ function findBestFamily(families: ScoredFamily[]): ScoredFamily | null {
 }
 
 /**
- * Aplica fallback para um tier vazio
+ * Aplica fallback para um tier vazio (PLAN 3 §4.3 compliant)
+ * ONLY relaxes eligibility within the SAME tier.
+ * NEVER promotes families from other tiers.
  */
 function applyFallbackForTier(
   tierKey: TierKey,
@@ -80,24 +78,7 @@ function applyFallbackForTier(
   isFallback: boolean; 
   fallbackReason?: string 
 } {
-  const strategies = FALLBACK_STRATEGIES[tierKey];
-  
-  // Estratégia 1: Buscar em tiers adjacentes
-  for (const fallbackTier of strategies) {
-    const eligible = getEligibleFamilies(allFamilies, fallbackTier);
-    if (eligible.length > 0) {
-      const best = findBestFamily(eligible);
-      if (best) {
-        return {
-          primary: best,
-          isFallback: true,
-          fallbackReason: `Produto do tier "${fallbackTier}" exibido como opção para "${tierKey}"`,
-        };
-      }
-    }
-  }
-  
-  // Estratégia 2: Relaxar critérios no próprio tier
+  // Only strategy: Relax eligibility criteria within the SAME tier
   const relaxed = getRelaxedFamilies(allFamilies, tierKey);
   if (relaxed.length > 0) {
     const best = findBestFamily(relaxed);
@@ -110,25 +91,10 @@ function applyFallbackForTier(
     }
   }
   
-  // Estratégia 3: Buscar em qualquer tier com critérios relaxados
-  for (const fallbackTier of strategies) {
-    const relaxed = getRelaxedFamilies(allFamilies, fallbackTier);
-    if (relaxed.length > 0) {
-      const best = findBestFamily(relaxed);
-      if (best) {
-        return {
-          primary: best,
-          isFallback: true,
-          fallbackReason: `Produto de "${fallbackTier}" (critérios relaxados) para "${tierKey}"`,
-        };
-      }
-    }
-  }
-  
-  // Nenhum fallback possível
+  // No product available in this tier — mark as unavailable
   return {
     primary: null,
-    isFallback: true,
+    isFallback: false,
     fallbackReason: `Nenhum produto disponível para "${tierKey}"`,
   };
 }
