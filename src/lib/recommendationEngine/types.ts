@@ -73,17 +73,20 @@ export interface CommercialScore {
   
   /** Componentes do score */
   components: {
-    /** Disponibilidade de SKUs (0-25) */
+    /** Disponibilidade de SKUs (0-20) */
     availability: number;
     
     /** Posicionamento de tier (0-25) */
     tierPosition: number;
     
-    /** Riqueza de dados (sales_pills, knowledge) (0-25) */
+    /** Riqueza de dados (sales_pills, knowledge) (0-20) */
     dataRichness: number;
     
-    /** Tecnologias associadas (0-25) */
+    /** Tecnologias associadas (0-20) */
     technologyCount: number;
+    
+    /** Prioridade do fornecedor (0-15) */
+    supplierPriority?: number;
   };
   
   /** Motivos da pontuação */
@@ -223,6 +226,9 @@ export interface RecommendationInput {
   
   /** Biblioteca de tecnologias */
   technologyLibrary?: Record<string, Technology>;
+  
+  /** Prioridade de fornecedores (da config da empresa) */
+  supplierPriorities?: string[];
   
   /** Filtros opcionais */
   filters?: {

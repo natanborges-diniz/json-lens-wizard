@@ -172,6 +172,7 @@ export type Database = {
           logo_url: string | null
           phone: string | null
           slogan: string | null
+          supplier_priorities: Json | null
           updated_at: string
           whatsapp: string | null
         }
@@ -189,6 +190,7 @@ export type Database = {
           logo_url?: string | null
           phone?: string | null
           slogan?: string | null
+          supplier_priorities?: Json | null
           updated_at?: string
           whatsapp?: string | null
         }
@@ -206,6 +208,7 @@ export type Database = {
           logo_url?: string | null
           phone?: string | null
           slogan?: string | null
+          supplier_priorities?: Json | null
           updated_at?: string
           whatsapp?: string | null
         }
