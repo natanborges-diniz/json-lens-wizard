@@ -53,7 +53,7 @@ const tierLabels: Record<string, string> = {
   'essential': 'Essencial',
   'comfort': 'Conforto',
   'advanced': 'Avançado',
-  'top': 'Premium',
+  'top': 'Top',
 };
 
 interface MacroCardProps {
@@ -230,7 +230,7 @@ export const MacroCard = ({
                         <SelectItem value="essential">Essencial</SelectItem>
                         <SelectItem value="comfort">Conforto</SelectItem>
                         <SelectItem value="advanced">Avançado</SelectItem>
-                        <SelectItem value="top">Premium</SelectItem>
+                        <SelectItem value="top">Top</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

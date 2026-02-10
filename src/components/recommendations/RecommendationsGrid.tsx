@@ -102,7 +102,7 @@ const TIER_CONFIG: Record<Tier, {
     colorClass: 'text-purple-600',
   },
   top: {
-    label: 'Premium',
+    label: 'Top',
     description: 'Máxima personalização',
     icon: Crown,
     colorClass: 'text-amber-600',

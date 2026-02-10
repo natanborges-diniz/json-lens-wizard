@@ -39,7 +39,7 @@ const tierDisplayNames: Record<string, string> = {
   'essential': 'Essencial',
   'comfort': 'Conforto',
   'advanced': 'Avançado',
-  'top': 'Premium',
+  'top': 'Top',
 };
 
 export const ExportDialog = ({ families, macros, technologies }: ExportDialogProps) => {

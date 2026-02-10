@@ -176,7 +176,7 @@ const CatalogAudit = () => {
     { value: 'essential', label: 'Essencial' },
     { value: 'comfort', label: 'Conforto' },
     { value: 'advanced', label: 'Avançado' },
-    { value: 'top', label: 'Premium' },
+    { value: 'top', label: 'Top' },
   ];
 
   // Get tier_key for a family based on its macro

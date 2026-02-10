@@ -80,7 +80,7 @@ const TIER_LABELS: Record<Tier, string> = {
   essential: 'Essential',
   comfort: 'Conforto',
   advanced: 'Avançada',
-  top: 'Premium',
+  top: 'Top',
 };
 
 const TIER_STYLES: Record<Tier, {
@@ -219,7 +219,7 @@ export const SimplifiedLensCard = ({
   }, [scoredFamily, enrichedFamily, family]);
 
   const resolvedTechnologies = useMemo(() => {
-    return scoredFamily?.technologies?.slice(0, 3) || [];
+    return scoredFamily?.technologies?.slice(0, 5) || [];
   }, [scoredFamily]);
 
   const handleIndexChange = useCallback((index: string) => {

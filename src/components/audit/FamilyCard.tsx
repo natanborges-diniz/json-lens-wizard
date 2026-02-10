@@ -31,7 +31,7 @@ const tierDisplayNames: Record<string, string> = {
   'essential': 'Essencial',
   'comfort': 'Conforto',
   'advanced': 'Avançado',
-  'top': 'Premium',
+  'top': 'Top',
 };
 
 const tierColors: Record<string, { bg: string; text: string; dot: string }> = {
