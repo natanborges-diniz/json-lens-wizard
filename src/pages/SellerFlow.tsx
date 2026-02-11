@@ -27,6 +27,7 @@ import { useCatalogResolver } from '@/hooks/useCatalogResolver';
 import { useRecommendationEngine } from '@/hooks/useRecommendationEngine';
 import { useStoreContext } from '@/hooks/useStoreContext';
 import { useDraftPersistence } from '@/hooks/useDraftPersistence';
+import { useRecommendationAuditLogger } from '@/hooks/useRecommendationAuditLogger';
 import type { 
   Prescription, 
   Tier, 
@@ -285,12 +286,39 @@ const SellerFlow = () => {
     prescriptionData,
   });
 
-  // Log engine stats
+  // Audit logger
+  const { persistLog } = useRecommendationAuditLogger();
+  const hasLoggedRef = useRef(false);
+
+  // Log engine stats and persist audit log
   useEffect(() => {
-    if (engineReady) {
+    if (engineReady && engineResult && !hasLoggedRef.current) {
+      hasLoggedRef.current = true;
       console.log(`[SellerFlow] RecommendationEngine stats:`, engineStats);
+      
+      // Persist to database
+      const startTime = engineResult.timestamp;
+      persistLog({
+        input: {
+          clinicalType: lensCategory,
+          anamnesis: anamnesisData,
+          prescription: prescriptionData,
+          families: families as any,
+          prices,
+          supplierPriorities: [],
+        },
+        result: engineResult,
+        storeId: selectedStoreId,
+        serviceId: draftServiceId,
+        catalogVersion: rawLensData?.meta?.schema_version || null,
+        executionTimeMs: Date.now() - startTime,
+      });
     }
-  }, [engineReady, engineStats]);
+    // Reset when inputs change so next run gets logged
+    if (!engineReady) {
+      hasLoggedRef.current = false;
+    }
+  }, [engineReady, engineResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle lens selection (backward compatibility)
   const handleSelectLens = (configuration: LensCardConfiguration) => {

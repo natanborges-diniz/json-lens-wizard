@@ -506,7 +506,7 @@ const AdminDashboard = () => {
               </Button>
             </Link>
             
-            <Link to="/catalog-audit">
+            <Link to="/audit">
               <Button variant="outline" size="sm" className="gap-2">
                 <AlertCircle className="w-4 h-4" />
                 Auditoria

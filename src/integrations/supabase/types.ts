@@ -296,6 +296,63 @@ export type Database = {
         }
         Relationships: []
       }
+      recommendation_audit_logs: {
+        Row: {
+          catalog_version: string | null
+          clinical_type: string
+          created_at: string
+          execution_time_ms: number | null
+          fallbacks: Json
+          families_analyzed: number
+          families_eligible: number
+          id: string
+          input_summary: Json
+          output_summary: Json
+          scores: Json
+          seller_id: string
+          service_id: string | null
+          store_id: string | null
+          top_recommendation_id: string | null
+          top_recommendation_name: string | null
+        }
+        Insert: {
+          catalog_version?: string | null
+          clinical_type: string
+          created_at?: string
+          execution_time_ms?: number | null
+          fallbacks?: Json
+          families_analyzed?: number
+          families_eligible?: number
+          id?: string
+          input_summary?: Json
+          output_summary?: Json
+          scores?: Json
+          seller_id: string
+          service_id?: string | null
+          store_id?: string | null
+          top_recommendation_id?: string | null
+          top_recommendation_name?: string | null
+        }
+        Update: {
+          catalog_version?: string | null
+          clinical_type?: string
+          created_at?: string
+          execution_time_ms?: number | null
+          fallbacks?: Json
+          families_analyzed?: number
+          families_eligible?: number
+          id?: string
+          input_summary?: Json
+          output_summary?: Json
+          scores?: Json
+          seller_id?: string
+          service_id?: string | null
+          store_id?: string | null
+          top_recommendation_id?: string | null
+          top_recommendation_name?: string | null
+        }
+        Relationships: []
+      }
       sales: {
         Row: {
           budget_id: string
