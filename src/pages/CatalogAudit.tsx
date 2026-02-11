@@ -20,7 +20,8 @@ import {
   Square,
   Cpu,
   Wand2,
-  Settings2
+  Settings2,
+  Activity
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,6 +53,7 @@ import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory'
 import { CatalogRestoreDialog } from '@/components/audit/CatalogRestoreDialog';
 import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
 import { DataSourceDiagnostic } from '@/components/audit/DataSourceDiagnostic';
+import { RecommendationLogsTab } from '@/components/audit/RecommendationLogsTab';
 import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import { 
   runClassificationEngine, 
@@ -1032,6 +1034,10 @@ const CatalogAudit = () => {
                 </Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger value="engine-logs" className="gap-1.5 text-xs py-1.5">
+              <Activity className="w-3.5 h-3.5" />
+              Logs do Motor
+            </TabsTrigger>
           </TabsList>
 
           {/* Families Tab */}
@@ -1384,6 +1390,11 @@ const CatalogAudit = () => {
               prices={prices}
               onSaveEngine={handleSaveMatchingEngine}
             />
+          </TabsContent>
+
+          {/* Engine Logs Tab */}
+          <TabsContent value="engine-logs" className="mt-0">
+            <RecommendationLogsTab />
           </TabsContent>
         </Tabs>
 

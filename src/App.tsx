@@ -2,13 +2,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import AdminDashboard from "./pages/AdminDashboard";
 import CatalogAudit from "./pages/CatalogAudit";
-import CatalogAuditPage from "./pages/CatalogAuditPage";
 import SellerFlow from "./pages/SellerFlow";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -66,11 +65,8 @@ const App = () => (
                 <CatalogAudit />
               </ProtectedRoute>
             } />
-            <Route path="/catalog-audit" element={
-              <ProtectedRoute allowedRoles={['admin']}>
-                <CatalogAuditPage />
-              </ProtectedRoute>
-            } />
+            {/* Redirect old route to unified /audit */}
+            <Route path="/catalog-audit" element={<Navigate to="/audit" replace />} />
             <Route path="/seller" element={
               <ProtectedRoute allowedRoles={['admin', 'manager', 'seller']}>
                 <SellerFlow />
