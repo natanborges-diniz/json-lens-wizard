@@ -39,7 +39,7 @@ interface Service {
   id: string;
   customer_id: string;
   seller_id: string;
-  status: 'in_progress' | 'budget_sent' | 'converted' | 'lost';
+  status: 'draft' | 'in_progress' | 'budget_sent' | 'converted' | 'lost';
   anamnesis_data: unknown;
   prescription_data: unknown;
   frame_data: unknown;

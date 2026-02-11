@@ -24,8 +24,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { useCatalogResolver } from '@/hooks/useCatalogResolver';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
+import { useStoreContext } from '@/hooks/useStoreContext';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { resolveBusinessContext } from '@/lib/resolveBusinessContext';
 import type { FamilyExtended, AnamnesisData, AttributeDef, Prescription, FrameMeasurements, LensCategory, LensData } from '@/types/lens';
 import type { SelectedProduct } from '@/lib/productSuggestionEngine';
 import type { RecommendationResult } from '@/lib/recommendationEngine/types';
@@ -49,6 +51,10 @@ interface BudgetFinalizationProps {
   onBack: () => void;
   engineResult?: RecommendationResult | null;
   lensData?: LensData | null;
+  storeId?: string | null;
+  draftServiceId?: string | null;
+  draftCustomerId?: string | null;
+  onDraftPromoted?: () => Promise<{ serviceId: string | null; customerId: string | null }>;
 }
 
 const paymentMethods = [
@@ -76,10 +82,21 @@ export const BudgetFinalization = ({
   onBack,
   engineResult,
   lensData,
+  storeId,
+  draftServiceId,
+  draftCustomerId,
+  onDraftPromoted,
 }: BudgetFinalizationProps) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { settings: companySettings } = useCompanySettings();
+  const { selectedStore } = useStoreContext();
+
+  // Resolve business context: store > company for identity, company for policies
+  const businessContext = resolveBusinessContext(
+    companySettings,
+    storeId ? selectedStore : null,
+  );
   
   const [paymentMethod, setPaymentMethod] = useState('credit_1x');
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
@@ -177,8 +194,6 @@ ${notes ? `\nObs: ${notes}` : ''}
   };
 
   const generateAIText = async (): Promise<string | null> => {
-    if (!companySettings) return null;
-    
     try {
       const response = await supabase.functions.invoke('generate-budget-text', {
         body: {
@@ -195,10 +210,10 @@ ${notes ? `\nObs: ${notes}` : ''}
           paymentMethod,
           secondPair: secondPairEnabled ? { enabled: true, price: secondPairPrice } : undefined,
           companyInfo: {
-            companyName: companySettings.company_name,
-            slogan: companySettings.slogan,
-            phone: companySettings.phone,
-            whatsapp: companySettings.whatsapp,
+            companyName: businessContext.company_name,
+            slogan: businessContext.slogan,
+            phone: businessContext.phone,
+            whatsapp: businessContext.whatsapp,
           },
           benefits: family.attributes_display_base,
         },
@@ -225,41 +240,63 @@ ${notes ? `\nObs: ${notes}` : ''}
     setIsGenerating(true);
 
     try {
-      // 1. Create customer (required for service)
-      const { data: customer, error: customerError } = await supabase
-        .from('customers')
-        .insert({ name: customerName || 'Cliente', phone: customerPhone || null })
-        .select('id')
-        .single();
+      let serviceId = draftServiceId;
+      let customerId = draftCustomerId;
 
-      if (customerError) throw customerError;
-
-      // 2. Create service record
-      const { data: service, error: serviceError } = await supabase
-        .from('services')
-        .insert([{
-          customer_id: customer.id,
-          seller_id: user.id,
-          status: 'in_progress' as const,
+      // If we have a draft, promote it; otherwise create new customer + service
+      if (serviceId && customerId && onDraftPromoted) {
+        await onDraftPromoted();
+        // Update service with final data
+        await supabase.from('services').update({
           anamnesis_data: JSON.parse(JSON.stringify(anamnesisData)),
           prescription_data: JSON.parse(JSON.stringify(prescriptionData || {})),
           frame_data: JSON.parse(JSON.stringify(frameData || {})),
           lens_category: lensCategory,
           notes,
-        }])
-        .select('id')
-        .single();
+          status: 'in_progress' as any,
+        }).eq('id', serviceId);
+      } else {
+        // 1. Create customer
+        const { data: customer, error: customerError } = await supabase
+          .from('customers')
+          .insert({ name: customerName || 'Cliente', phone: customerPhone || null })
+          .select('id')
+          .single();
+        if (customerError) throw customerError;
+        customerId = customer.id;
 
-      if (serviceError) throw serviceError;
+        // 2. Create service record
+        const { data: service, error: serviceError } = await supabase
+          .from('services')
+          .insert([{
+            customer_id: customerId,
+            seller_id: user.id,
+            status: 'in_progress' as any,
+            anamnesis_data: JSON.parse(JSON.stringify(anamnesisData)),
+            prescription_data: JSON.parse(JSON.stringify(prescriptionData || {})),
+            frame_data: JSON.parse(JSON.stringify(frameData || {})),
+            lens_category: lensCategory,
+            notes,
+          }])
+          .select('id')
+          .single();
+        if (serviceError) throw serviceError;
+        serviceId = service.id;
+      }
 
       // 3. Generate AI text
       const aiText = await generateAIText();
 
-      // 4. Create budget record
+      // 4. Create budget record with store_id
+      const resolvedStoreId = businessContext.store_id;
+      if (!resolvedStoreId) {
+        console.warn('[BudgetFinalization] No store_id available for budget');
+      }
+
       const { data: budget, error: budgetError } = await supabase
         .from('budgets')
         .insert({
-          service_id: service.id,
+          service_id: serviceId!,
           family_id: family.id,
           family_name: (family as any).display_name || (family as any).name_display || family.name_original,
           supplier: family.supplier,
@@ -277,6 +314,7 @@ ${notes ? `\nObs: ${notes}` : ''}
           final_total: finalTotal,
           notes,
           ai_description: aiText,
+          store_id: resolvedStoreId,
         })
         .select('id')
         .single();
@@ -638,7 +676,7 @@ ${notes ? `\nObs: ${notes}` : ''}
           open={showSummaryDialog}
           onOpenChange={setShowSummaryDialog}
           data={budgetDocumentData}
-          companySettings={companySettings || { company_name: 'Ótica' }}
+          companySettings={businessContext}
           customerPhone={customerPhone}
           onNavigateToManagement={handleNavigateToManagement}
         />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -10,16 +10,23 @@ import {
   Check,
   Loader2,
   ThumbsUp,
-  Info
+  Info,
+  Store,
+  RotateCcw,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent } from '@/components/ui/card';
 import { useLensStore } from '@/store/lensStore';
 import { useCatalogLoader } from '@/hooks/useCatalogLoader';
 import { useCatalogResolver } from '@/hooks/useCatalogResolver';
 import { useRecommendationEngine } from '@/hooks/useRecommendationEngine';
+import { useStoreContext } from '@/hooks/useStoreContext';
+import { useDraftPersistence } from '@/hooks/useDraftPersistence';
 import type { 
   Prescription, 
   Tier, 
@@ -76,9 +83,62 @@ const SellerFlow = () => {
     altura: 18,
   });
   const [lensCategory, setLensCategory] = useState<ClinicalType>('PROGRESSIVA');
+  const [suggestedClinicalType, setSuggestedClinicalType] = useState<ClinicalType>('PROGRESSIVA');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedConfiguration, setSelectedConfiguration] = useState<LensCardConfiguration | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
+
+  // Store context
+  const { 
+    stores, 
+    selectedStoreId, 
+    selectedStore, 
+    setSelectedStoreId, 
+    needsStoreSelection, 
+    isLoading: storesLoading 
+  } = useStoreContext();
+
+  // Draft persistence
+  const { 
+    existingDraft, 
+    isCheckingDraft, 
+    draftServiceId,
+    draftCustomerId,
+    resumeDraft, 
+    discardDraft, 
+    saveDraft,
+    promoteDraft,
+  } = useDraftPersistence({ storeId: selectedStoreId });
+
+  // Draft resume state
+  const [showDraftPrompt, setShowDraftPrompt] = useState(false);
+  const draftPromptShownRef = useRef(false);
+
+  useEffect(() => {
+    if (existingDraft && !isCheckingDraft && !draftPromptShownRef.current) {
+      draftPromptShownRef.current = true;
+      setShowDraftPrompt(true);
+    }
+  }, [existingDraft, isCheckingDraft]);
+
+  const handleResumeDraft = () => {
+    const draft = resumeDraft();
+    if (draft) {
+      setCustomerName(draft.customerName);
+      if (draft.anamnesisData) setAnamnesisData(draft.anamnesisData);
+      if (draft.prescriptionData) setPrescriptionData(draft.prescriptionData);
+      if (draft.frameData) setFrameData(draft.frameData);
+      if (draft.lensCategory) setLensCategory(draft.lensCategory);
+      toast.success('Atendimento anterior retomado');
+    }
+    setShowDraftPrompt(false);
+  };
+
+  const handleDiscardDraft = async () => {
+    await discardDraft();
+    setShowDraftPrompt(false);
+    toast.info('Rascunho descartado');
+  };
 
   // Use catalog resolver for dynamic tier mapping (no hardcode)
   const { getTierKey } = useCatalogResolver();
@@ -144,12 +204,22 @@ const SellerFlow = () => {
     }
   }, [families, prices]);
 
-  // Determine if prescription requires progressive lenses
+  // Suggest clinical type based on prescription (but don't force)
   useEffect(() => {
     const hasAddition = (prescriptionData.rightAddition && prescriptionData.rightAddition > 0) ||
                        (prescriptionData.leftAddition && prescriptionData.leftAddition > 0);
-    setLensCategory(hasAddition ? 'PROGRESSIVA' : 'MONOFOCAL');
+    const suggested: ClinicalType = hasAddition ? 'PROGRESSIVA' : 'MONOFOCAL';
+    setSuggestedClinicalType(suggested);
   }, [prescriptionData.rightAddition, prescriptionData.leftAddition]);
+
+  // Save draft on step change (debounced via hook)
+  const prevStepRef = useRef(currentStep);
+  useEffect(() => {
+    if (prevStepRef.current !== currentStep && currentStep !== 'budget') {
+      prevStepRef.current = currentStep;
+      saveDraft(customerName, anamnesisData, prescriptionData as Partial<Prescription>, frameData as Partial<FrameMeasurements>, lensCategory);
+    }
+  }, [currentStep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
     { id: 'profile', label: 'Perfil', icon: <User className="w-4 h-4" /> },
@@ -271,13 +341,42 @@ const SellerFlow = () => {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || isCheckingDraft || storesLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
           <p className="text-muted-foreground">Carregando dados...</p>
         </div>
+      </div>
+    );
+  }
+
+  // Draft resume prompt
+  if (showDraftPrompt && existingDraft) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <Card className="max-w-md w-full">
+          <CardContent className="pt-6 space-y-4">
+            <div className="text-center">
+              <RotateCcw className="w-10 h-10 mx-auto mb-3 text-primary" />
+              <h2 className="text-lg font-bold text-foreground">Atendimento em andamento</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Você tem um rascunho para <strong>{existingDraft.customerName}</strong>. Deseja continuar?
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1 gap-2" onClick={handleDiscardDraft}>
+                <Trash2 className="w-4 h-4" />
+                Descartar
+              </Button>
+              <Button className="flex-1 gap-2" onClick={handleResumeDraft}>
+                <RotateCcw className="w-4 h-4" />
+                Continuar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -298,6 +397,7 @@ const SellerFlow = () => {
                 <h1 className="text-lg font-bold text-foreground">Nova Venda</h1>
                 <p className="text-xs text-muted-foreground">
                   {steps.find(s => s.id === currentStep)?.label}
+                  {selectedStore && <span className="ml-1">• {selectedStore.name}</span>}
                 </p>
               </div>
             </div>
@@ -334,6 +434,28 @@ const SellerFlow = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-6 py-8">
+        {/* Store Selection (if needed) */}
+        {needsStoreSelection && currentStep === 'profile' && (
+          <div className="mb-6 p-4 rounded-lg border border-primary/30 bg-primary/5">
+            <Label className="text-sm font-semibold flex items-center gap-2 mb-2">
+              <Store className="w-4 h-4" />
+              Selecione a Loja
+            </Label>
+            <Select value={selectedStoreId || ''} onValueChange={setSelectedStoreId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Escolha a loja..." />
+              </SelectTrigger>
+              <SelectContent>
+                {stores.map(store => (
+                  <SelectItem key={store.id} value={store.id}>
+                    {store.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {/* Step 1: Usage Profile */}
         {currentStep === 'profile' && (
           <div className="animate-slide-up">
@@ -381,6 +503,8 @@ const SellerFlow = () => {
               data={prescriptionData}
               onUpdate={(data) => setPrescriptionData(prev => ({ ...prev, ...data }))}
               lensCategory={lensCategory}
+              onClinicalTypeChange={setLensCategory}
+              suggestedClinicalType={suggestedClinicalType}
             />
           </div>
         )}
@@ -440,6 +564,10 @@ const SellerFlow = () => {
               onBack={() => setCurrentStep('recommendations')}
               engineResult={engineResult}
               lensData={lensDataForEngine}
+              storeId={selectedStoreId}
+              draftServiceId={draftServiceId}
+              draftCustomerId={draftCustomerId}
+              onDraftPromoted={promoteDraft}
             />
           </div>
         )}
