@@ -269,6 +269,7 @@ const SellerFlow = () => {
     stats: engineStats,
     isReady: engineReady,
     engineResult,
+    supplierPriorities: activeSupplierPriorities,
   } = useRecommendationEngine({
     lensData: lensDataForEngine,
     lensCategory,
@@ -286,17 +287,22 @@ const SellerFlow = () => {
     prescriptionData,
   });
 
-  // Audit logger
+  // Audit logger - persist when user reaches recommendations step
   const { persistLog } = useRecommendationAuditLogger();
   const hasLoggedRef = useRef(false);
+  const prevStepForLogRef = useRef<Step | null>(null);
 
-  // Log engine stats and persist audit log
+  // Log engine results when entering recommendations step (all inputs filled)
   useEffect(() => {
-    if (engineReady && engineResult && !hasLoggedRef.current) {
+    if (
+      currentStep === 'recommendations' &&
+      prevStepForLogRef.current !== 'recommendations' &&
+      engineReady && engineResult &&
+      !hasLoggedRef.current
+    ) {
       hasLoggedRef.current = true;
       console.log(`[SellerFlow] RecommendationEngine stats:`, engineStats);
       
-      // Persist to database
       const startTime = engineResult.timestamp;
       persistLog({
         input: {
@@ -305,7 +311,7 @@ const SellerFlow = () => {
           prescription: prescriptionData,
           families: families as any,
           prices,
-          supplierPriorities: [],
+          supplierPriorities: activeSupplierPriorities,
         },
         result: engineResult,
         storeId: selectedStoreId,
@@ -314,11 +320,13 @@ const SellerFlow = () => {
         executionTimeMs: Date.now() - startTime,
       });
     }
-    // Reset when inputs change so next run gets logged
-    if (!engineReady) {
-      hasLoggedRef.current = false;
-    }
-  }, [engineReady, engineResult]); // eslint-disable-line react-hooks/exhaustive-deps
+    prevStepForLogRef.current = currentStep;
+  }, [currentStep, engineReady, engineResult]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset log flag when clinical type changes
+  useEffect(() => {
+    hasLoggedRef.current = false;
+  }, [lensCategory]);
 
   // Handle lens selection (backward compatibility)
   const handleSelectLens = (configuration: LensCardConfiguration) => {

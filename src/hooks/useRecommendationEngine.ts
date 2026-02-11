@@ -65,6 +65,7 @@ interface UseRecommendationEngineResult {
   };
   isReady: boolean;
   engineResult: RecommendationResult | null;
+  supplierPriorities: string[];
 }
 
 export function useRecommendationEngine({
@@ -133,6 +134,7 @@ export function useRecommendationEngine({
         : {},
       filters: filters,
       supplierPriorities,
+      macros: lensData.macros?.map(m => ({ id: m.id, tier_key: m.tier_key, category: m.category })),
     };
 
     // Generate recommendations
@@ -189,6 +191,7 @@ export function useRecommendationEngine({
     stats,
     isReady,
     engineResult,
+    supplierPriorities,
   };
 }
 

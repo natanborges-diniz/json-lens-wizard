@@ -230,6 +230,9 @@ export interface RecommendationInput {
   /** Prioridade de fornecedores (da config da empresa) */
   supplierPriorities?: string[];
   
+  /** Macros do catálogo (para resolução dinâmica de tier) */
+  macros?: Array<{ id: string; tier_key?: string; category?: string }>;
+  
   /** Filtros opcionais */
   filters?: {
     suppliers?: string[];

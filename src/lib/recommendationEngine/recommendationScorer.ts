@@ -60,21 +60,33 @@ const MACRO_TO_TIER: Record<string, TierKey> = {
 // ============================================
 
 /**
- * Determina o tier de uma família
+ * Determina o tier de uma família usando dados reais do catálogo
+ * Prioridade: (1) family.tier_target, (2) macro do catálogo com tier_key, (3) mapa estático, (4) inferência por nome
  */
-export function determineTierKey(family: FamilyExtended): TierKey {
-  // 1. Verificar tier_target no JSON
-  const tierTarget = (family as any).tier_target;
+export function determineTierKey(
+  family: FamilyExtended,
+  catalogMacros?: Array<{ id: string; tier_key?: string; category?: string }>
+): TierKey {
+  // 1. Verificar tier_target direto na família
+  const tierTarget = family.tier_target;
   if (tierTarget && ['essential', 'comfort', 'advanced', 'top'].includes(tierTarget)) {
     return tierTarget as TierKey;
   }
   
-  // 2. Verificar mapeamento de macro
+  // 2. Resolver via macros reais do catálogo (tier_key da macro correspondente)
+  if (catalogMacros && catalogMacros.length > 0) {
+    const matchingMacro = catalogMacros.find(m => m.id === family.macro);
+    if (matchingMacro?.tier_key && ['essential', 'comfort', 'advanced', 'top'].includes(matchingMacro.tier_key)) {
+      return matchingMacro.tier_key as TierKey;
+    }
+  }
+  
+  // 3. Verificar mapeamento estático (fallback)
   if (MACRO_TO_TIER[family.macro]) {
     return MACRO_TO_TIER[family.macro];
   }
   
-  // 3. Inferir do nome do macro
+  // 4. Inferir do nome do macro
   const macroUpper = family.macro.toUpperCase();
   if (macroUpper.includes('TOP') || macroUpper.includes('PREMIUM') || macroUpper.includes('ELITE')) {
     return 'top';
@@ -86,7 +98,7 @@ export function determineTierKey(family: FamilyExtended): TierKey {
     return 'comfort';
   }
   
-  // 4. Default
+  // 5. Default
   return 'essential';
 }
 
@@ -193,10 +205,11 @@ export function calculateRecommendationScore(
   anamnesis: AnamnesisData,
   prescription: Partial<Prescription>,
   technologyLibrary?: Record<string, Technology>,
-  supplierPriorities?: string[]
+  supplierPriorities?: string[],
+  catalogMacros?: Array<{ id: string; tier_key?: string; category?: string }>
 ): RecommendationScore {
   // Determinar tier
-  const tierKey = determineTierKey(family);
+  const tierKey = determineTierKey(family, catalogMacros);
   
   // Calcular scores
   const clinicalScore = calculateClinicalScore(family, prices, anamnesis, prescription, tierKey);
@@ -225,7 +238,7 @@ export function calculateRecommendationScore(
     clinical: clinicalScore,
     commercial: commercialScore,
     tierKey,
-    rankInTier: 0, // Será preenchido depois do ranking
+    rankInTier: 0,
     isEligible,
     ineligibilityReason,
   };
@@ -240,9 +253,10 @@ export function scoreFamilyComplete(
   anamnesis: AnamnesisData,
   prescription: Partial<Prescription>,
   technologyLibrary?: Record<string, Technology>,
-  supplierPriorities?: string[]
+  supplierPriorities?: string[],
+  catalogMacros?: Array<{ id: string; tier_key?: string; category?: string }>
 ): ScoredFamily {
-  const score = calculateRecommendationScore(family, prices, anamnesis, prescription, technologyLibrary, supplierPriorities);
+  const score = calculateRecommendationScore(family, prices, anamnesis, prescription, technologyLibrary, supplierPriorities, catalogMacros);
   const { price, compatiblePrices } = findStartingPrice(family, prices, prescription);
   const enrichedData = extractFamilyData(family, technologyLibrary);
   
@@ -264,12 +278,13 @@ export function scoreAndRankFamilies(
   anamnesis: AnamnesisData,
   prescription: Partial<Prescription>,
   technologyLibrary?: Record<string, Technology>,
-  supplierPriorities?: string[]
+  supplierPriorities?: string[],
+  catalogMacros?: Array<{ id: string; tier_key?: string; category?: string }>
 ): ScoredFamily[] {
   // Processar todas as famílias
   const scoredFamilies = families
     .filter(f => f.active !== false)
-    .map(family => scoreFamilyComplete(family, prices, anamnesis, prescription, technologyLibrary, supplierPriorities));
+    .map(family => scoreFamilyComplete(family, prices, anamnesis, prescription, technologyLibrary, supplierPriorities, catalogMacros));
   
   // Agrupar por tier
   const byTier: Record<TierKey, ScoredFamily[]> = {
