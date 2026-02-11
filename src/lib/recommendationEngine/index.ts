@@ -203,14 +203,15 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
     });
   }
   
-  // 3. Calcular scores para todas as famílias
+  // 3. Calcular scores para todas as famílias (com macros reais do catálogo)
   const scoredFamilies = scoreAndRankFamilies(
     filteredFamilies,
     input.prices,
     input.anamnesis,
     input.prescription,
     techLib,
-    input.supplierPriorities
+    input.supplierPriorities,
+    input.macros
   );
   
   // 4. Aplicar filtros de preço (pós-score)

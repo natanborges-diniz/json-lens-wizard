@@ -820,6 +820,36 @@ const CatalogAudit = () => {
     };
   }, [familiesWithPrices, localFamilies, prices, macros]);
 
+  // Clinical type distribution summary
+  const clinicalTypeSummary = useMemo(() => {
+    const allTypes: string[] = ['MONOFOCAL', 'PROGRESSIVA', 'OCUPACIONAL', 'BIFOCAL'];
+    const summary = allTypes.map(type => {
+      const typeFamilies = localFamilies.filter(f => (f.clinical_type || f.category) === type);
+      const active = typeFamilies.filter(f => f.active);
+      const withPrices = typeFamilies.filter(f => 
+        prices.some(p => p.family_id === f.id && p.active && !p.blocked)
+      );
+      return {
+        type,
+        total: typeFamilies.length,
+        active: active.length,
+        withPrices: withPrices.length,
+      };
+    });
+    // Add families with unknown/undefined type
+    const knownTypes = new Set(allTypes);
+    const unknownFamilies = localFamilies.filter(f => !knownTypes.has(f.clinical_type || f.category));
+    if (unknownFamilies.length > 0) {
+      summary.push({
+        type: 'SEM TIPO',
+        total: unknownFamilies.length,
+        active: unknownFamilies.filter(f => f.active).length,
+        withPrices: unknownFamilies.filter(f => prices.some(p => p.family_id === f.id && p.active && !p.blocked)).length,
+      });
+    }
+    return summary;
+  }, [localFamilies, prices]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1310,6 +1340,33 @@ const CatalogAudit = () => {
                 <IntegrityExportButton integrityIssues={integrityIssues} />
               </div>
             </div>
+
+            {/* Clinical Type Distribution */}
+            <Card className="bg-card/50">
+              <CardHeader className="p-4 pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-primary" />
+                  Distribuição por Tipo Clínico
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-2">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {clinicalTypeSummary.map(item => (
+                    <div key={item.type} className={`p-3 rounded-lg border ${
+                      item.total === 0 ? 'border-warning/30 bg-warning/5' : 'border-border bg-muted/30'
+                    }`}>
+                      <p className="text-xs font-semibold text-foreground">{item.type}</p>
+                      <p className="text-lg font-bold">{item.total}</p>
+                      <div className="flex gap-2 text-[10px] text-muted-foreground">
+                        <span>{item.active} ativas</span>
+                        <span>•</span>
+                        <span>{item.withPrices} c/ preço</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
             
             {integrityIssues.total === 0 ? (
               <Card className="bg-success/5 border-success/30">
@@ -1334,7 +1391,10 @@ const CatalogAudit = () => {
                         {integrityIssues.familiesWithoutPrices.map(f => (
                           <div key={f.id} className="flex items-center justify-between py-1 text-sm">
                             <span>{f.name_original}</span>
-                            <code className="text-xs text-muted-foreground">{f.id}</code>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-[10px]">{f.clinical_type || f.category}</Badge>
+                              <code className="text-xs text-muted-foreground">{f.id}</code>
+                            </div>
                           </div>
                         ))}
                       </div>
