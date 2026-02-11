@@ -2,6 +2,7 @@ import { Camera, Upload, Edit3, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AnamnesisStep } from './AnamnesisStep';
 import type { Prescription, ClinicalType } from '@/types/lens';
 
@@ -9,9 +10,31 @@ interface PrescriptionStepProps {
   data: Partial<Prescription>;
   onUpdate: (data: Partial<Prescription>) => void;
   lensCategory: ClinicalType;
+  onClinicalTypeChange?: (type: ClinicalType) => void;
+  suggestedClinicalType?: ClinicalType;
 }
 
-export const PrescriptionStep = ({ data, onUpdate, lensCategory }: PrescriptionStepProps) => {
+const clinicalTypeLabels: Record<ClinicalType, string> = {
+  MONOFOCAL: 'Monofocal',
+  PROGRESSIVA: 'Progressiva',
+  OCUPACIONAL: 'Ocupacional',
+  BIFOCAL: 'Bifocal',
+};
+
+const clinicalTypeDescriptions: Record<ClinicalType, string> = {
+  MONOFOCAL: 'Correção para uma distância específica (longe ou perto)',
+  PROGRESSIVA: 'Visão contínua para todas as distâncias, sem linha visível',
+  OCUPACIONAL: 'Otimizada para ambientes de trabalho (perto e intermediário)',
+  BIFOCAL: 'Duas zonas de visão definidas (longe e perto)',
+};
+
+export const PrescriptionStep = ({ 
+  data, 
+  onUpdate, 
+  lensCategory, 
+  onClinicalTypeChange,
+  suggestedClinicalType,
+}: PrescriptionStepProps) => {
   return (
     <AnamnesisStep
       title="Dados da Receita"
@@ -152,25 +175,49 @@ export const PrescriptionStep = ({ data, onUpdate, lensCategory }: PrescriptionS
           </div>
         </div>
 
-        {/* Lens category indicator - friendly language */}
+        {/* Clinical Type Selection */}
+        {onClinicalTypeChange && (
+          <div className="space-y-3">
+            <Label className="text-sm font-semibold">Tipo de Lente</Label>
+            {suggestedClinicalType && suggestedClinicalType !== lensCategory && (
+              <p className="text-xs text-muted-foreground">
+                Sugestão do sistema: <strong>{clinicalTypeLabels[suggestedClinicalType]}</strong> (baseado na receita)
+              </p>
+            )}
+            <Select value={lensCategory} onValueChange={(v) => onClinicalTypeChange(v as ClinicalType)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(clinicalTypeLabels) as ClinicalType[]).map(type => (
+                  <SelectItem key={type} value={type}>
+                    <div className="flex flex-col">
+                      <span>{clinicalTypeLabels[type]}</span>
+                      <span className="text-xs text-muted-foreground">{clinicalTypeDescriptions[type]}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Lens category indicator */}
         <div className={`p-4 rounded-lg flex items-start gap-3 ${
           lensCategory === 'PROGRESSIVA' 
             ? 'bg-primary/10 border border-primary/30' 
-            : 'bg-muted'
+            : lensCategory === 'OCUPACIONAL'
+              ? 'bg-accent/10 border border-accent/30'
+              : lensCategory === 'BIFOCAL'
+                ? 'bg-secondary/10 border border-secondary/30'
+                : 'bg-muted'
         }`}>
           <Info className={`w-5 h-5 shrink-0 mt-0.5 ${
             lensCategory === 'PROGRESSIVA' ? 'text-primary' : 'text-muted-foreground'
           }`} />
           <div className="text-sm">
             <p className="font-medium text-foreground mb-1">
-              {lensCategory === 'PROGRESSIVA' 
-                ? 'Você precisa de lentes para ver de longe e de perto' 
-                : 'Você precisa de lentes para uma distância específica'}
-            </p>
-            <p className="text-muted-foreground">
-              {lensCategory === 'PROGRESSIVA' 
-                ? 'Vamos recomendar opções que funcionam para todas as distâncias, sem linha visível.'
-                : 'Vamos recomendar as melhores opções para sua necessidade.'}
+              {clinicalTypeLabels[lensCategory]}: {clinicalTypeDescriptions[lensCategory]}
             </p>
           </div>
         </div>
