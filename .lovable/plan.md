@@ -1,146 +1,93 @@
 
+# Auditoria Completa do Catálogo - Dados Tecnico-Clinicos
 
-# Plano: Relatório de Integridade Clínica Real para /audit
+## Objetivo
+Criar uma edge function dedicada que leia o `catalog-default.json` do bucket `catalogs` e produza um relatorio estruturado com contagens e percentuais de preenchimento dos campos tecnicos de cada SKU, quebrando por `clinical_type` e `supplier`.
 
-## Contexto Atual
-O sistema de integridade atual (`CatalogAudit.tsx`, linhas 808-821) conta apenas:
-- Famílias ativas sem preços
-- Preços órfãos
-- Macros inválidos
-- **Total: 3 tipos de problemas**
+## Campos Auditados
 
-O relatório não analisa a qualidade técnica dos SKUs (availability/specs) e marca como "0 problemas" mesmo quando 90% dos SKUs usam safe defaults.
+Para cada SKU (item do array `prices`), verificar a presenca e preenchimento de:
 
-## Problemas a Resolver
+| Campo | Fonte V3.6.x (`availability`) | Fonte Legacy (`specs`) |
+|-------|-------------------------------|------------------------|
+| **Cilindro** | `availability.cylinder.min/max` | `specs.cyl_min/cyl_max` |
+| **Adicao** | `availability.addition.min/max` | `specs.add_min/add_max` |
+| **Diametro** | `availability.diameter_min/max` | `specs.diameter_min_mm/diameter_max_mm` |
+| **Indice** | `availability.index` | `price.index` ou `price.index_value` |
 
-### 1. **Classificação Insuficiente de SKUs**
-- Atual: Apenas "ativo" vs "inativo"
-- Necessário: 4 categorias clínicas:
-  - **COMPLETO**: Tem `availability` V3.6.x com todos os campos (sphere/cylinder/addition min/max presentes)
-  - **LEGACY**: Tem `specs` legacy completo com `sphere_min/max, cyl_min/max, add_min/max`
-  - **PARCIAL**: Specs/availability existe mas faltam campos (ex: só tem sphere, não tem cylinder)
-  - **DEFAULTED**: Usa safe defaults (sem `availability` nem `specs` completos)
+## Estrutura do Relatorio de Saida
 
-### 2. **Falso Positivo de Integridade**
-- Atualmente: Se não há "famílias sem preços" + "preços órfãos" + "macros inválidos", mostra "Catálogo íntegro"
-- **Problema**: 6250 SKUs podem ter 90% em DEFAULTED, mas a página continua exibindo ✓ "0 problemas"
-- **Solução**: DEFAULTED e PARCIAL devem ser contados como "problemas"
+```text
+{
+  meta: { total_skus, total_families, generated_at },
+  
+  global: {
+    cylinder:  { filled: N, missing: N, pct_filled: "XX%" },
+    addition:  { filled: N, missing: N, pct_filled: "XX%", na: N },
+    diameter:  { filled: N, missing: N, pct_filled: "XX%" },
+    index:     { filled: N, missing: N, pct_filled: "XX%" }
+  },
 
-### 3. **Quebras de Análise Faltando**
-- Atual: Apenas distribuição de famílias por clinical_type
-- Necessário adicionar:
-  - Contabilização de SKUs por classificação (COMPLETO / LEGACY / PARCIAL / DEFAULTED)
-  - Breakdown por supplier (qual fornecedor tem mais DEFAULTED)
-  - Breakdown por clinical_type (qual tipo clínico tem mais PARCIAL)
-  - Top 20 famílias com mais SKUs DEFAULTED
-  - Top 20 fornecedores com mais SKUs DEFAULTED
+  by_clinical_type: {
+    "MONOFOCAL": { total_skus, cylinder: {...}, addition: {...}, ... },
+    "PROGRESSIVA": { ... },
+    "OCUPACIONAL": { ... },
+    "BIFOCAL": { ... }
+  },
 
-## Arquitetura da Solução
-
-### A. Nova Função: `calculateSKUIntegrityMetrics()`
-**Localização**: `src/lib/catalogIntegrityAnalyzer.ts` (novo arquivo)
-
-Responsabilidades:
-- Iterar os 6250 SKUs
-- Para cada SKU, classificar como COMPLETO / LEGACY / PARCIAL / DEFAULTED
-- Usar a mesma lógica de `enrichAvailability()` em `catalogEnricher.ts` (linhas 173-232)
-- Retornar estrutura:
-
-```typescript
-interface SKUIntegrityMetric {
-  erp_code: string;
-  family_id: string;
-  supplier: string;
-  clinical_type: ClinicalType;
-  classification: 'COMPLETO' | 'LEGACY' | 'PARCIAL' | 'DEFAULTED';
-  issues?: string[]; // ['missing_cylinder', 'missing_addition']
-}
-
-interface IntegrityReport {
-  total_skus: number;
-  classifications: {
-    COMPLETO: number;
-    LEGACY: number;
-    PARCIAL: number;
-    DEFAULTED: number;
-  };
-  by_supplier: Record<string, IntegrityMetric>;
-  by_clinical_type: Record<ClinicalType, IntegrityMetric>;
-  families_with_most_defaulted: Array<{
-    family_id: string;
-    supplier: string;
-    clinical_type: ClinicalType;
-    defaulted_count: number;
-    total_skus: number;
-  }>;
-  suppliers_with_most_defaulted: Array<{
-    supplier: string;
-    defaulted_count: number;
-    total_skus: number;
-  }>;
-  problem_count: number; // PARCIAL + DEFAULTED
+  by_supplier: {
+    "ZEISS": { total_skus, cylinder: {...}, addition: {...}, ... },
+    "HOYA": { ... },
+    ...
+  }
 }
 ```
 
-### B. Integração no CatalogAudit.tsx
-**Localização**: `src/pages/CatalogAudit.tsx`
+## Implementacao
 
-Mudanças:
-1. Adicionar nova aba no TabsList: `"integrity-clinical"` (entre "integrity" e "logs-do-motor")
-2. Remover ou desabilitar a seção "Distribuição por Tipo Clínico" da aba "Integridade"
-3. Mover a exibição "Distribuição por Tipo Clínico" para a aba "Integridade Clínica"
-4. Na aba "Integridade Clínica", exibir:
-   - Painel de resumo geral (COMPLETO % / LEGACY % / PARCIAL % / DEFAULTED %)
-   - Cards de breakdown por supplier
-   - Cards de breakdown por clinical_type
-   - Tabela: Top 20 famílias com mais SKUs DEFAULTED
-   - Tabela: Top 20 fornecedores com mais SKUs DEFAULTED
-5. **Crítico**: Atualizar a lógica de `integrityIssues` (linha 808) para incluir:
-   - `problem_count` da análise clínica (PARCIAL + DEFAULTED)
-   - Não retornar "0 problemas" se `problem_count > 0`
+### 1. Nova edge function: `catalog-field-audit`
 
-### C. Refactoring do Relatório de Integridade Existente
-**Aba "Integridade"** (atual) continuará com:
-- Data Source Diagnostic
-- Families without prices (famílias ativas sem preços)
-- Invalid macros
-- Orphaned prices
-- **Sem a "Distribuição por Tipo Clínico"** (move para aba nova)
+- Caminho: `supabase/functions/catalog-field-audit/index.ts`
+- Metodo: GET (sem parametros obrigatorios)
+- Logica:
+  1. Baixar `catalog-default.json` do storage
+  2. Iterar sobre todos os `prices` (ativos e inativos, sem filtro)
+  3. Para cada SKU, resolver `clinical_type` pelo proprio SKU ou pela familia correspondente
+  4. Verificar presenca de cada campo nas duas fontes possiveis (V3.6.x e legacy)
+  5. Agregar contagens globais, por `clinical_type` e por `supplier`
+  6. Calcular percentuais
+  7. Retornar JSON estruturado
 
-### D. Hook: `useClinicalIntegrityReport()`
-**Localização**: `src/hooks/useClinicalIntegrityReport.ts` (novo)
+### 2. Logica de deteccao de campo preenchido
 
-Responsabilidades:
-- Memoizar o cálculo pesado de 6250 SKUs
-- Retornar `IntegrityReport`
-- Usar `useCatalogEnricher()` para acessar dados enriquecidos (flags availability_defaulted, etc.)
+```text
+cylinder_filled = 
+  (availability?.cylinder?.min != null AND availability?.cylinder?.max != null)
+  OR (specs?.cyl_min != null AND specs?.cyl_max != null)
 
-## Sequência de Implementação
+addition_filled =
+  (availability?.addition?.min != null AND availability?.addition?.max != null)
+  OR (specs?.add_min != null AND specs?.add_max != null)
 
-1. **Criar `catalogIntegrityAnalyzer.ts`** com função `calculateSKUIntegrityMetrics()`
-   - Implementar classificação: COMPLETO / LEGACY / PARCIAL / DEFAULTED
-   - Implementar cálculos de quebra por supplier e clinical_type
-   - Implementar ranking Top 20
+addition_na = clinical_type == 'MONOFOCAL'  (nao requer adicao)
 
-2. **Criar `useClinicalIntegrityReport.ts`** hook com memoização
+diameter_filled =
+  (availability?.diameter_min != null AND availability?.diameter_max != null)
+  OR (specs?.diameter_min_mm != null AND specs?.diameter_max_mm != null)
 
-3. **Atualizar `CatalogAudit.tsx`**
-   - Adicionar nova aba TabsContent "integrity-clinical"
-   - Usar o hook `useClinicalIntegrityReport()`
-   - Renderizar cards de resumo, breakdowns e tabelas
-   - Atualizar `integrityIssues` para contar problemas clínicos
+index_filled =
+  availability?.index != null
+  OR price.index != null
+  OR price.index_value != null
+```
 
-4. **Mover "Distribuição por Tipo Clínico"** para a aba nova (apenas move o JSX existente, sem recodificar)
+### 3. Nenhuma modificacao em arquivos existentes
 
-5. **Testar end-to-end**
-   - Executar fluxo de venda com SKU DEFAULTED
-   - Verificar que /audit > Integridade Clínica mostra % correto
-   - Verificar que integrityIssues.total agora inclui problemas clínicos
+- Nao altera o motor de recomendacao
+- Nao altera o catalogIntegrityAnalyzer
+- Nao altera o catalog-audit existente
+- Apenas cria uma nova edge function isolada para diagnostico
 
-## Notas Técnicas
+## Resultado Esperado
 
-- **Reuso de Lógica**: O `enrichAvailability()` já existe em `catalogEnricher.ts`. Vamos replicar sua lógica na análise ofline.
-- **Performance**: 6250 SKUs em memoização useMemo não deve ser problema (ativo apenas na aba de integridade).
-- **Integridade de Dados**: Não altera o catálogo, apenas analisa e exibe.
-- **Motor Intacto**: Nenhuma mudança no `recommendationEngine`, apenas auditoria.
-
+Um endpoint chamavel que retorna o panorama completo de preenchimento dos dados tecnicos do catalogo, permitindo identificar exatamente onde estao as lacunas sem propor correcoes.
