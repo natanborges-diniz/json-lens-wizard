@@ -11,6 +11,22 @@
 
 import type { FamilyExtended, Price, AnamnesisData, Prescription } from '@/types/lens';
 import type { ClinicalScore, TierKey } from './types';
+import type { ClinicalType } from '@/types/lens';
+
+// ============================================
+// REALISTIC CLINICAL DEFAULTS (from catalogEnricher)
+// Used when SKU has no specs/availability data
+// ============================================
+const CLINICAL_DEFAULTS: Record<string, {
+  sphere: { min: number; max: number };
+  cylinder: { min: number; max: number };
+  addition?: { min: number; max: number };
+}> = {
+  'MONOFOCAL': { sphere: { min: -10, max: 10 }, cylinder: { min: -6, max: 0 } },
+  'PROGRESSIVA': { sphere: { min: -8, max: 8 }, cylinder: { min: -4, max: 0 }, addition: { min: 0.75, max: 3.50 } },
+  'OCUPACIONAL': { sphere: { min: -8, max: 8 }, cylinder: { min: -4, max: 0 }, addition: { min: 0.75, max: 2.50 } },
+  'BIFOCAL': { sphere: { min: -8, max: 8 }, cylinder: { min: -3, max: 0 }, addition: { min: 0.75, max: 3.50 } },
+};
 
 // ============================================
 // CONSTANTS
@@ -60,31 +76,53 @@ const SCREEN_HOURS_BONUS: Record<string, number> = {
 /**
  * Verifica se um preço é compatível com a receita
  */
-function isPriceCompatible(price: Price, prescription: Partial<Prescription>): boolean {
-  // Extrair limites de specs (formato atual do schema)
+function isPriceCompatible(price: Price, prescription: Partial<Prescription>, clinicalType?: string): boolean {
+  // Try availability (V3.6.x format) first, then specs, then clinical defaults
+  const existingAvailability = (price as any).availability;
   const specs = price.specs;
-  if (!specs) return true; // Sem limites = compatível
   
-  // Usar campos do PriceSpec
-  const sphereMin = specs.sphere_min ?? -20;
-  const sphereMax = specs.sphere_max ?? 20;
-  const cylinderMin = specs.cyl_min ?? -6;
-  const cylinderMax = specs.cyl_max ?? 0;
-  const additionMin = specs.add_min ?? 0.75;
-  const additionMax = specs.add_max ?? 4.0;
+  // Resolve effective limits from best available source
+  let sphereMin: number, sphereMax: number, cylinderMin: number, cylinderMax: number;
+  let additionMin: number | undefined, additionMax: number | undefined;
   
-  // Validar esfera (maior absoluto entre OD e OE)
+  if (existingAvailability?.sphere?.min != null && existingAvailability?.sphere?.max != null) {
+    // V3.6.x availability with real data
+    sphereMin = existingAvailability.sphere.min;
+    sphereMax = existingAvailability.sphere.max;
+    cylinderMin = existingAvailability.cylinder?.min ?? -4;
+    cylinderMax = existingAvailability.cylinder?.max ?? 0;
+    additionMin = existingAvailability.addition?.min;
+    additionMax = existingAvailability.addition?.max;
+  } else if (specs && specs.sphere_min !== undefined && specs.sphere_max !== undefined) {
+    // Legacy specs with real data
+    sphereMin = specs.sphere_min;
+    sphereMax = specs.sphere_max;
+    cylinderMin = specs.cyl_min ?? -4;
+    cylinderMax = specs.cyl_max ?? 0;
+    additionMin = specs.add_min;
+    additionMax = specs.add_max;
+  } else {
+    // No real data — use realistic clinical defaults (NOT ultra-wide safe defaults)
+    const defaults = CLINICAL_DEFAULTS[clinicalType || 'MONOFOCAL'] || CLINICAL_DEFAULTS['MONOFOCAL'];
+    sphereMin = defaults.sphere.min;
+    sphereMax = defaults.sphere.max;
+    cylinderMin = defaults.cylinder.min;
+    cylinderMax = defaults.cylinder.max;
+    additionMin = defaults.addition?.min;
+    additionMax = defaults.addition?.max;
+  }
+  
+  // Validate sphere (highest absolute between OD and OE)
   const maxSphere = Math.max(
     Math.abs(prescription.rightSphere || 0),
     Math.abs(prescription.leftSphere || 0)
   );
   
-  // Para esfera, verificar se está dentro do range absoluto
   if (maxSphere > Math.max(Math.abs(sphereMin), Math.abs(sphereMax))) {
     return false;
   }
   
-  // Validar cilindro (maior absoluto entre OD e OE)
+  // Validate cylinder
   const maxCylinder = Math.max(
     Math.abs(prescription.rightCylinder || 0),
     Math.abs(prescription.leftCylinder || 0)
@@ -94,13 +132,13 @@ function isPriceCompatible(price: Price, prescription: Partial<Prescription>): b
     return false;
   }
   
-  // Validar adição (para progressivas)
+  // Validate addition (for progressives)
   const maxAddition = Math.max(
     prescription.rightAddition || 0,
     prescription.leftAddition || 0
   );
   
-  if (maxAddition > 0) {
+  if (maxAddition > 0 && additionMin != null && additionMax != null) {
     if (maxAddition < additionMin || maxAddition > additionMax) {
       return false;
     }
@@ -118,6 +156,7 @@ function calculatePrescriptionScore(
   prescription: Partial<Prescription>
 ): { score: number; compatible: boolean; reasons: string[] } {
   const reasons: string[] = [];
+  const clinicalType = (family as any).clinical_type || family.category;
   
   // Filtrar preços da família
   const familyPrices = prices.filter(p => 
@@ -136,7 +175,7 @@ function calculatePrescriptionScore(
   }
   
   // Verificar compatibilidade
-  const compatiblePrices = familyPrices.filter(p => isPriceCompatible(p, prescription));
+  const compatiblePrices = familyPrices.filter(p => isPriceCompatible(p, prescription, clinicalType));
   
   if (compatiblePrices.length === 0) {
     return { 

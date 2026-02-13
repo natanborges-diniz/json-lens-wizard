@@ -110,6 +110,19 @@ function findStartingPrice(
   prices: Price[],
   prescription: Partial<Prescription>
 ): { price: number | null; compatiblePrices: Price[] } {
+  const clinicalType = (family as any).clinical_type || family.category;
+  
+  // Clinical defaults for when specs/availability is missing
+  const CLINICAL_DEFAULTS: Record<string, {
+    sphere: { min: number; max: number };
+    cylinder: { min: number; max: number };
+  }> = {
+    'MONOFOCAL': { sphere: { min: -10, max: 10 }, cylinder: { min: -6, max: 0 } },
+    'PROGRESSIVA': { sphere: { min: -8, max: 8 }, cylinder: { min: -4, max: 0 } },
+    'OCUPACIONAL': { sphere: { min: -8, max: 8 }, cylinder: { min: -4, max: 0 } },
+    'BIFOCAL': { sphere: { min: -8, max: 8 }, cylinder: { min: -3, max: 0 } },
+  };
+  
   // Filtrar preços da família
   const familyPrices = prices.filter(p => 
     p.family_id === family.id && 
@@ -124,11 +137,22 @@ function findStartingPrice(
   
   // Filtrar compatíveis com receita
   const compatible = familyPrices.filter(p => {
+    const existingAvailability = (p as any).availability;
     const specs = p.specs;
-    if (!specs) return true;
     
-    const sphereMax = specs.sphere_max ?? 20;
-    const cylinderMin = specs.cyl_min ?? -6;
+    let sphereMax: number, cylinderMin: number;
+    
+    if (existingAvailability?.sphere?.min != null && existingAvailability?.sphere?.max != null) {
+      sphereMax = Math.max(Math.abs(existingAvailability.sphere.min), Math.abs(existingAvailability.sphere.max));
+      cylinderMin = existingAvailability.cylinder?.min ?? -4;
+    } else if (specs && specs.sphere_min !== undefined && specs.sphere_max !== undefined) {
+      sphereMax = Math.max(Math.abs(specs.sphere_min), Math.abs(specs.sphere_max));
+      cylinderMin = specs.cyl_min ?? -4;
+    } else {
+      const defaults = CLINICAL_DEFAULTS[clinicalType || 'MONOFOCAL'] || CLINICAL_DEFAULTS['MONOFOCAL'];
+      sphereMax = Math.max(Math.abs(defaults.sphere.min), Math.abs(defaults.sphere.max));
+      cylinderMin = defaults.cylinder.min;
+    }
     
     const maxSphere = Math.max(
       Math.abs(prescription.rightSphere || 0),
@@ -139,7 +163,7 @@ function findStartingPrice(
       Math.abs(prescription.leftCylinder || 0)
     );
     
-    if (maxSphere > Math.abs(sphereMax)) return false;
+    if (maxSphere > sphereMax) return false;
     if (maxCylinder > Math.abs(cylinderMin)) return false;
     
     return true;
