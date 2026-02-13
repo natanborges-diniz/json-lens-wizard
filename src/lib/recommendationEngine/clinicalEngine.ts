@@ -112,6 +112,16 @@ function isPriceCompatible(price: Price, prescription: Partial<Prescription>, cl
     additionMax = defaults.addition?.max;
   }
   
+  // Fallback: if addition limits are missing but clinical type requires addition, use clinical defaults
+  if (additionMin == null || additionMax == null) {
+    const resolvedType = clinicalType || 'MONOFOCAL';
+    const defaults = CLINICAL_DEFAULTS[resolvedType];
+    if (defaults?.addition) {
+      additionMin = additionMin ?? defaults.addition.min;
+      additionMax = additionMax ?? defaults.addition.max;
+    }
+  }
+  
   // Validate sphere (highest absolute between OD and OE)
   const maxSphere = Math.max(
     Math.abs(prescription.rightSphere || 0),
