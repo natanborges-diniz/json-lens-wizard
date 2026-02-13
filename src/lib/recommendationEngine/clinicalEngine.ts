@@ -23,9 +23,9 @@ const CLINICAL_DEFAULTS: Record<string, {
   addition?: { min: number; max: number };
 }> = {
   'MONOFOCAL': { sphere: { min: -10, max: 10 }, cylinder: { min: -6, max: 0 } },
-  'PROGRESSIVA': { sphere: { min: -8, max: 8 }, cylinder: { min: -4, max: 0 }, addition: { min: 0.75, max: 3.50 } },
-  'OCUPACIONAL': { sphere: { min: -8, max: 8 }, cylinder: { min: -4, max: 0 }, addition: { min: 0.75, max: 2.50 } },
-  'BIFOCAL': { sphere: { min: -8, max: 8 }, cylinder: { min: -3, max: 0 }, addition: { min: 0.75, max: 3.50 } },
+  'PROGRESSIVA': { sphere: { min: -8, max: 8 }, cylinder: { min: -6, max: 0 }, addition: { min: 0.75, max: 3.50 } },
+  'OCUPACIONAL': { sphere: { min: -8, max: 8 }, cylinder: { min: -6, max: 0 }, addition: { min: 0.75, max: 2.50 } },
+  'BIFOCAL': { sphere: { min: -8, max: 8 }, cylinder: { min: -6, max: 0 }, addition: { min: 0.75, max: 3.50 } },
 };
 
 // ============================================
