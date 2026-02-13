@@ -54,6 +54,7 @@ import { CatalogRestoreDialog } from '@/components/audit/CatalogRestoreDialog';
 import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
 import { DataSourceDiagnostic } from '@/components/audit/DataSourceDiagnostic';
 import { RecommendationLogsTab } from '@/components/audit/RecommendationLogsTab';
+import { useClinicalIntegrityReport } from '@/hooks/useClinicalIntegrityReport';
 import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import { 
   runClassificationEngine, 
@@ -804,6 +805,9 @@ const CatalogAudit = () => {
     return { total, active, withPrices, totalPrices, activePrices };
   }, [localFamilies, prices, familiesWithPrices]);
 
+  // Clinical integrity report
+  const { report: clinicalReport } = useClinicalIntegrityReport();
+
   // Integrity issues
   const integrityIssues = useMemo(() => {
     const familiesWithoutPrices = familiesWithPrices.filter(f => f.activePriceCount === 0 && f.active);
@@ -811,14 +815,16 @@ const CatalogAudit = () => {
     const orphanedPrices = prices.filter(p => !familyIds.has(p.family_id));
     const macroIds = new Set(macros.map(m => m.id));
     const invalidMacros = localFamilies.filter(f => !macroIds.has(f.macro));
+    const clinicalProblems = clinicalReport?.problem_count || 0;
     
     return {
       familiesWithoutPrices,
       orphanedPrices,
       invalidMacros,
-      total: familiesWithoutPrices.length + orphanedPrices.length + invalidMacros.length
+      clinicalProblems,
+      total: familiesWithoutPrices.length + orphanedPrices.length + invalidMacros.length + clinicalProblems
     };
-  }, [familiesWithPrices, localFamilies, prices, macros]);
+  }, [familiesWithPrices, localFamilies, prices, macros, clinicalReport]);
 
   // Clinical type distribution summary
   const clinicalTypeSummary = useMemo(() => {
@@ -1058,9 +1064,18 @@ const CatalogAudit = () => {
             <TabsTrigger value="integrity" className="gap-1.5 text-xs py-1.5">
               <AlertTriangle className="w-3.5 h-3.5" />
               Integridade
-              {integrityIssues.total > 0 && (
+              {(integrityIssues.total - integrityIssues.clinicalProblems) > 0 && (
                 <Badge variant="destructive" className="ml-1 h-4 px-1 text-[10px]">
-                  {integrityIssues.total}
+                  {integrityIssues.total - integrityIssues.clinicalProblems}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="integrity-clinical" className="gap-1.5 text-xs py-1.5">
+              <Activity className="w-3.5 h-3.5" />
+              Integridade Clínica
+              {integrityIssues.clinicalProblems > 0 && (
+                <Badge variant="destructive" className="ml-1 h-4 px-1 text-[10px]">
+                  {integrityIssues.clinicalProblems}
                 </Badge>
               )}
             </TabsTrigger>
@@ -1340,40 +1355,13 @@ const CatalogAudit = () => {
                 <IntegrityExportButton integrityIssues={integrityIssues} />
               </div>
             </div>
-
-            {/* Clinical Type Distribution */}
-            <Card className="bg-card/50">
-              <CardHeader className="p-4 pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-primary" />
-                  Distribuição por Tipo Clínico
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 pt-2">
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  {clinicalTypeSummary.map(item => (
-                    <div key={item.type} className={`p-3 rounded-lg border ${
-                      item.total === 0 ? 'border-warning/30 bg-warning/5' : 'border-border bg-muted/30'
-                    }`}>
-                      <p className="text-xs font-semibold text-foreground">{item.type}</p>
-                      <p className="text-lg font-bold">{item.total}</p>
-                      <div className="flex gap-2 text-[10px] text-muted-foreground">
-                        <span>{item.active} ativas</span>
-                        <span>•</span>
-                        <span>{item.withPrices} c/ preço</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
             
-            {integrityIssues.total === 0 ? (
+            {(integrityIssues.familiesWithoutPrices.length + integrityIssues.orphanedPrices.length + integrityIssues.invalidMacros.length) === 0 ? (
               <Card className="bg-success/5 border-success/30">
                 <CardContent className="p-6 text-center">
                   <CheckCircle className="w-12 h-12 text-success mx-auto mb-4" />
-                  <p className="font-medium text-success">Catálogo íntegro</p>
-                  <p className="text-sm text-muted-foreground mt-1">Nenhum problema encontrado</p>
+                  <p className="font-medium text-success">Estrutura íntegra</p>
+                  <p className="text-sm text-muted-foreground mt-1">Sem famílias órfãs, macros inválidos ou preços sem família</p>
                 </CardContent>
               </Card>
             ) : (
@@ -1435,6 +1423,196 @@ const CatalogAudit = () => {
                       <p className="text-xs text-muted-foreground">
                         SKUs com family_id que não existe no catálogo
                       </p>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
+          </TabsContent>
+
+          {/* Clinical Integrity Tab */}
+          <TabsContent value="integrity-clinical" className="mt-0 space-y-4">
+            {!clinicalReport ? (
+              <Card className="bg-card/50">
+                <CardContent className="p-6 text-center">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">Carregando análise clínica...</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <Card className="bg-success/5 border-success/30">
+                    <CardContent className="p-3 text-center">
+                      <p className="text-2xl font-bold text-success">{clinicalReport.classifications.COMPLETO}</p>
+                      <p className="text-xs text-muted-foreground">COMPLETO</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {clinicalReport.total_skus > 0 ? ((clinicalReport.classifications.COMPLETO / clinicalReport.total_skus) * 100).toFixed(1) : 0}%
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-info/5 border-info/30">
+                    <CardContent className="p-3 text-center">
+                      <p className="text-2xl font-bold text-info">{clinicalReport.classifications.LEGACY}</p>
+                      <p className="text-xs text-muted-foreground">LEGACY</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {clinicalReport.total_skus > 0 ? ((clinicalReport.classifications.LEGACY / clinicalReport.total_skus) * 100).toFixed(1) : 0}%
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-warning/5 border-warning/30">
+                    <CardContent className="p-3 text-center">
+                      <p className="text-2xl font-bold text-warning">{clinicalReport.classifications.PARCIAL}</p>
+                      <p className="text-xs text-muted-foreground">PARCIAL</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {clinicalReport.total_skus > 0 ? ((clinicalReport.classifications.PARCIAL / clinicalReport.total_skus) * 100).toFixed(1) : 0}%
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-destructive/5 border-destructive/30">
+                    <CardContent className="p-3 text-center">
+                      <p className="text-2xl font-bold text-destructive">{clinicalReport.classifications.DEFAULTED}</p>
+                      <p className="text-xs text-muted-foreground">DEFAULTED</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {clinicalReport.total_skus > 0 ? ((clinicalReport.classifications.DEFAULTED / clinicalReport.total_skus) * 100).toFixed(1) : 0}%
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {clinicalReport.problem_count > 0 && (
+                  <Card className="border-warning/30 bg-warning/5">
+                    <CardContent className="p-4 flex items-center gap-3">
+                      <AlertTriangle className="w-5 h-5 text-warning shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-warning">
+                          {clinicalReport.problem_count} SKUs com especificações clínicas incompletas
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Estes SKUs operam com Safe Defaults — faixas genéricas por tipo clínico, não dados reais do fornecedor.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Clinical Type Distribution */}
+                <Card className="bg-card/50">
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-primary" />
+                      Distribuição por Tipo Clínico
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-2">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {Object.entries(clinicalReport.by_clinical_type).map(([type, metric]) => (
+                        <div key={type} className="p-3 rounded-lg border border-border bg-muted/30">
+                          <p className="text-xs font-semibold text-foreground">{type}</p>
+                          <p className="text-lg font-bold">{metric.total} SKUs</p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {metric.classifications.COMPLETO > 0 && <Badge variant="outline" className="text-[9px] bg-success/10 text-success border-success/30">{metric.classifications.COMPLETO} OK</Badge>}
+                            {metric.classifications.LEGACY > 0 && <Badge variant="outline" className="text-[9px] bg-info/10 text-info border-info/30">{metric.classifications.LEGACY} Legacy</Badge>}
+                            {metric.classifications.PARCIAL > 0 && <Badge variant="outline" className="text-[9px] bg-warning/10 text-warning border-warning/30">{metric.classifications.PARCIAL} Parcial</Badge>}
+                            {metric.classifications.DEFAULTED > 0 && <Badge variant="outline" className="text-[9px] bg-destructive/10 text-destructive border-destructive/30">{metric.classifications.DEFAULTED} Default</Badge>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* By Supplier */}
+                <Card className="bg-card/50">
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Building className="w-4 h-4 text-primary" />
+                      Breakdown por Fornecedor
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-2">
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {Object.entries(clinicalReport.by_supplier)
+                        .sort(([, a], [, b]) => (b.classifications.DEFAULTED + b.classifications.PARCIAL) - (a.classifications.DEFAULTED + a.classifications.PARCIAL))
+                        .map(([supplier, metric]) => {
+                          const problemPct = metric.total > 0 ? (((metric.classifications.DEFAULTED + metric.classifications.PARCIAL) / metric.total) * 100).toFixed(0) : '0';
+                          return (
+                            <div key={supplier} className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">{supplier}</span>
+                                <span className="text-xs text-muted-foreground">({metric.total} SKUs)</span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {metric.classifications.COMPLETO > 0 && <Badge variant="outline" className="text-[9px] bg-success/10 text-success border-success/30">{metric.classifications.COMPLETO}</Badge>}
+                                {metric.classifications.LEGACY > 0 && <Badge variant="outline" className="text-[9px] bg-info/10 text-info border-info/30">{metric.classifications.LEGACY}</Badge>}
+                                {metric.classifications.PARCIAL > 0 && <Badge variant="outline" className="text-[9px] bg-warning/10 text-warning border-warning/30">{metric.classifications.PARCIAL} P</Badge>}
+                                {metric.classifications.DEFAULTED > 0 && <Badge variant="outline" className="text-[9px] bg-destructive/10 text-destructive border-destructive/30">{metric.classifications.DEFAULTED} D</Badge>}
+                                {Number(problemPct) > 0 && <span className="text-[10px] text-destructive font-medium">{problemPct}%</span>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Top 20 Families Most Affected */}
+                {clinicalReport.families_most_affected.length > 0 && (
+                  <Card className="bg-card/50">
+                    <CardHeader className="p-4 pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Package className="w-4 h-4 text-warning" />
+                        Top {clinicalReport.families_most_affected.length} Famílias Mais Afetadas
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-2">
+                      <div className="space-y-1 max-h-80 overflow-y-auto">
+                        {clinicalReport.families_most_affected.map((entry, idx) => (
+                          <div key={entry.family_id} className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-xs text-muted-foreground w-5 shrink-0">{idx + 1}.</span>
+                              <span className="text-sm truncate">{entry.family_name}</span>
+                              <Badge variant="outline" className="text-[9px] shrink-0">{entry.supplier}</Badge>
+                              <Badge variant="outline" className="text-[9px] shrink-0">{entry.clinical_type}</Badge>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {entry.defaulted_count > 0 && <Badge variant="outline" className="text-[9px] bg-destructive/10 text-destructive border-destructive/30">{entry.defaulted_count} D</Badge>}
+                              {entry.partial_count > 0 && <Badge variant="outline" className="text-[9px] bg-warning/10 text-warning border-warning/30">{entry.partial_count} P</Badge>}
+                              <span className="text-[10px] text-muted-foreground">/ {entry.total_skus}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Top Suppliers Most Affected */}
+                {clinicalReport.suppliers_most_affected.length > 0 && (
+                  <Card className="bg-card/50">
+                    <CardHeader className="p-4 pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Building className="w-4 h-4 text-warning" />
+                        Top {clinicalReport.suppliers_most_affected.length} Fornecedores Mais Afetados
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-2">
+                      <div className="space-y-1">
+                        {clinicalReport.suppliers_most_affected.map((entry, idx) => (
+                          <div key={entry.supplier} className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground w-5">{idx + 1}.</span>
+                              <span className="text-sm font-medium">{entry.supplier}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {entry.defaulted_count > 0 && <Badge variant="outline" className="text-[9px] bg-destructive/10 text-destructive border-destructive/30">{entry.defaulted_count} Defaulted</Badge>}
+                              {entry.partial_count > 0 && <Badge variant="outline" className="text-[9px] bg-warning/10 text-warning border-warning/30">{entry.partial_count} Parcial</Badge>}
+                              <span className="text-[10px] text-muted-foreground">/ {entry.total_skus} total</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </CardContent>
                   </Card>
                 )}
