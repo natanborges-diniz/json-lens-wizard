@@ -102,14 +102,8 @@ function isPriceCompatible(price: Price, prescription: Partial<Prescription>, cl
     additionMin = specs.add_min;
     additionMax = specs.add_max;
   } else {
-    // No real data — use realistic clinical defaults (NOT ultra-wide safe defaults)
-    const defaults = CLINICAL_DEFAULTS[clinicalType || 'MONOFOCAL'] || CLINICAL_DEFAULTS['MONOFOCAL'];
-    sphereMin = defaults.sphere.min;
-    sphereMax = defaults.sphere.max;
-    cylinderMin = defaults.cylinder.min;
-    cylinderMax = defaults.cylinder.max;
-    additionMin = defaults.addition?.min;
-    additionMax = defaults.addition?.max;
+    // No real data — SKU cannot be validated, reject it
+    return false;
   }
   
   // Fallback: if addition limits are missing but clinical type requires addition, use clinical defaults
