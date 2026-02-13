@@ -61,7 +61,7 @@ export interface ClinicalIntegrityReport {
 /**
  * Classify a single SKU based on its availability/specs data
  */
-function classifySKU(
+export function classifySKU(
   price: Price,
   family: FamilyExtended | undefined
 ): SKUIntegrityMetric {
