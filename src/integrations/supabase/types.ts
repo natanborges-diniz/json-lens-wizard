@@ -171,6 +171,7 @@ export type Database = {
         Row: {
           address: string | null
           budget_terms: string | null
+          clinical_eligibility_mode: string
           cnpj: string | null
           company_name: string
           created_at: string
@@ -189,6 +190,7 @@ export type Database = {
         Insert: {
           address?: string | null
           budget_terms?: string | null
+          clinical_eligibility_mode?: string
           cnpj?: string | null
           company_name?: string
           created_at?: string
@@ -207,6 +209,7 @@ export type Database = {
         Update: {
           address?: string | null
           budget_terms?: string | null
+          clinical_eligibility_mode?: string
           cnpj?: string | null
           company_name?: string
           created_at?: string

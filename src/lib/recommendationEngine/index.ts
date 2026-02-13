@@ -12,7 +12,7 @@
  * final_score = (clinical_score * 0.60) + (commercial_score * 0.40)
  */
 
-import type { ClinicalType, Technology } from '@/types/lens';
+import type { ClinicalType, Technology, FamilyExtended } from '@/types/lens';
 import type { 
   RecommendationInput, 
   RecommendationResult,
@@ -20,6 +20,7 @@ import type {
   ScoredFamily,
   TierRecommendation,
 } from './types';
+import { classifySKU } from '@/lib/catalogIntegrityAnalyzer';
 
 // Re-export types
 export * from './types';
@@ -194,6 +195,24 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
       !input.filters!.excludeFamilyIds!.includes(f.id)
     );
   }
+
+  // 2.5. STRICT MODE: Pre-filter prices to exclude DEFAULTED/PARCIAL SKUs
+  let effectivePrices = input.prices;
+  if (input.clinicalEligibilityMode === 'strict') {
+    const familiesMap = new Map<string, FamilyExtended>();
+    filteredFamilies.forEach(f => familiesMap.set(f.id, f));
+    
+    effectivePrices = input.prices.filter(p => {
+      const metric = classifySKU(p, familiesMap.get(p.family_id));
+      // COMPLETO: always eligible
+      // LEGACY: eligible (has real specs)
+      // PARCIAL: ineligible in strict mode
+      // DEFAULTED: ineligible in strict mode
+      return metric.classification === 'COMPLETO' || metric.classification === 'LEGACY';
+    });
+    
+    console.log(`[RecommendationEngine] STRICT mode: ${input.prices.length} → ${effectivePrices.length} SKUs after clinical integrity filter`);
+  }
   
   // 2. Converter technology library para formato esperado
   const techLib: Record<string, Technology> = {};
@@ -206,7 +225,7 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
   // 3. Calcular scores para todas as famílias (com macros reais do catálogo)
   const scoredFamilies = scoreAndRankFamilies(
     filteredFamilies,
-    input.prices,
+    effectivePrices,
     input.anamnesis,
     input.prescription,
     techLib,
@@ -252,6 +271,12 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
       ? eligibleFamilies.reduce((sum, sf) => sum + sf.score.final, 0) / eligibleFamilies.length
       : 0,
   };
+
+  // 7.5 Check strict mode block
+  const isStrictBlocked = input.clinicalEligibilityMode === 'strict' && eligibleFamilies.length === 0 && filteredFamilies.length > 0;
+  if (isStrictBlocked) {
+    console.warn(`[RecommendationEngine] STRICT MODE BLOCK: ${filteredFamilies.length} families analyzed, 0 eligible after clinical integrity filter`);
+  }
   
   // 8. Gerar ID de auditoria
   const auditId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -272,6 +297,8 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
     stats,
     timestamp: Date.now(),
     auditId: auditLog.auditId,
+    strictModeBlocked: isStrictBlocked,
+    strictModeBlockReason: isStrictBlocked ? 'Sem opções compatíveis com a receita — todos os SKUs elegíveis dependem de Safe Defaults (modo estrito ativo)' : undefined,
   };
 }
 

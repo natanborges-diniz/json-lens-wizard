@@ -199,6 +199,10 @@ export interface RecommendationResult {
   
   /** ID único para auditoria */
   auditId: string;
+
+  /** Blocked by strict clinical eligibility mode (no eligible SKUs) */
+  strictModeBlocked?: boolean;
+  strictModeBlockReason?: string;
 }
 
 // ============================================
@@ -240,6 +244,9 @@ export interface RecommendationInput {
     minPrice?: number;
     maxPrice?: number;
   };
+
+  /** Modo de elegibilidade clínica: permissive (default) ou strict */
+  clinicalEligibilityMode?: 'permissive' | 'strict';
 }
 
 // ============================================

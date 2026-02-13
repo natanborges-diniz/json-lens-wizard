@@ -76,18 +76,22 @@ export function useRecommendationEngine({
   filters,
 }: UseRecommendationEngineProps): UseRecommendationEngineResult {
   
-  // Load supplier priorities from company settings
+  // Load supplier priorities and clinical eligibility mode from company settings
   const [supplierPriorities, setSupplierPriorities] = useState<string[]>([]);
+  const [clinicalEligibilityMode, setClinicalEligibilityMode] = useState<'permissive' | 'strict'>('permissive');
   
   useEffect(() => {
     supabase
       .from('company_settings')
-      .select('supplier_priorities')
+      .select('supplier_priorities, clinical_eligibility_mode')
       .limit(1)
       .maybeSingle()
       .then(({ data }) => {
         if (data?.supplier_priorities && Array.isArray(data.supplier_priorities)) {
           setSupplierPriorities(data.supplier_priorities as string[]);
+        }
+        if ((data as any)?.clinical_eligibility_mode) {
+          setClinicalEligibilityMode((data as any).clinical_eligibility_mode as 'permissive' | 'strict');
         }
       });
   }, []);
@@ -135,6 +139,7 @@ export function useRecommendationEngine({
       filters: filters,
       supplierPriorities,
       macros: lensData.macros?.map(m => ({ id: m.id, tier_key: m.tier_key, category: m.category })),
+      clinicalEligibilityMode,
     };
 
     // Generate recommendations
@@ -176,7 +181,7 @@ export function useRecommendationEngine({
       topRecommendationId: result.topRecommendation?.family.id || null,
       isReady: true,
     };
-  }, [lensData, lensCategory, effectiveAnamnesis, effectivePrescription, filters, supplierPriorities]);
+  }, [lensData, lensCategory, effectiveAnamnesis, effectivePrescription, filters, supplierPriorities, clinicalEligibilityMode]);
 
   const stats = engineResult?.stats || {
     totalFamiliesAnalyzed: 0,

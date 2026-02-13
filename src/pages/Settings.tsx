@@ -10,13 +10,15 @@ import {
   Phone,
   Mail,
   MapPin,
-  Store
+  Store,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -38,6 +40,7 @@ interface CompanySettings {
   footer_text: string | null;
   budget_terms: string | null;
   supplier_priorities: string[] | null;
+  clinical_eligibility_mode: 'permissive' | 'strict';
 }
 
 const Settings = () => {
@@ -75,6 +78,7 @@ const Settings = () => {
             supplier_priorities: Array.isArray(data.supplier_priorities) 
               ? (data.supplier_priorities as string[]) 
               : [],
+            clinical_eligibility_mode: ((data as any).clinical_eligibility_mode || 'permissive') as 'permissive' | 'strict',
           });
         }
       } catch (error) {
@@ -95,9 +99,7 @@ const Settings = () => {
     
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from('company_settings')
-        .update({
+      const updatePayload: Record<string, any> = {
           company_name: settings.company_name,
           logo_url: settings.logo_url,
           address: settings.address,
@@ -111,7 +113,11 @@ const Settings = () => {
           footer_text: settings.footer_text,
           budget_terms: settings.budget_terms,
           supplier_priorities: settings.supplier_priorities,
-        })
+          clinical_eligibility_mode: settings.clinical_eligibility_mode,
+        };
+      const { error } = await supabase
+        .from('company_settings')
+        .update(updatePayload)
         .eq('id', settings.id);
 
       if (error) throw error;
@@ -340,6 +346,41 @@ const Settings = () => {
             savedPriorities={settings.supplier_priorities || []}
             onChange={(priorities) => updateField('supplier_priorities' as keyof CompanySettings, priorities as any)}
           />
+
+          {/* Clinical Eligibility Mode */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5" />
+                Elegibilidade Clínica
+              </CardTitle>
+              <CardDescription>
+                Controla se SKUs sem especificações técnicas reais (Safe Defaults) podem ser recomendados
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="clinical_eligibility_mode">Modo de Elegibilidade</Label>
+                <Select
+                  value={settings.clinical_eligibility_mode}
+                  onValueChange={(value) => updateField('clinical_eligibility_mode', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="permissive">Permissivo — Todos os SKUs elegíveis (Safe Defaults aceitos)</SelectItem>
+                    <SelectItem value="strict">Estrito — Apenas SKUs com specs reais do fornecedor</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {settings.clinical_eligibility_mode === 'strict' 
+                    ? '⚠️ Modo estrito ativo: SKUs classificados como DEFAULTED ou PARCIAL serão excluídos das recomendações. Isso pode reduzir significativamente as opções disponíveis.'
+                    : 'Modo permissivo: todos os SKUs são elegíveis, mesmo os que usam Safe Defaults para grades técnicas.'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Budget Settings */}
           <Card>
