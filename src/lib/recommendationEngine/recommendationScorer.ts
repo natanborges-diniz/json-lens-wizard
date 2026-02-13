@@ -112,17 +112,6 @@ function findStartingPrice(
 ): { price: number | null; compatiblePrices: Price[] } {
   const clinicalType = (family as any).clinical_type || family.category;
   
-  // Clinical defaults for when specs/availability is missing
-  const CLINICAL_DEFAULTS: Record<string, {
-    sphere: { min: number; max: number };
-    cylinder: { min: number; max: number };
-  }> = {
-    'MONOFOCAL': { sphere: { min: -10, max: 10 }, cylinder: { min: -6, max: 0 } },
-    'PROGRESSIVA': { sphere: { min: -8, max: 8 }, cylinder: { min: -4, max: 0 } },
-    'OCUPACIONAL': { sphere: { min: -8, max: 8 }, cylinder: { min: -4, max: 0 } },
-    'BIFOCAL': { sphere: { min: -8, max: 8 }, cylinder: { min: -3, max: 0 } },
-  };
-  
   // Filtrar preços da família
   const familyPrices = prices.filter(p => 
     p.family_id === family.id && 
@@ -149,9 +138,8 @@ function findStartingPrice(
       sphereMax = Math.max(Math.abs(specs.sphere_min), Math.abs(specs.sphere_max));
       cylinderMin = specs.cyl_min ?? -4;
     } else {
-      const defaults = CLINICAL_DEFAULTS[clinicalType || 'MONOFOCAL'] || CLINICAL_DEFAULTS['MONOFOCAL'];
-      sphereMax = Math.max(Math.abs(defaults.sphere.min), Math.abs(defaults.sphere.max));
-      cylinderMin = defaults.cylinder.min;
+      // No real data — SKU cannot be validated, reject it
+      return false;
     }
     
     const maxSphere = Math.max(
