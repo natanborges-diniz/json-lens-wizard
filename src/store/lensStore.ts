@@ -117,7 +117,7 @@ interface LensState {
   emitCatalogEvent: (eventType: CatalogEvent['type']) => void;
   
   // Cloud persistence
-  saveCatalogToCloud: () => Promise<boolean>;
+  saveCatalogToCloud: (options?: { skipGradeGate?: boolean }) => Promise<boolean>;
   loadCatalogFromCloud: () => Promise<boolean>;
 }
 
@@ -581,11 +581,33 @@ export const useLensStore = create<LensState>()(
       },
       
       // Cloud persistence functions
-      saveCatalogToCloud: async () => {
+      saveCatalogToCloud: async (options?: { skipGradeGate?: boolean }) => {
         const state = get();
         set({ isSavingToCloud: true, syncStatus: 'syncing' as SyncStatus });
         
         try {
+          // ─── Publication Gate: check for variants missing grades ───
+          if (!options?.skipGradeGate) {
+            try {
+              const { data: fnData, error: fnError } = await supabase.functions.invoke('catalog-grade-matrix/missing');
+              if (!fnError && fnData && fnData.total_missing > 0) {
+                const report = (fnData.missing || []).slice(0, 20).map((m: any) => 
+                  `${m.family_name} (${m.index}|${m.lens_state}) - ${m.sku_count} SKUs`
+                ).join('\n');
+                const errorMsg = `Publicação bloqueada: ${fnData.total_missing} variante(s) sem grade técnica.\n\n${report}${fnData.total_missing > 20 ? `\n...e mais ${fnData.total_missing - 20}` : ''}`;
+                console.warn('[LensStore] Publication gate blocked:', fnData.total_missing, 'variants missing grades');
+                set({ 
+                  isSavingToCloud: false, 
+                  syncStatus: 'error' as SyncStatus, 
+                  lastSyncError: errorMsg 
+                });
+                return false;
+              }
+            } catch (gateErr) {
+              // If grade-matrix function is unavailable, log warning but don't block
+              console.warn('[LensStore] Grade gate check failed (non-blocking):', gateErr);
+            }
+          }
           // Build catalog data from current state
           const catalogData: LensData = {
             meta: {
