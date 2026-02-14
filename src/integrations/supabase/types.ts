@@ -113,6 +113,63 @@ export type Database = {
           },
         ]
       }
+      catalog_variant_grades: {
+        Row: {
+          addition_max: number | null
+          addition_min: number | null
+          company_id: string
+          created_at: string
+          created_by: string | null
+          cylinder_max: number | null
+          cylinder_min: number | null
+          diameters_mm: number[] | null
+          family_id: string
+          id: string
+          index: string
+          lens_state: string
+          notes: string | null
+          sphere_max: number | null
+          sphere_min: number | null
+          updated_at: string
+        }
+        Insert: {
+          addition_max?: number | null
+          addition_min?: number | null
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          cylinder_max?: number | null
+          cylinder_min?: number | null
+          diameters_mm?: number[] | null
+          family_id: string
+          id?: string
+          index: string
+          lens_state?: string
+          notes?: string | null
+          sphere_max?: number | null
+          sphere_min?: number | null
+          updated_at?: string
+        }
+        Update: {
+          addition_max?: number | null
+          addition_min?: number | null
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          cylinder_max?: number | null
+          cylinder_min?: number | null
+          diameters_mm?: number[] | null
+          family_id?: string
+          id?: string
+          index?: string
+          lens_state?: string
+          notes?: string | null
+          sphere_max?: number | null
+          sphere_min?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       catalog_versions: {
         Row: {
           addons_count: number | null
