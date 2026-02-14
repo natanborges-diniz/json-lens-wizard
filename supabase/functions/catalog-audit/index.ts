@@ -176,6 +176,42 @@ function validateEligibility(
   return 'eligible';
 }
 
+// ─── Missing Fields Analyzer ───────────────────────────────────────
+
+interface MissingFieldsBreakdown {
+  sphere_missing: boolean;
+  cylinder_missing: boolean;
+  addition_missing: boolean;
+  diameter_missing: boolean;
+  index_missing: boolean;
+}
+
+function analyzeMissingFields(price: any): MissingFieldsBreakdown {
+  const avail = price.availability;
+  const specs = price.specs;
+
+  const hasSphere = (avail?.sphere?.min != null && avail?.sphere?.max != null) ||
+    (specs?.sphere_min !== undefined && specs?.sphere_max !== undefined);
+
+  const hasCylinder = (avail?.cylinder?.min != null && avail?.cylinder?.max != null) ||
+    (specs?.cyl_min !== undefined && specs?.cyl_max !== undefined);
+
+  const hasAddition = (avail?.addition?.min != null && avail?.addition?.max != null) ||
+    (specs?.add_min !== undefined && specs?.add_max !== undefined);
+
+  const hasDiameter = (Array.isArray(avail?.diameters_mm) && avail.diameters_mm.length > 0);
+
+  const hasIndex = (avail?.index != null) || (price.index != null);
+
+  return {
+    sphere_missing: !hasSphere,
+    cylinder_missing: !hasCylinder,
+    addition_missing: !hasAddition,
+    diameter_missing: !hasDiameter,
+    index_missing: !hasIndex,
+  };
+}
+
 // ─── Coverage Mode Handler ─────────────────────────────────────────
 
 function runCoverageMode(catalog: any, filterClinicalType?: string) {
@@ -198,6 +234,13 @@ function runCoverageMode(catalog: any, filterClinicalType?: string) {
   const eligibleRateByType: Record<string, string> = {};
   let totalScenariosCount = 0;
 
+  // Accumulators for no_technical_data aggregations
+  const supplierNoTechCount = new Map<string, number>();
+  const supplierTotalCount = new Map<string, number>();
+  const familyNoTechCount = new Map<string, number>();
+  const familyTotalCount = new Map<string, number>();
+  const familyMissingFields = new Map<string, { sphere: number; cylinder: number; addition: number; diameter: number; index: number; total: number }>();
+
   for (const clinicalType of typesToRun) {
     const scenarios = generateSyntheticScenarios(clinicalType);
     if (scenarios.length === 0) continue;
@@ -208,6 +251,35 @@ function runCoverageMode(catalog: any, filterClinicalType?: string) {
       const pType = (p.clinical_type || fam?.clinical_type || fam?.category || 'MONOFOCAL').toUpperCase();
       return pType === clinicalType;
     });
+
+    // Collect no_technical_data stats (once per clinical_type, not per scenario)
+    for (const price of typePrices) {
+      const fam = familyMap.get(price.family_id);
+      const supplier = fam?.supplier || price.supplier || 'UNKNOWN';
+      const familyId = price.family_id || 'UNKNOWN';
+
+      supplierTotalCount.set(supplier, (supplierTotalCount.get(supplier) || 0) + 1);
+      familyTotalCount.set(familyId, (familyTotalCount.get(familyId) || 0) + 1);
+
+      const limits = resolveTechnicalLimits(price);
+      if (!limits) {
+        supplierNoTechCount.set(supplier, (supplierNoTechCount.get(supplier) || 0) + 1);
+        familyNoTechCount.set(familyId, (familyNoTechCount.get(familyId) || 0) + 1);
+
+        // Analyze which fields are missing
+        const missing = analyzeMissingFields(price);
+        if (!familyMissingFields.has(familyId)) {
+          familyMissingFields.set(familyId, { sphere: 0, cylinder: 0, addition: 0, diameter: 0, index: 0, total: 0 });
+        }
+        const acc = familyMissingFields.get(familyId)!;
+        acc.total++;
+        if (missing.sphere_missing) acc.sphere++;
+        if (missing.cylinder_missing) acc.cylinder++;
+        if (missing.addition_missing) acc.addition++;
+        if (missing.diameter_missing) acc.diameter++;
+        if (missing.index_missing) acc.index++;
+      }
+    }
 
     const scenarioResults: Record<string, any> = {};
     let typeEligibleTotal = 0;
@@ -300,6 +372,38 @@ function runCoverageMode(catalog: any, filterClinicalType?: string) {
     main_blocker: s.main_blocker,
   }));
 
+  // Build top_suppliers_by_no_technical_data
+  const totalAllPrices = Array.from(supplierTotalCount.values()).reduce((a, b) => a + b, 0) || 1;
+  const topSuppliers = Array.from(supplierNoTechCount.entries())
+    .map(([supplier, count]) => ({
+      supplier,
+      count,
+      pct: `${((count / (supplierTotalCount.get(supplier) || 1)) * 100).toFixed(1)}%`,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  // Build top_families_by_no_technical_data with missing fields breakdown
+  const topFamilies = Array.from(familyNoTechCount.entries())
+    .map(([family_id, count]) => {
+      const fam = familyMap.get(family_id);
+      const mf = familyMissingFields.get(family_id);
+      return {
+        family_id,
+        family_name: fam?.name_original || family_id,
+        supplier: fam?.supplier || 'UNKNOWN',
+        count,
+        pct: `${((count / (familyTotalCount.get(family_id) || 1)) * 100).toFixed(1)}%`,
+        missing_fields: mf ? {
+          sphere_missing: mf.sphere,
+          cylinder_missing: mf.cylinder,
+          addition_missing: mf.addition,
+          diameter_missing: mf.diameter,
+          index_missing: mf.index,
+        } : undefined,
+      };
+    })
+    .sort((a, b) => b.count - a.count);
+
   return {
     mode: 'coverage',
     meta: {
@@ -312,6 +416,8 @@ function runCoverageMode(catalog: any, filterClinicalType?: string) {
     summary: {
       worst_scenarios: worstScenarios,
       total_eligible_rate_by_type: eligibleRateByType,
+      top_suppliers_by_no_technical_data: topSuppliers,
+      top_families_by_no_technical_data: topFamilies,
     },
   };
 }
