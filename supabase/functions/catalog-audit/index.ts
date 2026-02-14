@@ -422,6 +422,175 @@ function runCoverageMode(catalog: any, filterClinicalType?: string) {
   };
 }
 
+// ─── Variants Mode Handler ─────────────────────────────────────────
+
+function extractIndex(price: any): string {
+  // Build text blob from available text fields
+  const parts: string[] = [];
+  if (price.display_name) parts.push(price.display_name);
+  if (price.name) parts.push(price.name);
+  if (price.description) parts.push(price.description);
+  const textBlob = parts.join(' ');
+
+  // Regex on text blob
+  const matches = textBlob.match(/\b1\.\d{2}\b/g);
+  if (matches && matches.length > 0) {
+    return matches[0]; // first match
+  }
+
+  // Fallback to structured fields
+  if (price.index) return String(price.index);
+  if (price.index_value) return String(price.index_value);
+  if (price.availability?.index) return String(price.availability.index);
+
+  return 'unknown';
+}
+
+const PHOTO_KEYWORDS = /transitions|photofusion|sensity|xtractive|fotossens|fotocrom/i;
+
+function classifyLensState(price: any): 'clear' | 'photo' {
+  // Check text blob
+  const parts: string[] = [];
+  if (price.display_name) parts.push(price.display_name);
+  if (price.name) parts.push(price.name);
+  if (price.description) parts.push(price.description);
+  const textBlob = parts.join(' ');
+  if (PHOTO_KEYWORDS.test(textBlob)) return 'photo';
+
+  // Check addons_detected[]
+  if (Array.isArray(price.addons_detected)) {
+    for (const addon of price.addons_detected) {
+      const val = typeof addon === 'string' ? addon : (addon?.id || addon?.name || '');
+      if (PHOTO_KEYWORDS.test(val)) return 'photo';
+    }
+  }
+
+  // Check technology_refs[]
+  if (Array.isArray(price.technology_refs)) {
+    for (const ref of price.technology_refs) {
+      const val = typeof ref === 'string' ? ref : (ref?.id || ref?.name || '');
+      if (PHOTO_KEYWORDS.test(val)) return 'photo';
+    }
+  }
+
+  return 'clear';
+}
+
+function runVariantsMode(catalog: any) {
+  const families = catalog.families || [];
+  const prices = catalog.prices || [];
+
+  const familyMap = new Map<string, any>();
+  for (const f of families) familyMap.set(f.id, f);
+
+  // Group prices by family_id
+  const familyPricesMap = new Map<string, any[]>();
+  for (const p of prices) {
+    const fid = p.family_id || 'UNKNOWN';
+    if (!familyPricesMap.has(fid)) familyPricesMap.set(fid, []);
+    familyPricesMap.get(fid)!.push(p);
+  }
+
+  let totalVariants = 0;
+  let variantsWithData = 0;
+  let variantsWithoutData = 0;
+  const supplierAgg = new Map<string, { total: number; needing: number }>();
+
+  const familiesResult: any[] = [];
+
+  for (const [familyId, familyPrices] of familyPricesMap) {
+    const fam = familyMap.get(familyId);
+    const supplier = fam?.supplier || 'UNKNOWN';
+    const clinicalType = (fam?.clinical_type || fam?.category || 'MONOFOCAL').toUpperCase();
+    const familyName = fam?.name_original || familyId;
+
+    // Build variant map
+    const variantMap = new Map<string, { skuCount: number; hasTech: boolean }>();
+    const indexSet = new Set<string>();
+    const stateCount: Record<string, number> = { clear: 0, photo: 0 };
+
+    for (const price of familyPrices) {
+      const idx = extractIndex(price);
+      const state = classifyLensState(price);
+      const key = `${idx}|${state}`;
+
+      indexSet.add(idx);
+      stateCount[state] = (stateCount[state] || 0) + 1;
+
+      if (!variantMap.has(key)) {
+        variantMap.set(key, { skuCount: 0, hasTech: false });
+      }
+      const v = variantMap.get(key)!;
+      v.skuCount++;
+      if (!v.hasTech && resolveTechnicalLimits(price) !== null) {
+        v.hasTech = true;
+      }
+    }
+
+    const variants: any[] = [];
+    const needingGrading: string[] = [];
+
+    for (const [key, data] of variantMap) {
+      const [idx, state] = key.split('|');
+      variants.push({ index: idx, state, sku_count: data.skuCount, has_technical_data: data.hasTech });
+      totalVariants++;
+      if (data.hasTech) {
+        variantsWithData++;
+      } else {
+        variantsWithoutData++;
+        needingGrading.push(key);
+      }
+    }
+
+    // Supplier aggregation
+    if (!supplierAgg.has(supplier)) supplierAgg.set(supplier, { total: 0, needing: 0 });
+    const sa = supplierAgg.get(supplier)!;
+    sa.total += variants.length;
+    sa.needing += needingGrading.length;
+
+    familiesResult.push({
+      family_id: familyId,
+      family_name: familyName,
+      supplier,
+      clinical_type: clinicalType,
+      total_skus: familyPrices.length,
+      indexes_found: Array.from(indexSet).sort(),
+      by_lens_state: stateCount,
+      variants,
+      variants_needing_grading: needingGrading,
+    });
+  }
+
+  // Sort families by variants_needing_grading count desc
+  familiesResult.sort((a, b) => b.variants_needing_grading.length - a.variants_needing_grading.length);
+
+  const bySupplier = Array.from(supplierAgg.entries())
+    .map(([supplier, d]) => ({
+      supplier,
+      total_variants: d.total,
+      variants_needing_grading: d.needing,
+      pct_needing_grading: `${d.total > 0 ? ((d.needing / d.total) * 100).toFixed(1) : '0.0'}%`,
+    }))
+    .sort((a, b) => b.variants_needing_grading - a.variants_needing_grading);
+
+  return {
+    mode: 'variants',
+    meta: {
+      total_skus: prices.length,
+      total_families: familiesResult.length,
+      generated_at: new Date().toISOString(),
+    },
+    families: familiesResult,
+    summary: {
+      total_variants: totalVariants,
+      variants_with_data: variantsWithData,
+      variants_without_data: variantsWithoutData,
+      pct_with_data: `${totalVariants > 0 ? ((variantsWithData / totalVariants) * 100).toFixed(1) : '0.0'}%`,
+      by_supplier: bySupplier,
+    },
+  };
+}
+
 // ─── Main Handler ──────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -453,6 +622,14 @@ serve(async (req) => {
     if (mode === 'coverage') {
       const filterType = url.searchParams.get('clinical_type') || undefined;
       const result = runCoverageMode(catalog, filterType);
+      return new Response(JSON.stringify(result, null, 2), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // ─── Variants Mode ───
+    if (mode === 'variants') {
+      const result = runVariantsMode(catalog);
       return new Response(JSON.stringify(result, null, 2), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
