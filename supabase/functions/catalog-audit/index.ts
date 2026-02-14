@@ -594,8 +594,19 @@ function runVariantsMode(catalog: any) {
 // ─── Main Handler ──────────────────────────────────────────────────
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Only accept GET and POST
+  if (!['GET', 'POST'].includes(req.method)) {
+    return new Response(JSON.stringify({
+      error: 'Method not allowed. Only GET and POST are supported.'
+    }), {
+      status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   try {
