@@ -1,1 +1,4 @@
 project_id = "ovufvwgqzmnbfrtwijfu"
+
+[functions.catalog-erp-sync]
+verify_jwt = false
