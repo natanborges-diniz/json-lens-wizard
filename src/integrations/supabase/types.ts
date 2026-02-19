@@ -113,6 +113,115 @@ export type Database = {
           },
         ]
       }
+      catalog_pending_skus: {
+        Row: {
+          created_at: string
+          description: string | null
+          erp_code: string
+          id: string
+          raw_data: Json | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_family_id: string | null
+          status: string
+          supplier_code: string
+          sync_run_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          erp_code: string
+          id?: string
+          raw_data?: Json | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_family_id?: string | null
+          status?: string
+          supplier_code: string
+          sync_run_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          erp_code?: string
+          id?: string
+          raw_data?: Json | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_family_id?: string | null
+          status?: string
+          supplier_code?: string
+          sync_run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_pending_skus_sync_run_id_fkey"
+            columns: ["sync_run_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_sync_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      catalog_sync_runs: {
+        Row: {
+          created_at: string
+          executed_by: string | null
+          file_name: string | null
+          id: string
+          pending_skus_count: number | null
+          report: Json | null
+          rows_created: number | null
+          rows_matched: number | null
+          rows_not_found: number | null
+          rows_read: number | null
+          rows_updated: number | null
+          run_type: string
+          status: string
+          supplier_code: string
+        }
+        Insert: {
+          created_at?: string
+          executed_by?: string | null
+          file_name?: string | null
+          id?: string
+          pending_skus_count?: number | null
+          report?: Json | null
+          rows_created?: number | null
+          rows_matched?: number | null
+          rows_not_found?: number | null
+          rows_read?: number | null
+          rows_updated?: number | null
+          run_type: string
+          status?: string
+          supplier_code: string
+        }
+        Update: {
+          created_at?: string
+          executed_by?: string | null
+          file_name?: string | null
+          id?: string
+          pending_skus_count?: number | null
+          report?: Json | null
+          rows_created?: number | null
+          rows_matched?: number | null
+          rows_not_found?: number | null
+          rows_read?: number | null
+          rows_updated?: number | null
+          run_type?: string
+          status?: string
+          supplier_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalog_sync_runs_supplier_code_fkey"
+            columns: ["supplier_code"]
+            isOneToOne: false
+            referencedRelation: "supplier_profiles"
+            referencedColumns: ["supplier_code"]
+          },
+        ]
+      }
       catalog_variant_grades: {
         Row: {
           addition_max: number | null
@@ -575,6 +684,45 @@ export type Database = {
           slogan?: string | null
           updated_at?: string
           whatsapp?: string | null
+        }
+        Relationships: []
+      }
+      supplier_profiles: {
+        Row: {
+          column_mapping: Json
+          created_at: string
+          display_name: string
+          family_dictionary: Json
+          id: string
+          index_parsing: Json | null
+          is_active: boolean
+          keywords_photo: string[] | null
+          supplier_code: string
+          updated_at: string
+        }
+        Insert: {
+          column_mapping?: Json
+          created_at?: string
+          display_name: string
+          family_dictionary?: Json
+          id?: string
+          index_parsing?: Json | null
+          is_active?: boolean
+          keywords_photo?: string[] | null
+          supplier_code: string
+          updated_at?: string
+        }
+        Update: {
+          column_mapping?: Json
+          created_at?: string
+          display_name?: string
+          family_dictionary?: Json
+          id?: string
+          index_parsing?: Json | null
+          is_active?: boolean
+          keywords_photo?: string[] | null
+          supplier_code?: string
+          updated_at?: string
         }
         Relationships: []
       }
