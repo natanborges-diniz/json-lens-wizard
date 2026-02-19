@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, 
   Search,
@@ -92,7 +92,11 @@ const CatalogAudit = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriceMin, setFilterPriceMin] = useState<string>('');
   const [filterPriceMax, setFilterPriceMax] = useState<string>('');
-  const [activeTab, setActiveTab] = useState('families');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'families';
+  const setActiveTab = useCallback((tab: string) => {
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', tab); return next; }, { replace: true });
+  }, [setSearchParams]);
   const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showVersionHistory, setShowVersionHistory] = useState(false);
@@ -1643,7 +1647,7 @@ const CatalogAudit = () => {
 
           {/* ERP Import Tab */}
           <TabsContent value="erp-import" className="mt-0">
-            <ErpImportTab />
+            <ErpImportTab onNavigateTab={setActiveTab} />
           </TabsContent>
         </Tabs>
 

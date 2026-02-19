@@ -82,7 +82,11 @@ interface SyncReport {
 
 const SUPPLIERS = ['ESSILOR', 'ZEISS', 'HOYA', 'RODENSTOCK', 'SHAMIR', 'TOKAI', 'KODAK', 'SEIKO'];
 
-export function ErpImportTab() {
+interface ErpImportTabProps {
+  onNavigateTab?: (tab: string) => void;
+}
+
+export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
   const navigate = useNavigate();
   const [supplier, setSupplier] = useState<string>('');
   const [file, setFile] = useState<File | null>(null);
@@ -504,7 +508,7 @@ export function ErpImportTab() {
                       size="sm"
                       variant="outline"
                       className="h-7 text-xs gap-1"
-                      onClick={() => navigate('/audit?tab=families')}
+                      onClick={() => onNavigateTab ? onNavigateTab('families') : navigate('/audit?tab=families')}
                     >
                       <Settings className="w-3 h-3" />
                       Editor Manual
@@ -526,7 +530,7 @@ export function ErpImportTab() {
                       size="sm"
                       variant="outline"
                       className="h-7 text-xs gap-1"
-                      onClick={() => navigate('/audit?tab=pending-skus')}
+                      onClick={() => onNavigateTab ? onNavigateTab('pending-skus') : navigate('/audit?tab=pending-skus')}
                     >
                       <ExternalLink className="w-3 h-3" />
                       Ver Pendências
@@ -546,7 +550,7 @@ export function ErpImportTab() {
                           size="sm"
                           variant="ghost"
                           className="h-5 px-1.5 text-[10px] shrink-0"
-                          onClick={() => navigate(`/audit?tab=families&search=${encodeURIComponent(item.description || item.erp_code)}`)}
+                          onClick={() => onNavigateTab ? onNavigateTab('families') : navigate('/audit?tab=families')}
                         >
                           <Settings className="w-3 h-3 mr-1" />
                           Gerir
