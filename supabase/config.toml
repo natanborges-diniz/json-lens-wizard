@@ -1,7 +1,4 @@
 project_id = "ovufvwgqzmnbfrtwijfu"
 
-[functions.catalog-sync]
-verify_jwt = false
-
 [functions.audit-catalog]
 verify_jwt = false
