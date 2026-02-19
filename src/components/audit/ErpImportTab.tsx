@@ -1,5 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   Upload,
   FileSpreadsheet,
@@ -10,11 +9,14 @@ import {
   Save,
   Eye,
   X,
-  ExternalLink,
   PlusCircle,
   Settings,
   ChevronDown,
   ChevronUp,
+  Search,
+  ListTodo,
+  CheckSquare,
+  Ban,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -34,11 +36,24 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+import { supabase } from '@/integrations/supabase/client';
+import { useLensStore } from '@/store/lensStore';
+import { useAuth } from '@/hooks/useAuth';
 
 interface ErpRow {
   Codigo: string;
@@ -78,6 +93,18 @@ interface SyncReport {
   supplier_mismatch_examples?: any[];
   sample_updates: any[];
   sample_created: any[];
+  sync_run_id?: string;
+}
+
+interface PendingSku {
+  id: string;
+  erp_code: string;
+  description: string | null;
+  status: string;
+  supplier_code: string;
+  resolved_family_id: string | null;
+  created_at: string;
+  sync_run_id: string;
 }
 
 const SUPPLIERS = ['ESSILOR', 'ZEISS', 'HOYA', 'RODENSTOCK', 'SHAMIR', 'TOKAI', 'KODAK', 'SEIKO'];
@@ -86,8 +113,268 @@ interface ErpImportTabProps {
   onNavigateTab?: (tab: string) => void;
 }
 
+// ─── Resolve SKU Dialog ──────────────────────────────────────────────────────
+function ResolveSKUDialog({
+  item,
+  supplierCode,
+  syncRunId,
+  onClose,
+  onResolved,
+}: {
+  item: { erp_code: string; description: string } | null;
+  supplierCode: string;
+  syncRunId?: string;
+  onClose: () => void;
+  onResolved: () => void;
+}) {
+  const { families } = useLensStore();
+  const { user } = useAuth();
+  const [familySearch, setFamilySearch] = useState('');
+  const [selectedFamilyId, setSelectedFamilyId] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const filteredFamilies = useMemo(() => {
+    const q = familySearch.toLowerCase();
+    return families
+      .filter(f => f.supplier === supplierCode || q.length > 0)
+      .filter(f =>
+        q === '' ||
+        f.name_original.toLowerCase().includes(q) ||
+        f.id.toLowerCase().includes(q)
+      )
+      .slice(0, 30);
+  }, [families, familySearch, supplierCode]);
+
+  const handleSave = async (action: 'resolve' | 'ignore') => {
+    if (!item) return;
+    if (action === 'resolve' && !selectedFamilyId) {
+      toast.error('Selecione uma família antes de resolver');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      // Upsert into catalog_pending_skus
+      const runId = syncRunId || '00000000-0000-0000-0000-000000000000';
+      const { error } = await supabase.from('catalog_pending_skus').upsert({
+        sync_run_id: runId,
+        supplier_code: supplierCode,
+        erp_code: item.erp_code.trim(),
+        description: item.description,
+        status: action === 'resolve' ? 'resolved' : 'ignored',
+        resolved_family_id: action === 'resolve' ? selectedFamilyId : null,
+        resolved_by: user?.id ?? null,
+        resolved_at: new Date().toISOString(),
+      }, { onConflict: 'erp_code,sync_run_id' });
+
+      if (error) throw error;
+      toast.success(action === 'resolve' ? `Código vinculado à família` : 'Item ignorado');
+      onResolved();
+      onClose();
+    } catch (err: any) {
+      toast.error(`Erro ao salvar: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!item) return null;
+
+  return (
+    <Dialog open={!!item} onOpenChange={onClose}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Gerir Produto Não Encontrado</DialogTitle>
+          <DialogDescription>
+            Vincule este código ERP a uma família existente no catálogo, ou ignore-o.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Item info */}
+          <div className="bg-muted/50 rounded-md p-3 space-y-1">
+            <p className="text-xs text-muted-foreground">Código ERP</p>
+            <p className="font-mono text-sm font-medium">{item.erp_code}</p>
+            <p className="text-xs text-muted-foreground mt-1">Descrição</p>
+            <p className="text-sm">{item.description || '—'}</p>
+          </div>
+
+          <Separator />
+
+          {/* Family search */}
+          <div className="space-y-2">
+            <Label className="text-sm">Vincular à família</Label>
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Buscar família por nome ou ID..."
+                value={familySearch}
+                onChange={e => setFamilySearch(e.target.value)}
+                className="pl-7 h-8 text-sm"
+              />
+            </div>
+            <ScrollArea className="h-48 border rounded-md">
+              <div className="p-1 space-y-0.5">
+                {filteredFamilies.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">Nenhuma família encontrada</p>
+                )}
+                {filteredFamilies.map(f => (
+                  <button
+                    key={f.id}
+                    className={`w-full text-left px-2 py-1.5 rounded text-xs hover:bg-accent transition-colors ${selectedFamilyId === f.id ? 'bg-primary/10 text-primary font-medium' : ''}`}
+                    onClick={() => setSelectedFamilyId(f.id)}
+                  >
+                    <span className="font-medium">{f.name_original}</span>
+                    <span className="text-muted-foreground ml-2 font-mono">{f.id}</span>
+                  </button>
+                ))}
+              </div>
+            </ScrollArea>
+            {selectedFamilyId && (
+              <p className="text-xs text-primary">✓ Selecionado: {selectedFamilyId}</p>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleSave('ignore')}
+            disabled={isSaving}
+            className="gap-1"
+          >
+            <Ban className="w-3.5 h-3.5" />
+            Ignorar
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => handleSave('resolve')}
+            disabled={isSaving || !selectedFamilyId}
+            className="gap-1"
+          >
+            {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckSquare className="w-3.5 h-3.5" />}
+            Vincular Família
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Pending SKUs Section ────────────────────────────────────────────────────
+function PendingSkusSection({ supplierCode }: { supplierCode: string }) {
+  const [pendingSkus, setPendingSkus] = useState<PendingSku[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [resolvingItem, setResolvingItem] = useState<{ erp_code: string; description: string } | null>(null);
+
+  const load = useCallback(async () => {
+    if (!supplierCode) return;
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('catalog_pending_skus')
+        .select('*')
+        .eq('supplier_code', supplierCode)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      setPendingSkus((data || []) as PendingSku[]);
+    } catch (err: any) {
+      toast.error(`Erro ao carregar pendências: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [supplierCode]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const statusBadge = (status: string) => {
+    if (status === 'pending') return <Badge variant="destructive" className="text-[10px]">Pendente</Badge>;
+    if (status === 'resolved') return <Badge variant="secondary" className="text-[10px]">Resolvido</Badge>;
+    return <Badge variant="outline" className="text-[10px]">Ignorado</Badge>;
+  };
+
+  return (
+    <Card className="border-primary/20">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <ListTodo className="w-4 h-4 text-primary" />
+            Pendências do Banco — {supplierCode}
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={load} disabled={isLoading} className="h-7 text-xs gap-1">
+            {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Atualizar'}
+          </Button>
+        </div>
+        <CardDescription className="text-xs">
+          SKUs ERP que foram enviados para fila de resolução manual em sincronizações anteriores.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading && (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
+        {!isLoading && pendingSkus.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            Nenhuma pendência registrada para {supplierCode}.
+          </p>
+        )}
+        {!isLoading && pendingSkus.length > 0 && (
+          <ScrollArea className="h-[300px]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Código ERP</TableHead>
+                  <TableHead className="text-xs">Descrição</TableHead>
+                  <TableHead className="text-xs text-center">Status</TableHead>
+                  <TableHead className="text-xs">Família Vinculada</TableHead>
+                  <TableHead className="text-xs"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingSkus.map(sku => (
+                  <TableRow key={sku.id}>
+                    <TableCell className="text-xs font-mono">{sku.erp_code}</TableCell>
+                    <TableCell className="text-xs max-w-[180px] truncate">{sku.description || '—'}</TableCell>
+                    <TableCell className="text-xs text-center">{statusBadge(sku.status)}</TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">{sku.resolved_family_id || '—'}</TableCell>
+                    <TableCell className="text-xs">
+                      {sku.status !== 'ignored' && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-[10px] gap-1"
+                          onClick={() => setResolvingItem({ erp_code: sku.erp_code, description: sku.description || '' })}
+                        >
+                          <Settings className="w-3 h-3" />
+                          Gerir
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        )}
+      </CardContent>
+
+      {resolvingItem && (
+        <ResolveSKUDialog
+          item={resolvingItem}
+          supplierCode={supplierCode}
+          onClose={() => setResolvingItem(null)}
+          onResolved={load}
+        />
+      )}
+    </Card>
+  );
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
-  const navigate = useNavigate();
   const [supplier, setSupplier] = useState<string>('');
   const [file, setFile] = useState<File | null>(null);
   const [parsedRows, setParsedRows] = useState<ErpRow[]>([]);
@@ -99,6 +386,10 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
   const [createMissing, setCreateMissing] = useState(false);
   const [step, setStep] = useState<'upload' | 'preview' | 'report'>('upload');
   const [showAllNotFound, setShowAllNotFound] = useState(false);
+  const [showPendingSection, setShowPendingSection] = useState(false);
+
+  // Dialog state for "Gerir" individual item
+  const [resolvingItem, setResolvingItem] = useState<{ erp_code: string; description: string } | null>(null);
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -119,13 +410,11 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(firstSheet, { defval: null });
 
-      // Store raw data and columns
       if (jsonData.length > 0) {
         setRawColumns(Object.keys(jsonData[0]));
       }
       setRawRows(jsonData);
 
-      // Normalize column names (case-insensitive mapping)
       const normalized: ErpRow[] = jsonData
         .map((row) => {
           const keys = Object.keys(row);
@@ -167,14 +456,8 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
   }, []);
 
   const runSync = useCallback(async (dryRun: boolean) => {
-    if (!supplier) {
-      toast.error('Selecione o fornecedor');
-      return;
-    }
-    if (parsedRows.length === 0) {
-      toast.error('Nenhuma linha para processar');
-      return;
-    }
+    if (!supplier) { toast.error('Selecione o fornecedor'); return; }
+    if (parsedRows.length === 0) { toast.error('Nenhuma linha para processar'); return; }
 
     setIsRunning(true);
     try {
@@ -227,6 +510,7 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
     setRawColumns([]);
     setReport(null);
     setStep('upload');
+    setShowPendingSection(false);
   }, []);
 
   const previewRawRows = useMemo(() => rawRows.slice(0, 50), [rawRows]);
@@ -246,7 +530,6 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Supplier Selection */}
             <div className="space-y-2">
               <Label>Fornecedor *</Label>
               <Select value={supplier} onValueChange={setSupplier}>
@@ -261,21 +544,13 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
               </Select>
             </div>
 
-            {/* Options */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="create-missing"
-                  checked={createMissing}
-                  onCheckedChange={setCreateMissing}
-                />
-                <Label htmlFor="create-missing" className="text-sm cursor-pointer">
-                  Criar SKUs não encontrados (usando regras de match)
-                </Label>
-              </div>
+            <div className="flex items-center gap-2">
+              <Switch id="create-missing" checked={createMissing} onCheckedChange={setCreateMissing} />
+              <Label htmlFor="create-missing" className="text-sm cursor-pointer">
+                Criar SKUs não encontrados (usando regras de match)
+              </Label>
             </div>
 
-            {/* File Upload */}
             <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
               {isParsing ? (
                 <div className="flex flex-col items-center gap-3">
@@ -287,9 +562,7 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
                   <Upload className="w-10 h-10 text-muted-foreground" />
                   <div>
                     <p className="font-medium text-sm">Clique para selecionar a planilha</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Formatos aceitos: .xlsx, .xls
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">Formatos aceitos: .xlsx, .xls</p>
                   </div>
                   <input
                     type="file"
@@ -305,7 +578,20 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
               )}
             </div>
 
-            {/* Expected Columns Info */}
+            {/* Ver Pendências do Banco */}
+            {supplier && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 w-full"
+                onClick={() => setShowPendingSection(v => !v)}
+              >
+                <ListTodo className="w-4 h-4" />
+                {showPendingSection ? 'Ocultar' : 'Ver'} Pendências do Banco — {supplier}
+              </Button>
+            )}
+            {showPendingSection && supplier && <PendingSkusSection supplierCode={supplier} />}
+
             <div className="bg-muted/50 rounded-lg p-4">
               <p className="text-xs font-medium mb-2">Colunas esperadas na planilha:</p>
               <div className="flex flex-wrap gap-1.5">
@@ -335,12 +621,10 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
                     {rawRows.length} linhas lidas de {file?.name} • Fornecedor: {supplier} • {rawColumns.length} colunas detectadas
                   </CardDescription>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={resetFlow}>
-                    <X className="w-4 h-4 mr-1" />
-                    Cancelar
-                  </Button>
-                </div>
+                <Button variant="ghost" size="sm" onClick={resetFlow}>
+                  <X className="w-4 h-4 mr-1" />
+                  Cancelar
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
@@ -374,22 +658,12 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
             </CardContent>
           </Card>
 
-          {/* Action Buttons */}
           <div className="flex gap-3 justify-end">
-            <Button
-              variant="outline"
-              onClick={() => runSync(true)}
-              disabled={isRunning}
-              className="gap-2"
-            >
+            <Button variant="outline" onClick={() => runSync(true)} disabled={isRunning} className="gap-2">
               {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
               Simular (Dry-Run)
             </Button>
-            <Button
-              onClick={() => runSync(false)}
-              disabled={isRunning}
-              className="gap-2"
-            >
+            <Button onClick={() => runSync(false)} disabled={isRunning} className="gap-2">
               {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Aplicar Diretamente
             </Button>
@@ -402,33 +676,25 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
         <div className="space-y-4">
           {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <Card>
+            <Card><CardContent className="p-3 text-center">
+              <p className="text-xl font-bold">{report.rows_read}</p>
+              <p className="text-[10px] text-muted-foreground">Linhas Lidas</p>
+            </CardContent></Card>
+            <Card><CardContent className="p-3 text-center">
+              <p className="text-xl font-bold text-primary">{report.matched}</p>
+              <p className="text-[10px] text-muted-foreground">Encontrados</p>
+            </CardContent></Card>
+            <Card><CardContent className="p-3 text-center">
+              <p className="text-xl font-bold text-success">{report.updated}</p>
+              <p className="text-[10px] text-muted-foreground">Atualizados</p>
+            </CardContent></Card>
+            <Card><CardContent className="p-3 text-center">
+              <p className="text-xl font-bold text-primary">{report.created}</p>
+              <p className="text-[10px] text-muted-foreground">Criados</p>
+            </CardContent></Card>
+            <Card className={report.not_found_in_catalog > 0 ? 'border-destructive/30' : ''}>
               <CardContent className="p-3 text-center">
-                <p className="text-xl font-bold">{report.rows_read}</p>
-                <p className="text-[10px] text-muted-foreground">Linhas Lidas</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-3 text-center">
-                <p className="text-xl font-bold text-primary">{report.matched}</p>
-                <p className="text-[10px] text-muted-foreground">Encontrados</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-3 text-center">
-                <p className="text-xl font-bold text-success">{report.updated}</p>
-                <p className="text-[10px] text-muted-foreground">Atualizados</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-3 text-center">
-                <p className="text-xl font-bold text-info">{report.created}</p>
-                <p className="text-[10px] text-muted-foreground">Criados</p>
-              </CardContent>
-            </Card>
-            <Card className={report.not_found_in_catalog > 0 ? 'border-warning' : ''}>
-              <CardContent className="p-3 text-center">
-                <p className="text-xl font-bold text-warning">{report.not_found_in_catalog}</p>
+                <p className="text-xl font-bold text-destructive">{report.not_found_in_catalog}</p>
                 <p className="text-[10px] text-muted-foreground">Não Encontrados</p>
               </CardContent>
             </Card>
@@ -439,15 +705,13 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 {report.applied ? (
-                  <CheckCircle className="w-6 h-6 text-success" />
+                  <CheckCircle className="w-6 h-6 text-primary" />
                 ) : (
-                  <AlertTriangle className="w-6 h-6 text-warning" />
+                  <AlertTriangle className="w-6 h-6 text-muted-foreground" />
                 )}
                 <div>
                   <p className="font-medium text-sm">
-                    {report.applied
-                      ? 'Sincronização aplicada com sucesso!'
-                      : 'Simulação (Dry-Run) — nenhuma alteração foi salva'}
+                    {report.applied ? 'Sincronização aplicada com sucesso!' : 'Simulação (Dry-Run) — nenhuma alteração foi salva'}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Fornecedor: {report.supplier} • {report.rows_ignored} linhas ignoradas
@@ -494,65 +758,44 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
             </Card>
           )}
 
-          {/* Not Found Codes */}
+          {/* Not Found Codes — com botão Gerir por item */}
           {report.not_found_in_catalog > 0 && (
-            <Card className="border-warning/50">
+            <Card className="border-destructive/30">
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-warning" />
+                    <AlertTriangle className="w-4 h-4 text-destructive" />
                     Não Encontrados no Catálogo ({report.not_found_in_catalog})
                   </CardTitle>
-                  <div className="flex gap-2 flex-wrap justify-end">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs gap-1"
-                      onClick={() => onNavigateTab ? onNavigateTab('families') : navigate('/audit?tab=families')}
-                    >
-                      <Settings className="w-3 h-3" />
-                      Editor Manual
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs gap-1"
-                      onClick={() => {
-                        setCreateMissing(true);
-                        setStep('preview');
-                        toast.info('Ative "Criar SKUs não encontrados" e rode Simular novamente');
-                      }}
-                    >
-                      <PlusCircle className="w-3 h-3" />
-                      Criar via Matching
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs gap-1"
-                      onClick={() => onNavigateTab ? onNavigateTab('pending-skus') : navigate('/audit?tab=pending-skus')}
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      Ver Pendências
-                    </Button>
-                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => {
+                      setCreateMissing(true);
+                      setStep('preview');
+                      toast.info('Ative "Criar SKUs não encontrados" e rode Simular novamente');
+                    }}
+                  >
+                    <PlusCircle className="w-3 h-3" />
+                    Criar via Matching
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {/* Examples with description */}
                 {report.not_found_examples && report.not_found_examples.length > 0 && (
                   <div className="space-y-1.5">
                     {(showAllNotFound ? report.not_found_examples : report.not_found_examples.slice(0, 8)).map((item, idx) => (
-                      <div key={idx} className="flex items-center gap-2 py-1 px-2 rounded-md bg-muted/50 text-xs">
-                        <span className="font-mono text-warning shrink-0">{item.erp_code}</span>
+                      <div key={idx} className="flex items-center gap-2 py-1.5 px-3 rounded-md bg-muted/50 text-xs">
+                        <span className="font-mono text-destructive shrink-0">{item.erp_code}</span>
                         <span className="text-muted-foreground truncate flex-1">{item.description}</span>
                         <Button
                           size="sm"
-                          variant="ghost"
-                          className="h-5 px-1.5 text-[10px] shrink-0"
-                          onClick={() => onNavigateTab ? onNavigateTab('families') : navigate('/audit?tab=families')}
+                          variant="outline"
+                          className="h-6 px-2 text-[10px] shrink-0 gap-1"
+                          onClick={() => setResolvingItem(item)}
                         >
-                          <Settings className="w-3 h-3 mr-1" />
+                          <Settings className="w-3 h-3" />
                           Gerir
                         </Button>
                       </div>
@@ -573,7 +816,6 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
                     )}
                   </div>
                 )}
-                {/* Fallback: raw codes if no examples */}
                 {(!report.not_found_examples || report.not_found_examples.length === 0) && report.not_found_codes && (
                   <div className="flex flex-wrap gap-1.5">
                     {report.not_found_codes.map((code: string, idx: number) => (
@@ -582,11 +824,25 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
                   </div>
                 )}
                 <p className="text-[10px] text-muted-foreground">
-                  Estes produtos do ERP não têm correspondência no catálogo. Use "Criar via Matching" para tentar associar automaticamente, ou "Editor Manual" para criar as famílias.
+                  Clique em <strong>Gerir</strong> para vincular um código a uma família existente ou ignorá-lo.
                 </p>
               </CardContent>
             </Card>
           )}
+
+          {/* Ver Pendências do Banco */}
+          <div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 w-full"
+              onClick={() => setShowPendingSection(v => !v)}
+            >
+              <ListTodo className="w-4 h-4" />
+              {showPendingSection ? 'Ocultar' : 'Ver'} Pendências Salvas no Banco — {report.supplier}
+            </Button>
+            {showPendingSection && <div className="mt-3"><PendingSkusSection supplierCode={report.supplier} /></div>}
+          </div>
 
           {/* Supplier Mismatch */}
           {report.supplier_mismatch_conflicts && report.supplier_mismatch_conflicts.length > 0 && (
@@ -618,11 +874,7 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
               Nova Importação
             </Button>
             {report.dry_run && (
-              <Button
-                onClick={() => runSync(false)}
-                disabled={isRunning}
-                className="gap-2"
-              >
+              <Button onClick={() => runSync(false)} disabled={isRunning} className="gap-2">
                 {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Aplicar Alterações
               </Button>
@@ -630,6 +882,18 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
           </div>
         </div>
       )}
+
+      {/* Resolve Dialog — opened via "Gerir" */}
+      <ResolveSKUDialog
+        item={resolvingItem}
+        supplierCode={supplier || report?.supplier || ''}
+        syncRunId={report?.sync_run_id}
+        onClose={() => setResolvingItem(null)}
+        onResolved={() => {
+          toast.success('Resolução salva no banco');
+          setResolvingItem(null);
+        }}
+      />
     </div>
   );
 }
@@ -638,11 +902,4 @@ function parseNum(val: unknown): number | undefined {
   if (val == null || val === '') return undefined;
   const n = Number(val);
   return isNaN(n) ? undefined : n;
-}
-
-function toBoolDisplay(val: unknown): boolean {
-  if (typeof val === 'boolean') return val;
-  if (typeof val === 'number') return val === 1;
-  if (typeof val === 'string') return val.toLowerCase() === 'true' || val === '1' || val.toLowerCase() === 'sim';
-  return false;
 }
