@@ -76,6 +76,8 @@ export function ErpImportTab() {
   const [supplier, setSupplier] = useState<string>('');
   const [file, setFile] = useState<File | null>(null);
   const [parsedRows, setParsedRows] = useState<ErpRow[]>([]);
+  const [rawRows, setRawRows] = useState<Record<string, any>[]>([]);
+  const [rawColumns, setRawColumns] = useState<string[]>([]);
   const [isParsing, setIsParsing] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [report, setReport] = useState<SyncReport | null>(null);
@@ -100,6 +102,12 @@ export function ErpImportTab() {
       const workbook = XLSX.read(buffer, { type: 'array' });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(firstSheet, { defval: null });
+
+      // Store raw data and columns
+      if (jsonData.length > 0) {
+        setRawColumns(Object.keys(jsonData[0]));
+      }
+      setRawRows(jsonData);
 
       // Normalize column names (case-insensitive mapping)
       const normalized: ErpRow[] = jsonData
@@ -198,11 +206,13 @@ export function ErpImportTab() {
   const resetFlow = useCallback(() => {
     setFile(null);
     setParsedRows([]);
+    setRawRows([]);
+    setRawColumns([]);
     setReport(null);
     setStep('upload');
   }, []);
 
-  const previewRows = useMemo(() => parsedRows.slice(0, 50), [parsedRows]);
+  const previewRawRows = useMemo(() => rawRows.slice(0, 50), [rawRows]);
 
   return (
     <div className="space-y-4">
@@ -305,7 +315,7 @@ export function ErpImportTab() {
                     Preview dos Dados
                   </CardTitle>
                   <CardDescription>
-                    {parsedRows.length} linhas lidas de {file?.name} • Fornecedor: {supplier}
+                    {rawRows.length} linhas lidas de {file?.name} • Fornecedor: {supplier} • {rawColumns.length} colunas detectadas
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
@@ -317,43 +327,33 @@ export function ErpImportTab() {
               </div>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[350px]">
+              <ScrollArea className="h-[400px]">
+                <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-xs">Código</TableHead>
-                      <TableHead className="text-xs">Descrição</TableHead>
-                      <TableHead className="text-xs text-center">Esf Min</TableHead>
-                      <TableHead className="text-xs text-center">Esf Max</TableHead>
-                      <TableHead className="text-xs text-center">Cil Min</TableHead>
-                      <TableHead className="text-xs text-center">Cil Max</TableHead>
-                      <TableHead className="text-xs text-center">Preço</TableHead>
-                      <TableHead className="text-xs text-center">Ativo</TableHead>
+                      {rawColumns.map((col) => (
+                        <TableHead key={col} className="text-xs whitespace-nowrap">{col}</TableHead>
+                      ))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {previewRows.map((row, idx) => (
+                    {previewRawRows.map((row, idx) => (
                       <TableRow key={idx}>
-                        <TableCell className="text-xs font-mono">{row.Codigo}</TableCell>
-                        <TableCell className="text-xs max-w-[200px] truncate">{row.DescricaoCadunif}</TableCell>
-                        <TableCell className="text-xs text-center">{row.ESFERICO_MIN ?? '-'}</TableCell>
-                        <TableCell className="text-xs text-center">{row.ESFERICO_MAX ?? '-'}</TableCell>
-                        <TableCell className="text-xs text-center">{row.CILINDRICO_MIN ?? '-'}</TableCell>
-                        <TableCell className="text-xs text-center">{row.CILINDRICO_MAX ?? '-'}</TableCell>
-                        <TableCell className="text-xs text-center">
-                          {row.PrecoVendaMeioPar ? `R$ ${Number(row.PrecoVendaMeioPar).toFixed(2)}` : '-'}
-                        </TableCell>
-                        <TableCell className="text-xs text-center">
-                          {row.Ativo != null ? (toBoolDisplay(row.Ativo) ? '✅' : '❌') : '-'}
-                        </TableCell>
+                        {rawColumns.map((col) => (
+                          <TableCell key={col} className="text-xs max-w-[200px] truncate whitespace-nowrap">
+                            {row[col] != null ? String(row[col]) : '-'}
+                          </TableCell>
+                        ))}
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               </ScrollArea>
-              {parsedRows.length > 50 && (
+              {rawRows.length > 50 && (
                 <p className="text-xs text-muted-foreground text-center mt-2">
-                  Exibindo 50 de {parsedRows.length} linhas
+                  Exibindo 50 de {rawRows.length} linhas
                 </p>
               )}
             </CardContent>
