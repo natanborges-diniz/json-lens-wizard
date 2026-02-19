@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Upload,
   FileSpreadsheet,
@@ -9,7 +10,11 @@ import {
   Save,
   Eye,
   X,
-  Download,
+  ExternalLink,
+  PlusCircle,
+  Settings,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -60,12 +65,17 @@ interface SyncReport {
   rows_read: number;
   rows_ignored: number;
   matched: number;
+  matched_raw?: number;
+  matched_trimmed?: number;
   updated: number;
   created: number;
   not_found_in_catalog: number;
   not_found_codes: string[];
-  missing_family_mapping: string[];
+  not_found_examples?: { erp_code: string; description: string }[];
+  missing_family_mapping: number | string[];
+  missing_family_mapping_examples?: { erp_code: string; description: string }[];
   supplier_mismatch_conflicts: any[];
+  supplier_mismatch_examples?: any[];
   sample_updates: any[];
   sample_created: any[];
 }
@@ -73,6 +83,7 @@ interface SyncReport {
 const SUPPLIERS = ['ESSILOR', 'ZEISS', 'HOYA', 'RODENSTOCK', 'SHAMIR', 'TOKAI', 'KODAK', 'SEIKO'];
 
 export function ErpImportTab() {
+  const navigate = useNavigate();
   const [supplier, setSupplier] = useState<string>('');
   const [file, setFile] = useState<File | null>(null);
   const [parsedRows, setParsedRows] = useState<ErpRow[]>([]);
@@ -83,6 +94,7 @@ export function ErpImportTab() {
   const [report, setReport] = useState<SyncReport | null>(null);
   const [createMissing, setCreateMissing] = useState(false);
   const [step, setStep] = useState<'upload' | 'preview' | 'report'>('upload');
+  const [showAllNotFound, setShowAllNotFound] = useState(false);
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -479,27 +491,95 @@ export function ErpImportTab() {
           )}
 
           {/* Not Found Codes */}
-          {report.not_found_codes && report.not_found_codes.length > 0 && (
+          {report.not_found_in_catalog > 0 && (
             <Card className="border-warning/50">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-warning" />
-                  Códigos Não Encontrados ({report.not_found_in_catalog})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-1.5">
-                  {report.not_found_codes.map((code: string, idx: number) => (
-                    <Badge key={idx} variant="outline" className="text-[10px] font-mono">
-                      {code}
-                    </Badge>
-                  ))}
-                  {report.not_found_in_catalog > 20 && (
-                    <Badge variant="secondary" className="text-[10px]">
-                      +{report.not_found_in_catalog - 20} mais
-                    </Badge>
-                  )}
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-warning" />
+                    Não Encontrados no Catálogo ({report.not_found_in_catalog})
+                  </CardTitle>
+                  <div className="flex gap-2 flex-wrap justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => navigate('/audit?tab=families')}
+                    >
+                      <Settings className="w-3 h-3" />
+                      Editor Manual
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => {
+                        setCreateMissing(true);
+                        setStep('preview');
+                        toast.info('Ative "Criar SKUs não encontrados" e rode Simular novamente');
+                      }}
+                    >
+                      <PlusCircle className="w-3 h-3" />
+                      Criar via Matching
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => navigate('/audit?tab=erp-import')}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Ver Pendências
+                    </Button>
+                  </div>
                 </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Examples with description */}
+                {report.not_found_examples && report.not_found_examples.length > 0 && (
+                  <div className="space-y-1.5">
+                    {(showAllNotFound ? report.not_found_examples : report.not_found_examples.slice(0, 8)).map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-2 py-1 px-2 rounded-md bg-muted/50 text-xs">
+                        <span className="font-mono text-warning shrink-0">{item.erp_code}</span>
+                        <span className="text-muted-foreground truncate flex-1">{item.description}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-5 px-1.5 text-[10px] shrink-0"
+                          onClick={() => navigate('/audit')}
+                        >
+                          <Settings className="w-3 h-3 mr-1" />
+                          Gerir
+                        </Button>
+                      </div>
+                    ))}
+                    {report.not_found_examples.length > 8 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-xs h-7 gap-1"
+                        onClick={() => setShowAllNotFound(v => !v)}
+                      >
+                        {showAllNotFound ? (
+                          <><ChevronUp className="w-3 h-3" /> Mostrar menos</>
+                        ) : (
+                          <><ChevronDown className="w-3 h-3" /> Ver mais {report.not_found_examples.length - 8} produtos</>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {/* Fallback: raw codes if no examples */}
+                {(!report.not_found_examples || report.not_found_examples.length === 0) && report.not_found_codes && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {report.not_found_codes.map((code: string, idx: number) => (
+                      <Badge key={idx} variant="outline" className="text-[10px] font-mono">{code}</Badge>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[10px] text-muted-foreground">
+                  Estes produtos do ERP não têm correspondência no catálogo. Use "Criar via Matching" para tentar associar automaticamente, ou "Editor Manual" para criar as famílias.
+                </p>
               </CardContent>
             </Card>
           )}
