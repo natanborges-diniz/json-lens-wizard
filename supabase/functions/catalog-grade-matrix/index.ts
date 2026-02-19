@@ -53,7 +53,7 @@ function normalize(raw: Record<string,any>, mapping: Record<string,string[]>): N
   const pb = (v: any): boolean => {
     if (typeof v === "boolean") return v;
     if (typeof v === "number") return v === 1;
-    return ["true","1","sim"].includes(String(v).toLowerCase());
+    return ["true","1","sim","s","yes","y"].includes(String(v).toLowerCase());
   };
   const hasTech = find("esferico_min") != null || find("esferico_max") != null || find("cilindrico_min") != null || find("diametro_min") != null;
   const tl = String(find("tipo_lente") || "").trim();
