@@ -77,6 +77,8 @@ interface SyncReport {
   supplier: string;
   dry_run: boolean;
   applied: boolean;
+  gate_blocked?: boolean;
+  gate_reason?: string;
   rows_read: number;
   rows_ignored: number;
   matched: number;
@@ -481,12 +483,20 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
         }
       );
 
-      if (!response.ok) {
-        const errBody = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errBody}`);
+      const data = await response.json();
+
+      // 409 gate_blocked é um estado válido — mostra o relatório com aviso
+      if (response.status === 409 && data.gate_blocked) {
+        setReport(data);
+        setStep('report');
+        toast.warning(`Aplicação bloqueada: ${data.gate_reason}. Resolva as pendências antes de aplicar.`);
+        return;
       }
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${JSON.stringify(data)}`);
+      }
+
       setReport(data);
       setStep('report');
 
@@ -701,17 +711,94 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
           </div>
 
           {/* Status */}
+          {report.gate_blocked && (
+            <Card className="border-destructive">
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-6 h-6 text-destructive shrink-0 mt-0.5" />
+                  <div className="space-y-2 flex-1">
+                    <p className="font-semibold text-sm text-destructive">Aplicação Bloqueada pelo Gate de Governança</p>
+                    <p className="text-xs text-muted-foreground">{report.gate_reason}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Para aplicar as <strong>{report.updated}</strong> atualizações encontradas, resolva ou ignore todos os SKUs pendentes abaixo. Depois clique em <strong>Aplicar sem Pendentes</strong>.
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1 h-7 text-xs"
+                        onClick={() => setShowPendingSection(true)}
+                      >
+                        <ListTodo className="w-3.5 h-3.5" />
+                        Ver Pendências
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="gap-1 h-7 text-xs"
+                        disabled={isRunning}
+                        onClick={async () => {
+                          // Força apply sem create_missing para desbloquear o gate
+                          setIsRunning(true);
+                          try {
+                            const params = new URLSearchParams({
+                              mode: 'erp-sync',
+                              supplier: report.supplier,
+                              dry_run: 'false',
+                              apply: 'true',
+                              create_missing: 'false',
+                            });
+                            const response = await fetch(
+                              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/catalog-grade-matrix?${params.toString()}`,
+                              {
+                                method: 'POST',
+                                headers: {
+                                  'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+                                  'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({ rows: parsedRows }),
+                              }
+                            );
+                            const data = await response.json();
+                            setReport(data);
+                            if (data.applied) {
+                              toast.success(`Sincronização aplicada: ${data.updated} atualizados`);
+                            } else if (data.gate_blocked) {
+                              toast.warning(`Ainda bloqueado: ${data.gate_reason}`);
+                            }
+                          } catch (err: any) {
+                            toast.error(`Erro: ${err.message}`);
+                          } finally {
+                            setIsRunning(false);
+                          }
+                        }}
+                      >
+                        {isRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        Aplicar só os {report.updated} encontrados
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 {report.applied ? (
                   <CheckCircle className="w-6 h-6 text-primary" />
+                ) : report.gate_blocked ? (
+                  <AlertTriangle className="w-6 h-6 text-destructive" />
                 ) : (
                   <AlertTriangle className="w-6 h-6 text-muted-foreground" />
                 )}
                 <div>
                   <p className="font-medium text-sm">
-                    {report.applied ? 'Sincronização aplicada com sucesso!' : 'Simulação (Dry-Run) — nenhuma alteração foi salva'}
+                    {report.applied
+                      ? 'Sincronização aplicada com sucesso!'
+                      : report.gate_blocked
+                      ? 'Bloqueado — resolva pendências para aplicar'
+                      : 'Simulação (Dry-Run) — nenhuma alteração foi salva'}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Fornecedor: {report.supplier} • {report.rows_ignored} linhas ignoradas
@@ -754,6 +841,38 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
                     </TableBody>
                   </Table>
                 </ScrollArea>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Missing Family Mapping — aparece quando create_missing=true mas família não foi resolvida */}
+          {report.missing_family_mapping_examples && report.missing_family_mapping_examples.length > 0 && (
+            <Card className="border-destructive/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-destructive" />
+                  Sem Família no Catálogo ({report.missing_family_mapping_examples.length})
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Estes códigos ERP não foram encontrados no catálogo e não foi possível resolver automaticamente a família. Use <strong>Gerir</strong> para vinculá-los manualmente, ou <strong>Ignorar</strong> para desbloqueiar o gate.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-1.5">
+                {report.missing_family_mapping_examples.map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-2 py-1.5 px-3 rounded-md bg-muted/50 text-xs">
+                    <span className="font-mono text-destructive shrink-0">{item.erp_code}</span>
+                    <span className="text-muted-foreground truncate flex-1">{item.description}</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[10px] shrink-0 gap-1"
+                      onClick={() => setResolvingItem(item)}
+                    >
+                      <Settings className="w-3 h-3" />
+                      Gerir
+                    </Button>
+                  </div>
+                ))}
               </CardContent>
             </Card>
           )}
