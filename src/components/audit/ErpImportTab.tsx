@@ -327,13 +327,12 @@ export function ErpImportTab() {
               </div>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[400px]">
-                <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[400px] border rounded-md">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       {rawColumns.map((col) => (
-                        <TableHead key={col} className="text-xs whitespace-nowrap">{col}</TableHead>
+                        <TableHead key={col} className="text-xs whitespace-nowrap sticky top-0 bg-background z-10">{col}</TableHead>
                       ))}
                     </TableRow>
                   </TableHeader>
@@ -341,7 +340,7 @@ export function ErpImportTab() {
                     {previewRawRows.map((row, idx) => (
                       <TableRow key={idx}>
                         {rawColumns.map((col) => (
-                          <TableCell key={col} className="text-xs max-w-[200px] truncate whitespace-nowrap">
+                          <TableCell key={col} className="text-xs whitespace-nowrap">
                             {row[col] != null ? String(row[col]) : '-'}
                           </TableCell>
                         ))}
@@ -349,8 +348,7 @@ export function ErpImportTab() {
                     ))}
                   </TableBody>
                 </Table>
-                </div>
-              </ScrollArea>
+              </div>
               {rawRows.length > 50 && (
                 <p className="text-xs text-muted-foreground text-center mt-2">
                   Exibindo 50 de {rawRows.length} linhas
