@@ -2,3 +2,6 @@ project_id = "ovufvwgqzmnbfrtwijfu"
 
 [functions.audit-catalog]
 verify_jwt = false
+
+[functions.catalog-engine]
+verify_jwt = false
