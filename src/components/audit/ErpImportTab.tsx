@@ -163,6 +163,7 @@ export function ErpImportTab() {
     setIsRunning(true);
     try {
       const params = new URLSearchParams({
+        mode: 'erp-sync',
         supplier,
         dry_run: String(dryRun),
         apply: String(!dryRun),
@@ -170,7 +171,7 @@ export function ErpImportTab() {
       });
 
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sync-erp-catalog?${params.toString()}`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/catalog-grade-matrix?${params.toString()}`,
         {
           method: 'POST',
           headers: {
