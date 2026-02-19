@@ -149,13 +149,16 @@ async function erpSync(req: Request, params: URLSearchParams) {
     if (n) normalized.push(n); else ignored++;
   }
 
-  const erpIdx = new Map<string,number>();
+  // Build indexes: raw and trimmed (strip leading zeros)
+  const erpIdxRaw = new Map<string,number>();
+  const erpIdxTrimmed = new Map<string,number>();
+  const trimLeadingZeros = (s: string) => s.replace(/^0+/, '') || '0';
   prices.forEach((p: any, i: number) => {
-    const c = p.erp_code || p.sku_erp;
-    if (c) erpIdx.set(String(c), i);
+    const c = String(p.erp_code || p.sku_erp || '').trim();
+    if (c) { erpIdxRaw.set(c, i); erpIdxTrimmed.set(trimLeadingZeros(c), i); }
   });
 
-  let matched = 0, updated = 0, created = 0;
+  let matched = 0, matchedRaw = 0, matchedTrimmed = 0, updated = 0, created = 0;
   const notFound: any[] = [];
   const missingFam: any[] = [];
   const mismatch: any[] = [];
@@ -165,9 +168,15 @@ async function erpSync(req: Request, params: URLSearchParams) {
   const newPrices = [...prices];
 
   for (const row of normalized) {
-    const idx = erpIdx.get(row.codigo);
-    if (idx !== undefined) {
+    let idx = erpIdxRaw.get(row.codigo);
+    let matchType: 'raw' | 'trimmed' | null = idx !== undefined ? 'raw' : null;
+    if (idx === undefined) {
+      idx = erpIdxTrimmed.get(trimLeadingZeros(row.codigo));
+      matchType = idx !== undefined ? 'trimmed' : null;
+    }
+    if (idx !== undefined && matchType) {
       matched++;
+      if (matchType === 'raw') matchedRaw++; else matchedTrimmed++;
       const ex = newPrices[idx];
       const exFam = families.find((f: any) => f.id === ex.family_id);
       if (exFam?.supplier && exFam.supplier.toUpperCase() !== supplier) {
@@ -211,7 +220,7 @@ async function erpSync(req: Request, params: URLSearchParams) {
   const report: any = {
     mode: "erp-sync", supplier, dry_run: dryRun, applied: false, create_missing: createMissing,
     rows_read: rawRows.length, rows_ignored: ignored, normalized: normalized.length,
-    matched, updated, created,
+    matched, matched_raw: matchedRaw, matched_trimmed: matchedTrimmed, updated, created,
     not_found_in_catalog: notFound.length, pending_created: pendingList.length,
     missing_family_mapping: missingFam.length,
     missing_family_mapping_examples: missingFam.slice(0, 10),
