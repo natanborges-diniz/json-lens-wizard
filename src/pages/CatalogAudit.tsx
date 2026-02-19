@@ -21,7 +21,8 @@ import {
   Cpu,
   Wand2,
   Settings2,
-  Activity
+  Activity,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,6 +55,7 @@ import { CatalogRestoreDialog } from '@/components/audit/CatalogRestoreDialog';
 import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
 import { DataSourceDiagnostic } from '@/components/audit/DataSourceDiagnostic';
 import { RecommendationLogsTab } from '@/components/audit/RecommendationLogsTab';
+import { ErpImportTab } from '@/components/audit/ErpImportTab';
 import { useClinicalIntegrityReport } from '@/hooks/useClinicalIntegrityReport';
 import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import { 
@@ -1083,6 +1085,10 @@ const CatalogAudit = () => {
               <Activity className="w-3.5 h-3.5" />
               Logs do Motor
             </TabsTrigger>
+            <TabsTrigger value="erp-import" className="gap-1.5 text-xs py-1.5">
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              Importação ERP
+            </TabsTrigger>
           </TabsList>
 
           {/* Families Tab */}
@@ -1633,6 +1639,11 @@ const CatalogAudit = () => {
           {/* Engine Logs Tab */}
           <TabsContent value="engine-logs" className="mt-0">
             <RecommendationLogsTab />
+          </TabsContent>
+
+          {/* ERP Import Tab */}
+          <TabsContent value="erp-import" className="mt-0">
+            <ErpImportTab />
           </TabsContent>
         </Tabs>
 
