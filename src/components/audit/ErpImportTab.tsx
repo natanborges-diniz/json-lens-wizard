@@ -291,6 +291,50 @@ function PendingClassificationPreview({ supplierCode }: { supplierCode: string }
   const [totalPending, setTotalPending] = useState(0);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isResolving, setIsResolving] = useState(false);
+  const [resolveResult, setResolveResult] = useState<{ resolved: number; errors: number } | null>(null);
+  const [showResolveConfirm, setShowResolveConfirm] = useState(false);
+
+  const highGroups = useMemo(() => groups?.filter(g => g.confidence === 'high') ?? [], [groups]);
+  const highErpCount = useMemo(() => highGroups.reduce((sum, g) => sum + g.erp_codes.length, 0), [highGroups]);
+
+  const resolveHighConfidence = useCallback(async () => {
+    if (highGroups.length === 0) return;
+    setIsResolving(true);
+    setResolveResult(null);
+    setShowResolveConfirm(false);
+    let resolved = 0;
+    let errors = 0;
+
+    for (const grp of highGroups) {
+      if (!grp.suggested_family_id) continue;
+      const { error: updateErr, count } = await supabase
+        .from('catalog_pending_skus')
+        .update({
+          status: 'resolved',
+          resolved_family_id: grp.suggested_family_id,
+          resolved_at: new Date().toISOString(),
+        })
+        .eq('supplier_code', supplierCode)
+        .eq('status', 'pending')
+        .in('erp_code', grp.erp_codes);
+
+      if (updateErr) {
+        console.error('Erro ao resolver grupo:', grp.group_key, updateErr);
+        errors += grp.erp_codes.length;
+      } else {
+        resolved += count ?? grp.erp_codes.length;
+      }
+    }
+
+    setResolveResult({ resolved, errors });
+    setIsResolving(false);
+
+    // Re-run analysis to refresh data
+    if (resolved > 0) {
+      setTimeout(() => runAnalysis(), 500);
+    }
+  }, [highGroups, supplierCode]);
 
   const runAnalysis = useCallback(async () => {
     setIsLoading(true);
@@ -401,16 +445,33 @@ function PendingClassificationPreview({ supplierCode }: { supplierCode: string }
             )}
           </CardTitle>
           <div className="flex gap-2">
-            {groups !== null && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1"
-                onClick={exportActionPlan}
-              >
-                <Download className="w-3 h-3" />
-                Exportar ActionPlan JSON
-              </Button>
+{groups !== null && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1"
+                  onClick={exportActionPlan}
+                >
+                  <Download className="w-3 h-3" />
+                  Exportar ActionPlan JSON
+                </Button>
+                {highErpCount > 0 && (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => setShowResolveConfirm(true)}
+                    disabled={isResolving}
+                  >
+                    {isResolving
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <CheckCircle className="w-3 h-3" />
+                    }
+                    Resolver {highErpCount} High
+                  </Button>
+                )}
+              </>
             )}
             <Button
               size="sm"
@@ -555,6 +616,39 @@ function PendingClassificationPreview({ supplierCode }: { supplierCode: string }
               Análise determinística (tokens) — somente leitura, nenhuma alteração foi aplicada
             </p>
           </>
+        )}
+
+        {/* Resolve result banner */}
+        {resolveResult && (
+          <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-md ${resolveResult.errors > 0 ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'}`}>
+            <CheckCircle className="w-4 h-4" />
+            {resolveResult.resolved} SKU(s) resolvido(s) automaticamente.
+            {resolveResult.errors > 0 && ` ${resolveResult.errors} erro(s).`}
+          </div>
+        )}
+
+        {/* Confirm resolve dialog */}
+        {showResolveConfirm && (
+          <Card className="border-primary bg-primary/5">
+            <CardContent className="py-3 space-y-2">
+              <p className="text-sm font-medium">Confirmar resolução automática?</p>
+              <p className="text-xs text-muted-foreground">
+                {highGroups.length} grupo(s) com confiança <strong>high</strong> ({highErpCount} SKUs) serão marcados como <code>resolved</code> com o <code>family_id</code> sugerido.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Nenhuma família nova será criada. Nenhuma alteração no dicionário.
+              </p>
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" className="h-7 text-xs" onClick={resolveHighConfidence} disabled={isResolving}>
+                  {isResolving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+                  Confirmar
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowResolveConfirm(false)}>
+                  Cancelar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </CardContent>
     </Card>
