@@ -17,6 +17,8 @@ import {
   ListTodo,
   CheckSquare,
   Ban,
+  FlaskConical,
+  Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -44,6 +46,11 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -110,6 +117,447 @@ interface PendingSku {
 }
 
 const SUPPLIERS = ['ESSILOR', 'ZEISS', 'HOYA', 'RODENSTOCK', 'SHAMIR', 'TOKAI', 'KODAK', 'SEIKO'];
+
+// ─── Deterministic Classification Types ──────────────────────────────────────
+interface ClassificationGroup {
+  group_key: string;
+  suggested_family_id: string | null;
+  confidence: 'high' | 'medium' | 'none';
+  blue_filter: boolean;
+  photo: boolean;
+  detected_indexes: string[];
+  erp_codes: string[];
+  match_reason: string | null;
+  patterns_suggested: string[];
+  skus: { erp_code: string; original_description: string; index: string | null }[];
+}
+
+interface SupplierProfile {
+  family_dictionary: Array<{ keywords: string[]; family_id: string; priority?: number }>;
+  noise_tokens: string[] | null;
+  abbreviation_map: Record<string, string> | null;
+  keywords_photo: string[] | null;
+}
+
+// ─── Pure classification function ────────────────────────────────────────────
+function classifyPendingSkus(
+  skus: PendingSku[],
+  profile: SupplierProfile
+): ClassificationGroup[] {
+  const noiseSet = new Set(
+    (profile.noise_tokens ?? ['BLUE','UV','CZ','CVP','AR','INC','CLE','FOTO','TRIO','EASY','ROCK','SAPPHIRE','OPTIFOG','PREV','TRANS','EXT','EAYS','PHOTO'])
+      .map(t => t.toUpperCase())
+  );
+  const abbrMap: Record<string, string> = profile.abbreviation_map ?? {};
+  const photoKeywords = new Set((profile.keywords_photo ?? []).map(k => k.toUpperCase()));
+  const familyDict = profile.family_dictionary ?? [];
+
+  const INDEX_REGEX = /\b1\.\d{2}\b/g;
+
+  function processDescription(description: string): {
+    baseClean: string;
+    baseExpanded: string;
+    indexes: string[];
+    blueFilter: boolean;
+    photo: boolean;
+  } {
+    const upper = description.toUpperCase();
+    const tokens = upper.split(/\s+/);
+
+    const blueFilter = tokens.includes('BLUE') || tokens.includes('BLUE') || upper.includes('BLUE');
+    const photo = tokens.some(t => t === 'FOTO' || t === 'PHOTO' || photoKeywords.has(t));
+
+    // Extract indexes
+    const indexMatches = description.match(INDEX_REGEX) ?? [];
+    const indexes = [...new Set(indexMatches)];
+
+    // Remove noise tokens and indexes from base
+    const cleanTokens = tokens.filter(t => {
+      if (noiseSet.has(t)) return false;
+      if (INDEX_REGEX.test(t)) return false;
+      INDEX_REGEX.lastIndex = 0;
+      return true;
+    });
+
+    const baseClean = cleanTokens.join(' ').trim();
+
+    // Apply abbreviation map to get expanded form
+    const expandedTokens = cleanTokens.map(t => {
+      const abbr = abbrMap[t] ?? abbrMap[t.toLowerCase()];
+      return abbr ? abbr.toUpperCase() : t;
+    });
+    const baseExpanded = expandedTokens.join(' ').trim();
+
+    return { baseClean, baseExpanded, indexes, blueFilter, photo };
+  }
+
+  function matchFamily(baseClean: string, baseExpanded: string): {
+    family_id: string | null;
+    confidence: 'high' | 'medium' | 'none';
+    reason: string | null;
+    patterns: string[];
+  } {
+    const lowerClean = baseClean.toLowerCase();
+    const lowerExpanded = baseExpanded.toLowerCase();
+
+    // Sort by priority descending
+    const sorted = [...familyDict].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+
+    // Level 1: high — direct keyword match in the clean base
+    for (const rule of sorted) {
+      for (const kw of rule.keywords) {
+        if (lowerClean.includes(kw.toLowerCase())) {
+          return {
+            family_id: rule.family_id,
+            confidence: 'high',
+            reason: `contains "${kw}" (direto)`,
+            patterns: [kw],
+          };
+        }
+      }
+    }
+
+    // Level 2: medium — keyword match after abbreviation expansion
+    for (const rule of sorted) {
+      for (const kw of rule.keywords) {
+        if (lowerExpanded.includes(kw.toLowerCase())) {
+          return {
+            family_id: rule.family_id,
+            confidence: 'medium',
+            reason: `contains "${kw}" (via abreviação)`,
+            patterns: [kw],
+          };
+        }
+      }
+    }
+
+    return { family_id: null, confidence: 'none', reason: null, patterns: [] };
+  }
+
+  // Group by normalized base (expanded)
+  const groupMap = new Map<string, ClassificationGroup>();
+
+  for (const sku of skus) {
+    const desc = sku.description ?? '';
+    const { baseClean, baseExpanded, indexes, blueFilter, photo } = processDescription(desc);
+
+    // Normalize key: use expanded lowercased trimmed
+    const groupKey = baseExpanded.trim() || baseClean.trim() || '(sem descrição)';
+    const normalizedKey = groupKey.toLowerCase();
+
+    if (!groupMap.has(normalizedKey)) {
+      const match = matchFamily(baseClean, baseExpanded);
+      groupMap.set(normalizedKey, {
+        group_key: groupKey,
+        suggested_family_id: match.family_id,
+        confidence: match.confidence,
+        blue_filter: blueFilter,
+        photo,
+        detected_indexes: [...indexes],
+        erp_codes: [],
+        match_reason: match.reason,
+        patterns_suggested: match.patterns,
+        skus: [],
+      });
+    }
+
+    const grp = groupMap.get(normalizedKey)!;
+    grp.erp_codes.push(sku.erp_code);
+    grp.skus.push({ erp_code: sku.erp_code, original_description: desc, index: indexes[0] ?? null });
+
+    // Merge indexes
+    for (const idx of indexes) {
+      if (!grp.detected_indexes.includes(idx)) grp.detected_indexes.push(idx);
+    }
+
+    // If any SKU has blue, mark group
+    if (blueFilter) grp.blue_filter = true;
+    if (photo) grp.photo = true;
+  }
+
+  // Sort: high → medium → none, then alphabetically
+  const order = { high: 0, medium: 1, none: 2 };
+  return [...groupMap.values()].sort((a, b) => {
+    const co = order[a.confidence] - order[b.confidence];
+    if (co !== 0) return co;
+    return a.group_key.localeCompare(b.group_key);
+  });
+}
+
+// ─── PendingClassificationPreview ────────────────────────────────────────────
+function PendingClassificationPreview({ supplierCode }: { supplierCode: string }) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [groups, setGroups] = useState<ClassificationGroup[] | null>(null);
+  const [totalPending, setTotalPending] = useState(0);
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const runAnalysis = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    setGroups(null);
+    try {
+      // Load pending SKUs and supplier profile in parallel
+      const [skusRes, profileRes] = await Promise.all([
+        supabase
+          .from('catalog_pending_skus')
+          .select('*')
+          .eq('supplier_code', supplierCode)
+          .eq('status', 'pending')
+          .order('erp_code', { ascending: true })
+          .limit(500),
+        supabase
+          .from('supplier_profiles')
+          .select('family_dictionary, noise_tokens, abbreviation_map, keywords_photo')
+          .eq('supplier_code', supplierCode)
+          .single(),
+      ]);
+
+      if (skusRes.error) throw skusRes.error;
+      if (profileRes.error) throw profileRes.error;
+
+      const skus = (skusRes.data ?? []) as PendingSku[];
+      const profile = profileRes.data as unknown as SupplierProfile;
+
+      setTotalPending(skus.length);
+
+      if (skus.length === 0) {
+        setGroups([]);
+        return;
+      }
+
+      const result = classifyPendingSkus(skus, profile);
+      setGroups(result);
+    } catch (err: any) {
+      setError(err.message ?? 'Erro desconhecido');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [supplierCode]);
+
+  const exportActionPlan = useCallback(() => {
+    if (!groups) return;
+    const plan = {
+      generated_at: new Date().toISOString(),
+      supplier: supplierCode,
+      total_pending: totalPending,
+      groups: groups.map(g => ({
+        group_key: g.group_key,
+        suggested_family_id: g.suggested_family_id,
+        confidence: g.confidence,
+        erp_codes: g.erp_codes,
+        blue_filter: g.blue_filter,
+        photo: g.photo,
+        detected_indexes: g.detected_indexes,
+        patterns_suggested: g.patterns_suggested,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(plan, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `action-plan-${supplierCode}-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [groups, supplierCode, totalPending]);
+
+  const confidenceBadge = (c: 'high' | 'medium' | 'none') => {
+    if (c === 'high') return <Badge className="text-[10px] bg-primary/10 text-primary border-primary/30 hover:bg-primary/15">high</Badge>;
+    if (c === 'medium') return <Badge className="text-[10px] bg-secondary text-secondary-foreground border-border hover:bg-secondary/80">medium</Badge>;
+    return <Badge variant="outline" className="text-[10px] text-muted-foreground">none</Badge>;
+  };
+
+  if (!groups && !isLoading && !error) {
+    return (
+      <div className="mt-3">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2 w-full border-primary/30 text-primary hover:bg-primary/5"
+          onClick={runAnalysis}
+        >
+          <FlaskConical className="w-4 h-4" />
+          Analisar Pendências (Análise Determinística por Tokens)
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Card className="mt-3 border-primary/20">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <FlaskConical className="w-4 h-4 text-primary" />
+            Análise Determinística (tokens) — {supplierCode}
+            {groups !== null && (
+              <span className="font-normal text-muted-foreground">
+                — {totalPending} pendências — {groups.length} grupos
+              </span>
+            )}
+          </CardTitle>
+          <div className="flex gap-2">
+            {groups !== null && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={exportActionPlan}
+              >
+                <Download className="w-3 h-3" />
+                Exportar ActionPlan JSON
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs gap-1"
+              onClick={runAnalysis}
+              disabled={isLoading}
+            >
+              {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Reanalisar'}
+            </Button>
+          </div>
+        </div>
+        <CardDescription className="text-xs">
+          Classificação por remoção de tokens de ruído e expansão de abreviações do perfil do fornecedor.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="space-y-3">
+        {isLoading && (
+          <div className="flex items-center justify-center py-6 gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Classificando pendências...</span>
+          </div>
+        )}
+
+        {error && (
+          <div className="flex items-center gap-2 text-destructive text-sm py-2">
+            <AlertTriangle className="w-4 h-4" />
+            {error}
+          </div>
+        )}
+
+        {groups !== null && groups.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            Nenhuma pendência com status "pending" para {supplierCode}.
+          </p>
+        )}
+
+        {groups !== null && groups.length > 0 && (
+          <>
+            <div className="overflow-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Grupo Base</TableHead>
+                    <TableHead className="text-xs">Family Sugerida</TableHead>
+                    <TableHead className="text-xs text-center w-12">Qtd</TableHead>
+                    <TableHead className="text-xs">Índices</TableHead>
+                    <TableHead className="text-xs text-center w-12">Blue</TableHead>
+                    <TableHead className="text-xs text-center w-12">Foto</TableHead>
+                    <TableHead className="text-xs text-center w-20">Confiança</TableHead>
+                    <TableHead className="text-xs">Motivo</TableHead>
+                    <TableHead className="text-xs w-8"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {groups.map((grp) => {
+                    const key = grp.group_key;
+                    const isOpen = expandedGroup === key;
+                    return (
+                      <>
+                        <TableRow
+                          key={key}
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => setExpandedGroup(isOpen ? null : key)}
+                        >
+                          <TableCell className="text-xs font-mono max-w-[180px] truncate" title={grp.group_key}>
+                            {grp.group_key}
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {grp.suggested_family_id
+                              ? <span className="font-mono text-primary text-[10px]">{grp.suggested_family_id}</span>
+                              : <span className="text-muted-foreground">—</span>
+                            }
+                          </TableCell>
+                          <TableCell className="text-xs text-center font-medium">{grp.erp_codes.length}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-[100px] truncate">
+                            {grp.detected_indexes.length > 0 ? grp.detected_indexes.join(', ') : '—'}
+                          </TableCell>
+                          <TableCell className="text-xs text-center">
+                            {grp.blue_filter ? '🔵' : '—'}
+                          </TableCell>
+                          <TableCell className="text-xs text-center">
+                            {grp.photo ? '📸' : '—'}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {confidenceBadge(grp.confidence)}
+                          </TableCell>
+                          <TableCell className="text-[10px] text-muted-foreground max-w-[120px] truncate">
+                            {grp.match_reason ?? '—'}
+                          </TableCell>
+                          <TableCell>
+                            {isOpen
+                              ? <ChevronUp className="w-3 h-3 text-muted-foreground" />
+                              : <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                            }
+                          </TableCell>
+                        </TableRow>
+
+                        {isOpen && (
+                          <TableRow key={`${key}-expanded`} className="bg-muted/20">
+                            <TableCell colSpan={9} className="py-2 px-4">
+                              <div className="space-y-1">
+                                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                                  SKUs deste grupo ({grp.skus.length}):
+                                </p>
+                                <div className="grid grid-cols-1 gap-1">
+                                  {grp.skus.map(s => (
+                                    <div key={s.erp_code} className="flex items-center gap-3 text-[11px] bg-background rounded px-2 py-1">
+                                      <span className="font-mono text-primary shrink-0">{s.erp_code}</span>
+                                      {s.index && <Badge variant="outline" className="text-[9px] px-1 py-0">{s.index}</Badge>}
+                                      <span className="text-muted-foreground truncate">{s.original_description}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Summary badges */}
+            <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-primary inline-block" /> {groups.filter(g => g.confidence === 'high').length} high
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-secondary-foreground/40 inline-block" /> {groups.filter(g => g.confidence === 'medium').length} medium
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-muted-foreground/50 inline-block" /> {groups.filter(g => g.confidence === 'none').length} sem match
+              </span>
+            </div>
+
+            <Separator />
+            <p className="text-[10px] text-muted-foreground text-center">
+              Análise determinística (tokens) — somente leitura, nenhuma alteração foi aplicada
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 interface ErpImportTabProps {
   onNavigateTab?: (tab: string) => void;
@@ -600,7 +1048,12 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
                 {showPendingSection ? 'Ocultar' : 'Ver'} Pendências do Banco — {supplier}
               </Button>
             )}
-            {showPendingSection && supplier && <PendingSkusSection supplierCode={supplier} />}
+            {showPendingSection && supplier && (
+              <>
+                <PendingSkusSection supplierCode={supplier} />
+                <PendingClassificationPreview supplierCode={supplier} />
+              </>
+            )}
 
             <div className="bg-muted/50 rounded-lg p-4">
               <p className="text-xs font-medium mb-2">Colunas esperadas na planilha:</p>
@@ -960,7 +1413,12 @@ export function ErpImportTab({ onNavigateTab }: ErpImportTabProps) {
               <ListTodo className="w-4 h-4" />
               {showPendingSection ? 'Ocultar' : 'Ver'} Pendências Salvas no Banco — {report.supplier}
             </Button>
-            {showPendingSection && <div className="mt-3"><PendingSkusSection supplierCode={report.supplier} /></div>}
+            {showPendingSection && (
+              <div className="mt-3 space-y-3">
+                <PendingSkusSection supplierCode={report.supplier} />
+                <PendingClassificationPreview supplierCode={report.supplier} />
+              </div>
+            )}
           </div>
 
           {/* Supplier Mismatch */}

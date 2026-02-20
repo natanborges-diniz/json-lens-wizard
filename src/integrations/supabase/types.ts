@@ -689,6 +689,7 @@ export type Database = {
       }
       supplier_profiles: {
         Row: {
+          abbreviation_map: Json | null
           column_mapping: Json
           created_at: string
           display_name: string
@@ -697,10 +698,12 @@ export type Database = {
           index_parsing: Json | null
           is_active: boolean
           keywords_photo: string[] | null
+          noise_tokens: string[] | null
           supplier_code: string
           updated_at: string
         }
         Insert: {
+          abbreviation_map?: Json | null
           column_mapping?: Json
           created_at?: string
           display_name: string
@@ -709,10 +712,12 @@ export type Database = {
           index_parsing?: Json | null
           is_active?: boolean
           keywords_photo?: string[] | null
+          noise_tokens?: string[] | null
           supplier_code: string
           updated_at?: string
         }
         Update: {
+          abbreviation_map?: Json | null
           column_mapping?: Json
           created_at?: string
           display_name?: string
@@ -721,6 +726,7 @@ export type Database = {
           index_parsing?: Json | null
           is_active?: boolean
           keywords_photo?: string[] | null
+          noise_tokens?: string[] | null
           supplier_code?: string
           updated_at?: string
         }
