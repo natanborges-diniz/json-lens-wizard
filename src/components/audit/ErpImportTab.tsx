@@ -133,7 +133,7 @@ interface ClassificationGroup {
 }
 
 interface SupplierProfile {
-  family_dictionary: Array<{ keywords: string[]; family_id: string; priority?: number }>;
+  family_dictionary: Array<{ contains?: string[]; keywords?: string[]; family_id: string; priority?: number }>;
   noise_tokens: string[] | null;
   abbreviation_map: Record<string, string> | null;
   keywords_photo: string[] | null;
@@ -205,7 +205,7 @@ function classifyPendingSkus(
 
     // Level 1: high — direct keyword match in the clean base
     for (const rule of sorted) {
-      for (const kw of rule.keywords) {
+      for (const kw of (rule.contains ?? rule.keywords ?? [])) {
         if (lowerClean.includes(kw.toLowerCase())) {
           return {
             family_id: rule.family_id,
@@ -219,7 +219,7 @@ function classifyPendingSkus(
 
     // Level 2: medium — keyword match after abbreviation expansion
     for (const rule of sorted) {
-      for (const kw of rule.keywords) {
+      for (const kw of (rule.contains ?? rule.keywords ?? [])) {
         if (lowerExpanded.includes(kw.toLowerCase())) {
           return {
             family_id: rule.family_id,
