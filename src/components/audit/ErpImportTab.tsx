@@ -310,11 +310,13 @@ function PendingClassificationPreview({ supplierCode }: { supplierCode: string }
           .from('supplier_profiles')
           .select('family_dictionary, noise_tokens, abbreviation_map, keywords_photo')
           .eq('supplier_code', supplierCode)
-          .single(),
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       if (skusRes.error) throw skusRes.error;
       if (profileRes.error) throw profileRes.error;
+      if (!profileRes.data) throw new Error(`Perfil do fornecedor "${supplierCode}" não encontrado`);
 
       const skus = (skusRes.data ?? []) as PendingSku[];
       const profile = profileRes.data as unknown as SupplierProfile;
@@ -725,6 +727,7 @@ function PendingSkusSection({ supplierCode }: { supplierCode: string }) {
         .from('catalog_pending_skus')
         .select('*')
         .eq('supplier_code', supplierCode)
+        .eq('status', 'pending')
         .order('created_at', { ascending: false })
         .limit(100);
       if (error) throw error;
