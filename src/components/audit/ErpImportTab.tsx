@@ -465,8 +465,8 @@ function PendingClassificationPreview({ supplierCode }: { supplierCode: string }
                     disabled={isResolving}
                   >
                     {isResolving
-                      ? <Loader2 className="w-3 h-3 animate-spin" />
-                      : <CheckCircle className="w-3 h-3" />
+                      ? (<Loader2 className="w-3 h-3 animate-spin" />)
+                      : (<CheckCircle className="w-3 h-3" />)
                     }
                     Resolver {highErpCount} High
                   </Button>
