@@ -1,230 +1,68 @@
 
-# Preview de Classificação Determinística das 50 Pendências ESSILOR
 
-## Objetivo
+# Auditoria Comercial Estrutural do Catalogo (com ajustes)
 
-Adicionar um componente de análise somente leitura dentro do `ErpImportTab.tsx` que classifica os 50 SKUs pendentes usando lógica determinística de tokens, sem nenhuma escrita no banco, e exporta um "ActionPlan JSON" estruturado para revisão humana.
+## Ajustes aplicados ao plano original
 
----
+### 1. Resolucao de tier sem inferencia por nome
+- Usar apenas `family.tier_target` e `macro.tier_key` do catalogo
+- Se nenhum dos dois existir, marcar como `unknown` em vez de inferir pelo nome da macro
+- Familias `unknown` aparecerao em secao separada no relatorio
 
-## Ajustes do Usuário Aplicados
+### 2. Anomalia por limiar quantitativo
+- Para cada tecnologia, calcular `high_tier_bias` = (usos em advanced+top) / (usos totais)
+- Anomalia = familia em essential ou comfort que referencia tecnologia com `high_tier_bias >= 0.70`
+- Exibir o valor do bias ao lado de cada anomalia
 
-1. Labels trocadas: "IA" → "Análise determinística (tokens)"
-2. `NOISE_TOKENS` e `ABBREVIATION_MAP` movidos para `supplier_profiles` como colunas `noise_tokens` (text[]) e `abbreviation_map` (jsonb), com override por fornecedor
-3. Exportação gera "ActionPlan JSON" com estrutura `groups[{group_key, suggested_family_id, confidence, erp_codes[], patterns_suggested[]}]`
-4. Componente lê `noise_tokens` e `abbreviation_map` do perfil do fornecedor no banco (não hardcoded)
+### 3. Narrativas com dados reais + aviso demonstrativo
+- Selecionar 3 familias reais do catalogo (1 mono essential, 1 prog comfort, 1 prog top)
+- Usar dados reais da familia (attributes, technologies, knowledge)
+- Anamnese sintetica fixa (perfil padrao)
+- Banner amarelo "Narrativa demonstrativa -- gerada com anamnese sintetica" acima de cada exemplo
 
----
+## Arquivos a criar/modificar
 
-## Análise dos 50 SKUs Reais (banco atual)
+### Novo: `src/components/audit/CommercialAuditTab.tsx`
+Componente principal com 5 secoes em Cards:
 
-Com base nos dados reais da tabela `catalog_pending_skus`:
+1. **Media de attributes_base por tier** -- Tabela com tiers nas colunas, atributos nas linhas, medias calculadas. Tier `unknown` incluso se houver familias sem tier resolvido.
 
-```
-GRUPO 1 — LG LP DMAX (4 SKUs)
-  Códigos: 0077256-0077259
-  Descrições: "LG LP DMAX 1.50/1.59/1.60/1.67 FOTO CZ BLUE AR"
-  Tokens removidos: FOTO, CZ, BLUE, AR
-  Base: "LG LP DMAX"
-  Índices: 1.50, 1.59, 1.60, 1.67
-  blue_filter: true | photo: true
-  family_id sugerido: null — "DMAX" sem regra no dict
-  Confiança: none
+2. **Familias sem technology_refs** -- Lista agrupada por tier (incluindo unknown), com nome e fornecedor de cada familia.
 
-GRUPO 2 — LG LP GEN (9 SKUs)
-  Códigos: 0077260-0077268
-  Descrições: "LG LP GEN 1.50/59/60/67/74 AR INC" e sem AR
-  Tokens removidos: AR, INC
-  Base: "LG LP GEN"
-  blue_filter: false | photo: false
-  family_id sugerido: null — "GEN" sem regra
-  Confiança: none
+3. **Tecnologias mais usadas por tier** -- Ranking por tier mostrando nome da tech, contagem, e o `high_tier_bias` calculado.
 
-GRUPO 3 — LG OC DIGITIME NEAR/MID (4 SKUs)
-  Códigos: 0077274-0077277
-  Descrições: "LG OC DIGITIME NEAR/MID BLUE UV TRIO 1.50/1.59"
-  Tokens removidos: BLUE, UV, TRIO
-  Base: "LG OC DIGITIME NEAR" / "LG OC DIGITIME MID"
-  blue_filter: true | photo: false
-  family_id sugerido: null — "DIGITIME" sem regra
-  Confiança: none
+4. **Anomalias de posicionamento** -- Familias essential/comfort com techs cujo `high_tier_bias >= 0.70`. Badge vermelha com o valor do bias.
 
-GRUPO 4 — LG PR VARILUX LIBE 3.0 BLUE (1 SKU)
-  Código: 0077278
-  Tokens removidos: BLUE, INC
-  Base após abreviação: "LG PR VARILUX LIBERTY 3.0"
-  blue_filter: true
-  family_id sugerido: essilor-varilux-liberty (via LIBE→liberty + match dict)
-  Confiança: medium
+5. **Narrativas de exemplo** -- 3 accordions expandiveis, cada um com banner "demonstrativa", dados da familia usada, e narrativa gerada.
 
-GRUPO 5 — LG PR VARILUX PHY EXTE TRACK BLUE (5 SKUs)
-  Códigos: 0077299-0077303
-  Tokens removidos: BLUE, EASY, OPTIFOG, PREV, ROCK, SAPPHIRE
-  Base após abreviação: "LG PR VARILUX PHYSIO EXTENSEE TRACK"
-  blue_filter: true
-  family_id sugerido: essilor-varilux-x-track (via "track")
-  Confiança: medium
+### Modificar: `src/pages/CatalogAudit.tsx`
+- Adicionar aba "Comercial" com icone `Activity`
+- Importar e renderizar `CommercialAuditTab` passando dados do store
 
-GRUPO 6 — LG PR VARILUX PHY EXTENSEE BLUE (5 SKUs)
-  Códigos: 0077304-0077308
-  Base após abreviação: "LG PR VARILUX PHYSIO EXTENSEE"
-  blue_filter: true
-  family_id sugerido: essilor-varilux-physio (via PHY→physio)
-  Confiança: medium
+## Logica de resolucao de tier (funcao local)
 
-GRUPO 7 — LG PR VARILUX XR TRACK CVP TRANS EXT (5+ SKUs)
-  Códigos: 0077279-0077283
-  Tokens removidos: CVP, CZ, TRANS, EXT, EASY, OPTIFOG, PREVENCIA, ROCK, SAPPHIRE
-  Base após abreviação: "LG PR VARILUX XR TRACK"
-  blue_filter: false (não tem BLUE)
-  family_id sugerido: essilor-varilux-xr-series ou essilor-varilux-x-track
-  Confiança: medium (ambiguidade entre xr e x-track)
+```text
+function resolveStrictTier(family, catalogMacros):
+  if family.tier_target in [essential, comfort, advanced, top]:
+    return family.tier_target
+  if catalogMacros has macro matching family.macro with valid tier_key:
+    return macro.tier_key
+  return 'unknown'
 ```
 
----
+Esta funcao substitui `determineTierKey` do scorer (que infere por nome) neste contexto de auditoria.
 
-## Parte 1 — Migração de Banco
+## Anamnese sintetica fixa para narrativas
 
-Adicionar duas colunas à tabela `supplier_profiles`:
-
-| Coluna | Tipo | Default |
-|--------|------|---------|
-| `noise_tokens` | text[] | `'{BLUE,UV,CZ,CVP,AR,INC,CLE,FOTO,TRIO,EASY,ROCK,SAPPHIRE,OPTIFOG,PREV,TRANS,EXT,EAYS}'` |
-| `abbreviation_map` | jsonb | `'{"LIBE":"liberty","PHY":"physio","EXTE":"extensee","DMAX":"dmax","GEN":"gen","OC":"ocupacional"}'` |
-
-O seed será aplicado para ESSILOR com os defaults acima. Outros fornecedores herdam os defaults e poderão ter overrides individuais depois.
-
-Nenhuma nova tabela. Nenhuma RLS nova (herda as políticas existentes de `supplier_profiles`).
-
----
-
-## Parte 2 — Componente `PendingClassificationPreview`
-
-### Onde aparece
-
-Dentro do `ErpImportTab.tsx`, na seção "Pendências do Banco" (`PendingSkusSection`), atrás de um botão:
-
-```
-[ Analisar Pendências (Determinístico) ]
-```
-
-Ao clicar, o componente:
-1. Carrega `catalog_pending_skus` (status=pending, supplier=selecionado)
-2. Carrega `supplier_profiles` para o fornecedor (pega `noise_tokens`, `abbreviation_map`, `family_dictionary`)
-3. Executa `classifyPendingSkus()` localmente — sem edge function
-4. Renderiza a tabela agrupada
-
-### Lógica pura `classifyPendingSkus()`
-
-```
-Para cada SKU:
-1. Extrair índice via regex \b1\.\d{2}\b
-2. Detectar blue_filter = tokens originais contêm "BLUE"
-3. Detectar photo = tokens originais contêm "FOTO" ou estão em keywords_photo do perfil
-4. Remover noise_tokens do perfil da descrição
-5. Substituir abreviações usando abbreviation_map do perfil
-6. String base resultante usada para matching contra family_dictionary
-
-Matching em dois níveis:
-  - Nível 1 (high): contém palavra-chave do dict diretamente na base limpa
-  - Nível 2 (medium): contém palavra-chave após expansão de abreviação
-  - Nível 3 (none): sem match
-
-Agrupamento: por base_description normalizada (trim + lowercase)
-```
-
-### Interface do Componente
-
-Tabela com as colunas:
-
-| Grupo Base | family_id Sugerido | Qtd | Índices | Blue | Foto | Confiança | Motivo do Match |
-|---|---|---|---|---|---|---|---|
-
-- Badge de confiança: verde (high), amarelo (medium), cinza (none)
-- Expandir linha para ver ERPs individuais do grupo
-- Rodapé: "Análise determinística (tokens) — somente leitura, nenhuma alteração foi aplicada"
-- Botão "Exportar ActionPlan JSON"
-
-### Estrutura do ActionPlan JSON exportado
-
-```json
+```text
 {
-  "generated_at": "2026-02-20T...",
-  "supplier": "ESSILOR",
-  "total_pending": 50,
-  "groups": [
-    {
-      "group_key": "LG LP DMAX",
-      "suggested_family_id": null,
-      "confidence": "none",
-      "erp_codes": ["0077256", "0077257", "0077258", "0077259"],
-      "blue_filter": true,
-      "photo": true,
-      "detected_indexes": ["1.50", "1.59", "1.60", "1.67"],
-      "patterns_suggested": []
-    },
-    {
-      "group_key": "LG PR VARILUX LIBERTY 3.0",
-      "suggested_family_id": "essilor-varilux-liberty",
-      "confidence": "medium",
-      "erp_codes": ["0077278"],
-      "blue_filter": true,
-      "photo": false,
-      "detected_indexes": ["1.50"],
-      "patterns_suggested": ["varilux liberty"]
-    }
-  ]
+  usageProfile: 'general',
+  visualComplaints: ['fadiga_digital'],
+  lifestyle: ['office'],
+  prescription: { rightSphere: -2.00, leftSphere: -1.75, rightCylinder: -0.50, leftCylinder: -0.75 }
 }
 ```
 
-O JSON é gerado via `JSON.stringify` no browser e disparado como download.
+## Sem dependencias novas
+Usa componentes UI existentes (Card, Table, Badge, Accordion, Alert) e imports de `narrativeEngine` e tipos do `lens.ts`.
 
----
-
-## Arquivos Modificados
-
-### 1. Migração de banco (nova)
-- Adiciona colunas `noise_tokens` e `abbreviation_map` à `supplier_profiles`
-- Seed para ESSILOR com os defaults mapeados acima
-
-### 2. `src/components/audit/ErpImportTab.tsx`
-- Adiciona interface `ClassificationGroup`
-- Adiciona função pura `classifyPendingSkus(skus, profile)` com as lógicas de token/abreviação/agrupamento
-- Adiciona componente `PendingClassificationPreview` que carrega o perfil do banco e executa a análise
-- Adiciona botão "Analisar Pendências (Determinístico)" dentro de `PendingSkusSection`
-- Lógica de exportação do ActionPlan JSON
-
----
-
-## O Que NÃO Será Feito
-
-- Nenhuma escrita em `catalog_pending_skus`
-- Nenhuma modificação do `family_dictionary`
-- Nenhum apply ou resolução automática
-- Nenhuma nova edge function
-- Nenhuma modificação em outros componentes
-
----
-
-## Pré-visualização do Resultado Esperado
-
-Ao clicar em "Analisar Pendências (Determinístico)" para ESSILOR, o usuário verá:
-
-```
-Análise Determinística (tokens) — ESSILOR — 50 pendências — 7 grupos
-
-Grupo Base                          Family Sugerida              Qtd  Blue  Foto  Confiança
-─────────────────────────────────────────────────────────────────────────────────────────────
-LG LP DMAX                          —                             4    ✓     ✓     [none]
-LG LP GEN                           —                             9    ✗     ✗     [none]
-LG OC DIGITIME NEAR                 —                             2    ✓     ✗     [none]
-LG OC DIGITIME MID                  —                             2    ✓     ✗     [none]
-LG PR VARILUX LIBERTY 3.0           essilor-varilux-liberty       1    ✓     ✗     [medium]
-LG PR VARILUX PHYSIO EXTE TRACK     essilor-varilux-x-track       5    ✓     ✗     [medium]
-LG PR VARILUX PHYSIO EXTENSEE       essilor-varilux-physio        5    ✓     ✗     [medium]
-LG PR VARILUX XR TRACK              essilor-varilux-xr-series    20+  ✗     ✗     [medium]
-
-[ Exportar ActionPlan JSON ]
-────────────────────────────────────────────────────────────────────────
-Análise determinística (tokens) — somente leitura, nenhuma alteração foi aplicada
-```
