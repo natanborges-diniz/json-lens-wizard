@@ -22,7 +22,8 @@ import {
   Wand2,
   Settings2,
   Activity,
-  FileSpreadsheet
+  FileSpreadsheet,
+  BarChart3
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,6 +57,7 @@ import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
 import { DataSourceDiagnostic } from '@/components/audit/DataSourceDiagnostic';
 import { RecommendationLogsTab } from '@/components/audit/RecommendationLogsTab';
 import { ErpImportTab } from '@/components/audit/ErpImportTab';
+import { CommercialAuditTab } from '@/components/audit/CommercialAuditTab';
 import { useClinicalIntegrityReport } from '@/hooks/useClinicalIntegrityReport';
 import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import { 
@@ -1093,6 +1095,10 @@ const CatalogAudit = () => {
               <FileSpreadsheet className="w-3.5 h-3.5" />
               Importação ERP
             </TabsTrigger>
+            <TabsTrigger value="commercial" className="gap-1.5 text-xs py-1.5">
+              <BarChart3 className="w-3.5 h-3.5" />
+              Comercial
+            </TabsTrigger>
           </TabsList>
 
           {/* Families Tab */}
@@ -1648,6 +1654,15 @@ const CatalogAudit = () => {
           {/* ERP Import Tab */}
           <TabsContent value="erp-import" className="mt-0">
             <ErpImportTab onNavigateTab={setActiveTab} />
+          </TabsContent>
+
+          {/* Commercial Audit Tab */}
+          <TabsContent value="commercial" className="mt-0">
+            <CommercialAuditTab
+              families={localFamilies}
+              macros={macros}
+              technologyLibrary={localTechnologies}
+            />
           </TabsContent>
         </Tabs>
 
