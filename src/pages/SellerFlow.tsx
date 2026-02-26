@@ -39,6 +39,7 @@ import type {
   ClinicalType
 } from '@/types/lens';
 import type { SelectedProduct } from '@/lib/productSuggestionEngine';
+import { deriveClinicalTypeFromRx } from '@/lib/deriveClinicalType';
 import { toast } from 'sonner';
 
 // Import anamnesis components
@@ -240,9 +241,7 @@ const SellerFlow = () => {
   // Suggest clinical type based on prescription (but don't force)
   useEffect(() => {
     if (!isHydrated) return;
-    const hasAddition = (prescriptionData.rightAddition && prescriptionData.rightAddition > 0) ||
-                       (prescriptionData.leftAddition && prescriptionData.leftAddition > 0);
-    const suggested: ClinicalType = hasAddition ? 'PROGRESSIVA' : 'MONOFOCAL';
+    const suggested: ClinicalType = deriveClinicalTypeFromRx(prescriptionData);
     setSuggestedClinicalType(suggested);
   }, [prescriptionData.rightAddition, prescriptionData.leftAddition, isHydrated]);
 
@@ -322,6 +321,7 @@ const SellerFlow = () => {
     isReady: engineReady,
     engineResult,
     supplierPriorities: activeSupplierPriorities,
+    pipelineDebug,
   } = useRecommendationEngine({
     lensData: lensDataForEngine,
     lensCategory,
@@ -649,6 +649,7 @@ const SellerFlow = () => {
               prescriptionData={prescriptionData}
               lensData={lensDataForEngine}
               engineResult={engineResult}
+              pipelineDebug={pipelineDebug}
             />
           </div>
         )}

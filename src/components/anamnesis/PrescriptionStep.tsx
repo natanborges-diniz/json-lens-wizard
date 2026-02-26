@@ -1,9 +1,11 @@
+import { useEffect } from 'react';
 import { Camera, Upload, Edit3, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AnamnesisStep } from './AnamnesisStep';
+import { deriveClinicalTypeFromRx } from '@/lib/deriveClinicalType';
 import type { Prescription, ClinicalType } from '@/types/lens';
 
 interface PrescriptionStepProps {
@@ -35,6 +37,20 @@ export const PrescriptionStep = ({
   onClinicalTypeChange,
   suggestedClinicalType,
 }: PrescriptionStepProps) => {
+  // Auto-preselect clinical type from prescription when entering step
+  useEffect(() => {
+    if (!onClinicalTypeChange) return;
+    const derived = deriveClinicalTypeFromRx(data);
+    // Only auto-set if the user hasn't manually picked yet
+    // (we detect this by checking if current value matches the "neutral" default)
+    if (lensCategory === 'PROGRESSIVA' || lensCategory === 'MONOFOCAL') {
+      // Always update suggested; only force-set if current doesn't match derived
+      if (derived !== lensCategory) {
+        onClinicalTypeChange(derived);
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <AnamnesisStep
       title="Dados da Receita"
@@ -179,11 +195,9 @@ export const PrescriptionStep = ({
         {onClinicalTypeChange && (
           <div className="space-y-3">
             <Label className="text-sm font-semibold">Tipo de Lente</Label>
-            {suggestedClinicalType && suggestedClinicalType !== lensCategory && (
-              <p className="text-xs text-muted-foreground">
-                Sugestão do sistema: <strong>{clinicalTypeLabels[suggestedClinicalType]}</strong> (baseado na receita)
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              Sugestão automática: <strong>{clinicalTypeLabels[deriveClinicalTypeFromRx(data)]}</strong> (baseado na receita — você pode alterar)
+            </p>
             <Select value={lensCategory} onValueChange={(v) => onClinicalTypeChange(v as ClinicalType)}>
               <SelectTrigger>
                 <SelectValue />

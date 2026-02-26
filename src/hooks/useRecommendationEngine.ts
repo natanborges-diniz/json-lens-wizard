@@ -31,6 +31,7 @@ import type {
   LensData,
 } from '@/types/lens';
 import { supabase } from '@/integrations/supabase/client';
+import { deriveClinicalTypeFromRx } from '@/lib/deriveClinicalType';
 
 interface UseRecommendationEngineProps {
   lensData: LensData | null;
@@ -54,6 +55,17 @@ interface FamilyWithScore {
   scoredFamily: ScoredFamily;
 }
 
+interface PipelineDebugInfo {
+  catalogLoaded: boolean;
+  totalFamilies: number;
+  activeFamilies: number;
+  familiesWithActivePrices: number;
+  eligibleByClinicalType: number;
+  countsByTier: Record<string, number>;
+  resolvedClinicalType: ClinicalType;
+  reasons: string[];
+}
+
 interface UseRecommendationEngineResult {
   recommendations: Record<Tier, FamilyWithScore[]>;
   topRecommendationId: string | null;
@@ -66,6 +78,7 @@ interface UseRecommendationEngineResult {
   isReady: boolean;
   engineResult: RecommendationResult | null;
   supplierPriorities: string[];
+  pipelineDebug: PipelineDebugInfo | null;
 }
 
 export function useRecommendationEngine({
@@ -110,9 +123,18 @@ export function useRecommendationEngine({
   const effectiveAnamnesis = anamnesisData || defaultAnamnesis;
   const effectivePrescription = prescriptionData || {};
 
+  // Resolve effective clinical type — never null
+  const effectiveClinicalType: ClinicalType = lensCategory || deriveClinicalTypeFromRx(effectivePrescription);
+
   // Run the recommendation engine
-  const { engineResult, recommendations, topRecommendationId, isReady } = useMemo(() => {
+  const { engineResult, recommendations, topRecommendationId, isReady, pipelineDebug } = useMemo(() => {
     if (!lensData || !lensData.families.length || !lensData.prices.length) {
+      const reasons: string[] = [];
+      if (!lensData) reasons.push('Catálogo não carregado');
+      else {
+        if (!lensData.families.length) reasons.push('Nenhuma família no catálogo');
+        if (!lensData.prices.length) reasons.push('Nenhum preço no catálogo');
+      }
       return {
         engineResult: null,
         recommendations: {
@@ -123,15 +145,45 @@ export function useRecommendationEngine({
         } as Record<Tier, FamilyWithScore[]>,
         topRecommendationId: null,
         isReady: false,
+        pipelineDebug: {
+          catalogLoaded: !!lensData,
+          totalFamilies: lensData?.families.length || 0,
+          activeFamilies: 0,
+          familiesWithActivePrices: 0,
+          eligibleByClinicalType: 0,
+          countsByTier: {},
+          resolvedClinicalType: effectiveClinicalType,
+          reasons,
+        } as PipelineDebugInfo,
       };
     }
 
+    // Pipeline debug: compute counts
+    const allFams = lensData.families as FamilyExtended[];
+    const activeFams = allFams.filter(f => f.active);
+    const activePricesFamilyIds = new Set(
+      lensData.prices.filter(p => p.active && !p.blocked).map(p => p.family_id)
+    );
+    const famsWithPrices = activeFams.filter(f => activePricesFamilyIds.has(f.id));
+    const eligibleByCT = famsWithPrices.filter(f => {
+      const ct = f.clinical_type || f.category;
+      return ct === effectiveClinicalType;
+    });
+
+    const debugReasons: string[] = [];
+    const inactiveFams = allFams.length - activeFams.length;
+    if (inactiveFams > 0) debugReasons.push(`${inactiveFams} famílias inativas`);
+    const noPriceFams = activeFams.length - famsWithPrices.length;
+    if (noPriceFams > 0) debugReasons.push(`${noPriceFams} famílias sem preço ativo`);
+    const wrongCT = famsWithPrices.length - eligibleByCT.length;
+    if (wrongCT > 0) debugReasons.push(`${wrongCT} famílias com tipo clínico diferente de ${effectiveClinicalType}`);
+
     // Prepare input for the engine
     const input: RecommendationInput = {
-      clinicalType: lensCategory,
+      clinicalType: effectiveClinicalType,
       anamnesis: effectiveAnamnesis,
       prescription: effectivePrescription,
-      families: lensData.families as FamilyExtended[],
+      families: allFams,
       prices: lensData.prices,
       technologyLibrary: lensData.technology_library 
         ? Object.fromEntries(Object.entries(lensData.technology_library)) as Record<string, Technology>
@@ -155,33 +207,56 @@ export function useRecommendationEngine({
 
     // Process each tier
     const tierKeys: TierKey[] = ['essential', 'comfort', 'advanced', 'top'];
+    const countsByTier: Record<string, number> = {};
     
     tierKeys.forEach(tierKey => {
       const tierRec = result.tiers[tierKey];
-      if (!tierRec) return;
+      if (!tierRec) {
+        countsByTier[tierKey] = 0;
+        return;
+      }
 
       const familiesForTier: FamilyWithScore[] = [];
 
-      // Add primary if exists
       if (tierRec.primary) {
         familiesForTier.push(convertScoredFamily(tierRec.primary, tierKey));
       }
 
-      // Add alternatives
       tierRec.alternatives.forEach(sf => {
         familiesForTier.push(convertScoredFamily(sf, tierKey));
       });
 
       legacyRecommendations[tierKey] = familiesForTier;
+      countsByTier[tierKey] = familiesForTier.length;
     });
+
+    // Check if all tiers are empty
+    const totalResults = Object.values(countsByTier).reduce((a, b) => a + b, 0);
+    if (totalResults === 0 && eligibleByCT.length > 0) {
+      debugReasons.push('Famílias elegíveis existem mas foram filtradas pelo motor (receita fora dos specs?)');
+    }
+
+    const debug: PipelineDebugInfo = {
+      catalogLoaded: true,
+      totalFamilies: allFams.length,
+      activeFamilies: activeFams.length,
+      familiesWithActivePrices: famsWithPrices.length,
+      eligibleByClinicalType: eligibleByCT.length,
+      countsByTier,
+      resolvedClinicalType: effectiveClinicalType,
+      reasons: debugReasons,
+    };
+
+    console.log('[RecommendationEngine] Pipeline debug:', debug);
 
     return {
       engineResult: result,
       recommendations: legacyRecommendations,
       topRecommendationId: result.topRecommendation?.family.id || null,
       isReady: true,
+      pipelineDebug: debug,
     };
-  }, [lensData, lensCategory, effectiveAnamnesis, effectivePrescription, filters, supplierPriorities, clinicalEligibilityMode]);
+  }, [lensData, effectiveClinicalType, effectiveAnamnesis, effectivePrescription, filters, supplierPriorities, clinicalEligibilityMode]);
 
   const stats = engineResult?.stats || {
     totalFamiliesAnalyzed: 0,
@@ -197,6 +272,7 @@ export function useRecommendationEngine({
     isReady,
     engineResult,
     supplierPriorities,
+    pipelineDebug,
   };
 }
 

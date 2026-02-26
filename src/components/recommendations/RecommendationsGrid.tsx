@@ -19,7 +19,9 @@ import {
   Shield,
   ThumbsUp,
   Zap,
-  Crown
+  Crown,
+  AlertTriangle,
+  Bug
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -55,6 +57,17 @@ interface FamilyWithPrice {
   scoredFamily?: ScoredFamily;
 }
 
+interface PipelineDebugInfo {
+  catalogLoaded: boolean;
+  totalFamilies: number;
+  activeFamilies: number;
+  familiesWithActivePrices: number;
+  eligibleByClinicalType: number;
+  countsByTier: Record<string, number>;
+  resolvedClinicalType: string;
+  reasons: string[];
+}
+
 interface RecommendationsGridProps {
   recommendations: Record<Tier, FamilyWithPrice[]>;
   occupationalRecommendations?: Record<Tier, FamilyWithPrice[]>;
@@ -68,10 +81,9 @@ interface RecommendationsGridProps {
   anamnesisData?: AnamnesisData;
   prescriptionData?: Partial<Prescription>;
   lensData?: LensData | null;
-  /** Force 4 tiers display with empty states */
   forceAllTiers?: boolean;
-  /** Engine result for narrative generation */
   engineResult?: RecommendationResult | null;
+  pipelineDebug?: PipelineDebugInfo | null;
 }
 
 type ViewMode = 'system' | 'ai' | 'single';
@@ -126,6 +138,7 @@ export const RecommendationsGrid = ({
   lensData,
   forceAllTiers = true,
   engineResult,
+  pipelineDebug,
 }: RecommendationsGridProps) => {
   const [supplierFilter, setSupplierFilter] = useState<string | null>(null);
   const [highlightedFamilies, setHighlightedFamilies] = useState<string[]>([]);
@@ -570,14 +583,64 @@ export const RecommendationsGrid = ({
 
         {/* No options message */}
         {tierOptions.every(o => o.isEmpty) && (
-          <div className="text-center py-12 text-muted-foreground col-span-4">
-            <SlidersHorizontal className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p className="text-lg font-medium">Nenhuma lente encontrada</p>
-            <p className="text-sm">Tente ajustar os filtros ou verifique a receita</p>
-            {hasFilters && (
-              <Button variant="link" onClick={clearFilters} className="mt-2">
-                Limpar filtros
-              </Button>
+          <div className="space-y-4">
+            <div className="text-center py-12 text-muted-foreground col-span-4">
+              <SlidersHorizontal className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">Nenhuma lente encontrada</p>
+              <p className="text-sm">Tente ajustar os filtros ou verifique a receita</p>
+              {hasFilters && (
+                <Button variant="link" onClick={clearFilters} className="mt-2">
+                  Limpar filtros
+                </Button>
+              )}
+            </div>
+
+            {/* Pipeline Debug Panel */}
+            {pipelineDebug && (
+              <Card className="p-4 border-destructive/30 bg-destructive/5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Bug className="w-4 h-4 text-destructive" />
+                  <span className="text-sm font-semibold text-destructive">Diagnóstico do Pipeline</span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                  <div className="text-center p-2 rounded bg-background border">
+                    <div className="text-lg font-bold">{pipelineDebug.totalFamilies}</div>
+                    <div className="text-xs text-muted-foreground">Total Famílias</div>
+                  </div>
+                  <div className="text-center p-2 rounded bg-background border">
+                    <div className="text-lg font-bold">{pipelineDebug.activeFamilies}</div>
+                    <div className="text-xs text-muted-foreground">Ativas</div>
+                  </div>
+                  <div className="text-center p-2 rounded bg-background border">
+                    <div className="text-lg font-bold">{pipelineDebug.familiesWithActivePrices}</div>
+                    <div className="text-xs text-muted-foreground">Com Preço Ativo</div>
+                  </div>
+                  <div className="text-center p-2 rounded bg-background border">
+                    <div className="text-lg font-bold">{pipelineDebug.eligibleByClinicalType}</div>
+                    <div className="text-xs text-muted-foreground">Elegíveis ({pipelineDebug.resolvedClinicalType})</div>
+                  </div>
+                </div>
+                {Object.keys(pipelineDebug.countsByTier).length > 0 && (
+                  <div className="flex gap-2 mb-3 flex-wrap">
+                    {Object.entries(pipelineDebug.countsByTier).map(([tier, count]) => (
+                      <Badge key={tier} variant={count > 0 ? 'default' : 'outline'} className="text-xs">
+                        {tier}: {count}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                {pipelineDebug.reasons.length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-xs font-medium text-muted-foreground">Motivos de exclusão:</span>
+                    {pipelineDebug.reasons.map((reason, i) => (
+                      <div key={i} className="flex items-start gap-1.5 text-xs text-destructive">
+                        <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                        {reason}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
             )}
           </div>
         )}
