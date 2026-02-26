@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import type { AnamnesisData, Prescription, FrameMeasurements, ClinicalType } from '@/types/lens';
 
-interface DraftData {
+export interface DraftData {
   serviceId: string;
   customerId: string;
   customerName: string;
@@ -12,6 +12,7 @@ interface DraftData {
   prescriptionData: Partial<Prescription>;
   frameData: Partial<FrameMeasurements>;
   lensCategory: ClinicalType;
+  currentStep?: string;
 }
 
 interface UseDraftPersistenceOptions {
@@ -21,10 +22,24 @@ interface UseDraftPersistenceOptions {
 export const useDraftPersistence = ({ storeId }: UseDraftPersistenceOptions) => {
   const { user } = useAuth();
   const [existingDraft, setExistingDraft] = useState<DraftData | null>(null);
+  const [isCheckingDraft, setIsCheckingDraft] = useState(true);
+
+  // Use refs for IDs to avoid stale closures in debounced callbacks
+  const draftServiceIdRef = useRef<string | null>(null);
+  const draftCustomerIdRef = useRef<string | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isSavingRef = useRef(false);
+
+  // Expose IDs as state too (for consumers that need reactivity)
   const [draftServiceId, setDraftServiceId] = useState<string | null>(null);
   const [draftCustomerId, setDraftCustomerId] = useState<string | null>(null);
-  const [isCheckingDraft, setIsCheckingDraft] = useState(true);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setIds = useCallback((serviceId: string | null, customerId: string | null) => {
+    draftServiceIdRef.current = serviceId;
+    draftCustomerIdRef.current = customerId;
+    setDraftServiceId(serviceId);
+    setDraftCustomerId(customerId);
+  }, []);
 
   // Check for existing draft on mount
   useEffect(() => {
@@ -37,7 +52,7 @@ export const useDraftPersistence = ({ storeId }: UseDraftPersistenceOptions) => 
       try {
         const { data, error } = await supabase
           .from('services')
-          .select('id, customer_id, anamnesis_data, prescription_data, frame_data, lens_category, customers!services_customer_id_fkey(name)')
+          .select('id, customer_id, anamnesis_data, prescription_data, frame_data, lens_category, notes, customers!services_customer_id_fkey(name)')
           .eq('seller_id', user.id)
           .eq('status', 'draft' as any)
           .order('updated_at', { ascending: false })
@@ -52,7 +67,14 @@ export const useDraftPersistence = ({ storeId }: UseDraftPersistenceOptions) => 
 
         if (data) {
           const customerData = data.customers as any;
-          setExistingDraft({
+          // Parse step from notes if stored
+          let currentStep: string | undefined;
+          try {
+            const notesObj = data.notes ? JSON.parse(data.notes) : null;
+            currentStep = notesObj?.currentStep;
+          } catch { /* ignore */ }
+
+          const draft: DraftData = {
             serviceId: data.id,
             customerId: data.customer_id,
             customerName: customerData?.name || 'Cliente',
@@ -61,7 +83,11 @@ export const useDraftPersistence = ({ storeId }: UseDraftPersistenceOptions) => 
             prescriptionData: (data.prescription_data as any) || {},
             frameData: (data.frame_data as any) || {},
             lensCategory: (data.lens_category as ClinicalType) || 'PROGRESSIVA',
-          });
+            currentStep,
+          };
+          setExistingDraft(draft);
+          // Pre-load IDs so that if user resumes, we already have them
+          setIds(data.id, data.customer_id);
         }
       } catch (err) {
         console.error('[DraftPersistence] Unexpected error:', err);
@@ -71,17 +97,16 @@ export const useDraftPersistence = ({ storeId }: UseDraftPersistenceOptions) => 
     };
 
     checkDraft();
-  }, [user]);
+  }, [user, setIds]);
 
-  // Resume an existing draft
-  const resumeDraft = useCallback(() => {
+  // Resume an existing draft — returns data for hydration
+  const resumeDraft = useCallback((): DraftData | null => {
     if (!existingDraft) return null;
-    setDraftServiceId(existingDraft.serviceId);
-    setDraftCustomerId(existingDraft.customerId);
+    setIds(existingDraft.serviceId, existingDraft.customerId);
     return existingDraft;
-  }, [existingDraft]);
+  }, [existingDraft, setIds]);
 
-  // Discard (delete) the existing draft
+  // Discard (soft-delete) the existing draft
   const discardDraft = useCallback(async () => {
     if (!existingDraft) return;
     try {
@@ -93,27 +118,33 @@ export const useDraftPersistence = ({ storeId }: UseDraftPersistenceOptions) => 
       console.warn('[DraftPersistence] Error discarding draft:', err);
     }
     setExistingDraft(null);
-  }, [existingDraft]);
+    setIds(null, null);
+  }, [existingDraft, setIds]);
 
-  // Save draft (debounced) - creates or updates service + customer
+  // Save draft — debounced, creates or updates, prevents duplicates
   const saveDraft = useCallback(async (
     customerName: string,
     anamnesisData: AnamnesisData,
     prescriptionData: Partial<Prescription>,
     frameData: Partial<FrameMeasurements>,
     lensCategory: ClinicalType,
+    currentStep?: string,
   ) => {
     if (!user) return;
 
-    // Debounce: clear any pending save
+    // Clear any pending save
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
 
     saveTimeoutRef.current = setTimeout(async () => {
+      // Prevent concurrent saves
+      if (isSavingRef.current) return;
+      isSavingRef.current = true;
+
       try {
-        let customerId = draftCustomerId;
-        let serviceId = draftServiceId;
+        let customerId = draftCustomerIdRef.current;
+        let serviceId = draftServiceIdRef.current;
 
         // Create customer if needed
         if (!customerId) {
@@ -124,14 +155,16 @@ export const useDraftPersistence = ({ storeId }: UseDraftPersistenceOptions) => 
             .single();
           if (custError) throw custError;
           customerId = customer.id;
-          setDraftCustomerId(customerId);
+          setIds(serviceId, customerId);
         } else {
-          // Update customer name
+          // Update customer name if changed
           await supabase
             .from('customers')
             .update({ name: customerName || 'Cliente' })
             .eq('id', customerId);
         }
+
+        const notesObj = currentStep ? JSON.stringify({ currentStep }) : null;
 
         const servicePayload = {
           customer_id: customerId,
@@ -141,19 +174,40 @@ export const useDraftPersistence = ({ storeId }: UseDraftPersistenceOptions) => 
           prescription_data: JSON.parse(JSON.stringify(prescriptionData)),
           frame_data: JSON.parse(JSON.stringify(frameData)),
           lens_category: lensCategory,
+          notes: notesObj,
         };
 
         if (!serviceId) {
-          // Create new draft
-          const { data: service, error } = await supabase
+          // Before creating, double-check no other draft exists for this seller
+          const { data: existingCheck } = await supabase
             .from('services')
-            .insert([servicePayload])
             .select('id')
-            .single();
-          if (error) throw error;
-          serviceId = service.id;
-          setDraftServiceId(serviceId);
-          console.log('[DraftPersistence] Draft created:', serviceId);
+            .eq('seller_id', user.id)
+            .eq('status', 'draft' as any)
+            .limit(1)
+            .maybeSingle();
+
+          if (existingCheck) {
+            // Reuse existing draft instead of creating duplicate
+            serviceId = existingCheck.id;
+            setIds(serviceId, customerId);
+            const { error } = await supabase
+              .from('services')
+              .update(servicePayload)
+              .eq('id', serviceId);
+            if (error) throw error;
+            console.log('[DraftPersistence] Reused existing draft:', serviceId);
+          } else {
+            const { data: service, error } = await supabase
+              .from('services')
+              .insert([servicePayload])
+              .select('id')
+              .single();
+            if (error) throw error;
+            serviceId = service.id;
+            setIds(serviceId, customerId);
+            console.log('[DraftPersistence] Draft created:', serviceId);
+          }
         } else {
           // Update existing draft
           const { error } = await supabase
@@ -165,24 +219,41 @@ export const useDraftPersistence = ({ storeId }: UseDraftPersistenceOptions) => 
         }
       } catch (err) {
         console.error('[DraftPersistence] Save error:', err);
+      } finally {
+        isSavingRef.current = false;
       }
-    }, 1500); // 1.5s debounce
-  }, [user, draftServiceId, draftCustomerId]);
+    }, 1500);
+  }, [user, setIds]);
 
   // Promote draft to in_progress (when finalizing budget)
   const promoteDraft = useCallback(async () => {
-    if (!draftServiceId) return { serviceId: null, customerId: null };
+    const serviceId = draftServiceIdRef.current;
+    const customerId = draftCustomerIdRef.current;
+    if (!serviceId) return { serviceId: null, customerId: null };
     try {
+      // Flush any pending save first
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
       await supabase
         .from('services')
         .update({ status: 'in_progress' as any })
-        .eq('id', draftServiceId);
-      return { serviceId: draftServiceId, customerId: draftCustomerId };
+        .eq('id', serviceId);
+      return { serviceId, customerId };
     } catch (err) {
       console.error('[DraftPersistence] Promote error:', err);
-      return { serviceId: draftServiceId, customerId: draftCustomerId };
+      return { serviceId, customerId };
     }
-  }, [draftServiceId, draftCustomerId]);
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return {
     existingDraft,

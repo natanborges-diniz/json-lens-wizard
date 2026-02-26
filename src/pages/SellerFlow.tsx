@@ -51,8 +51,9 @@ import { RecommendationsGrid } from '@/components/recommendations/Recommendation
 import { BudgetFinalization } from '@/components/budget/BudgetFinalization';
 import { LensCardConfiguration } from '@/components/recommendations/LensCard';
 
-// Default anamnesis data
-const defaultAnamnesis: AnamnesisData = {
+// Neutral initial values — NOT the "real" defaults.
+// These are placeholders until hydration completes.
+const NEUTRAL_ANAMNESIS: AnamnesisData = {
   primaryUse: 'mixed',
   screenHours: '3-5',
   nightDriving: 'sometimes',
@@ -62,27 +63,37 @@ const defaultAnamnesis: AnamnesisData = {
   aestheticPriority: 'medium',
 };
 
+const NEUTRAL_PRESCRIPTION: Partial<Prescription> = {
+  rightSphere: 0,
+  rightCylinder: 0,
+  rightAxis: 0,
+  leftSphere: 0,
+  leftCylinder: 0,
+  leftAxis: 0,
+};
+
+const NEUTRAL_FRAME: Partial<FrameMeasurements> = {
+  horizontalSize: 54,
+  verticalSize: 40,
+  bridge: 18,
+  dp: 64,
+  altura: 18,
+};
+
 type Step = 'profile' | 'complaints' | 'lifestyle' | 'prescription' | 'frame' | 'recommendations' | 'budget';
 
 const SellerFlow = () => {
+  // ────────────────────────────────────────────
+  // HYDRATION GATE: nothing renders until true
+  // ────────────────────────────────────────────
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Sale state — lazy initialized with neutrals, overwritten on hydration
   const [currentStep, setCurrentStep] = useState<Step>('profile');
   const [customerName, setCustomerName] = useState('');
-  const [anamnesisData, setAnamnesisData] = useState<AnamnesisData>(defaultAnamnesis);
-  const [prescriptionData, setPrescriptionData] = useState<Partial<Prescription>>({
-    rightSphere: 0,
-    rightCylinder: 0,
-    rightAxis: 0,
-    leftSphere: 0,
-    leftCylinder: 0,
-    leftAxis: 0,
-  });
-  const [frameData, setFrameData] = useState<Partial<FrameMeasurements>>({
-    horizontalSize: 54,
-    verticalSize: 40,
-    bridge: 18,
-    dp: 64,
-    altura: 18,
-  });
+  const [anamnesisData, setAnamnesisData] = useState<AnamnesisData>(NEUTRAL_ANAMNESIS);
+  const [prescriptionData, setPrescriptionData] = useState<Partial<Prescription>>(NEUTRAL_PRESCRIPTION);
+  const [frameData, setFrameData] = useState<Partial<FrameMeasurements>>(NEUTRAL_FRAME);
   const [lensCategory, setLensCategory] = useState<ClinicalType>('PROGRESSIVA');
   const [suggestedClinicalType, setSuggestedClinicalType] = useState<ClinicalType>('PROGRESSIVA');
   const [isLoading, setIsLoading] = useState(false);
@@ -113,14 +124,27 @@ const SellerFlow = () => {
 
   // Draft resume state
   const [showDraftPrompt, setShowDraftPrompt] = useState(false);
-  const draftPromptShownRef = useRef(false);
+  const hydrationDoneRef = useRef(false);
 
+  // ────────────────────────────────────────────
+  // HYDRATION SEQUENCE (runs once after all deps ready)
+  // Order: storeContext → draftCheck → prompt or hydrate
+  // ────────────────────────────────────────────
   useEffect(() => {
-    if (existingDraft && !isCheckingDraft && !draftPromptShownRef.current) {
-      draftPromptShownRef.current = true;
+    // Wait until store context and draft check are both resolved
+    if (storesLoading || isCheckingDraft) return;
+    // Only run once
+    if (hydrationDoneRef.current) return;
+
+    if (existingDraft) {
+      // Show draft prompt — hydration completes after user decision
       setShowDraftPrompt(true);
+    } else {
+      // No draft — hydrate with neutrals (already set)
+      hydrationDoneRef.current = true;
+      setIsHydrated(true);
     }
-  }, [existingDraft, isCheckingDraft]);
+  }, [storesLoading, isCheckingDraft, existingDraft]);
 
   const handleResumeDraft = () => {
     const draft = resumeDraft();
@@ -130,14 +154,22 @@ const SellerFlow = () => {
       if (draft.prescriptionData) setPrescriptionData(draft.prescriptionData);
       if (draft.frameData) setFrameData(draft.frameData);
       if (draft.lensCategory) setLensCategory(draft.lensCategory);
+      // Restore step if saved
+      if (draft.currentStep && ['profile', 'complaints', 'lifestyle', 'prescription', 'frame', 'recommendations'].includes(draft.currentStep)) {
+        setCurrentStep(draft.currentStep as Step);
+      }
       toast.success('Atendimento anterior retomado');
     }
     setShowDraftPrompt(false);
+    hydrationDoneRef.current = true;
+    setIsHydrated(true);
   };
 
   const handleDiscardDraft = async () => {
     await discardDraft();
     setShowDraftPrompt(false);
+    hydrationDoneRef.current = true;
+    setIsHydrated(true);
     toast.info('Rascunho descartado');
   };
 
@@ -161,7 +193,7 @@ const SellerFlow = () => {
     rawLensData,
   } = useLensStore();
 
-  // Load data on mount - only once per component lifecycle
+  // Load catalog on mount - only once per component lifecycle
   const hasLoadedRef = useRef(false);
   useEffect(() => {
     if (hasLoadedRef.current) return;
@@ -207,20 +239,40 @@ const SellerFlow = () => {
 
   // Suggest clinical type based on prescription (but don't force)
   useEffect(() => {
+    if (!isHydrated) return;
     const hasAddition = (prescriptionData.rightAddition && prescriptionData.rightAddition > 0) ||
                        (prescriptionData.leftAddition && prescriptionData.leftAddition > 0);
     const suggested: ClinicalType = hasAddition ? 'PROGRESSIVA' : 'MONOFOCAL';
     setSuggestedClinicalType(suggested);
-  }, [prescriptionData.rightAddition, prescriptionData.leftAddition]);
+  }, [prescriptionData.rightAddition, prescriptionData.leftAddition, isHydrated]);
 
-  // Save draft on step change (debounced via hook)
-  const prevStepRef = useRef(currentStep);
+  // ────────────────────────────────────────────
+  // CONTINUOUS AUTO-SAVE: saves on every data change (debounced)
+  // Only runs after hydration to avoid saving neutral values
+  // ────────────────────────────────────────────
   useEffect(() => {
-    if (prevStepRef.current !== currentStep && currentStep !== 'budget') {
-      prevStepRef.current = currentStep;
-      saveDraft(customerName, anamnesisData, prescriptionData as Partial<Prescription>, frameData as Partial<FrameMeasurements>, lensCategory);
-    }
-  }, [currentStep]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!isHydrated) return;
+    // Don't save during budget step (budget has its own persistence)
+    if (currentStep === 'budget') return;
+    
+    saveDraft(
+      customerName,
+      anamnesisData,
+      prescriptionData as Partial<Prescription>,
+      frameData as Partial<FrameMeasurements>,
+      lensCategory,
+      currentStep,
+    );
+  }, [
+    isHydrated,
+    currentStep,
+    customerName,
+    anamnesisData,
+    prescriptionData,
+    frameData,
+    lensCategory,
+    saveDraft,
+  ]);
 
   const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
     { id: 'profile', label: 'Perfil', icon: <User className="w-4 h-4" /> },
@@ -377,6 +429,11 @@ const SellerFlow = () => {
     }
   };
 
+  // ────────────────────────────────────────────
+  // RENDER GATES
+  // ────────────────────────────────────────────
+
+  // Gate 1: Loading catalog or checking draft or resolving stores
   if (isLoading || isCheckingDraft || storesLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -388,7 +445,7 @@ const SellerFlow = () => {
     );
   }
 
-  // Draft resume prompt
+  // Gate 2: Draft prompt (before hydration completes)
   if (showDraftPrompt && existingDraft) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
@@ -413,6 +470,18 @@ const SellerFlow = () => {
             </div>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // Gate 3: Hydration not complete yet (shouldn't happen but safety net)
+  if (!isHydrated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Preparando...</p>
+        </div>
       </div>
     );
   }
