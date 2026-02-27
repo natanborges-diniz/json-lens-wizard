@@ -61,6 +61,16 @@ interface PipelineDebugInfo {
   countsByTier: Record<string, number>;
   resolvedClinicalType: string;
   reasons: string[];
+  eligibilityFunnel?: {
+    totalSkus: number;
+    passedActive: number;
+    passedSphere: number;
+    passedCylinder: number;
+    passedAddition: number;
+    passedDiameter: number;
+    passedHeight: number;
+    finalEligible: number;
+  };
 }
 
 interface RecommendationsGridProps {
@@ -141,6 +151,10 @@ export const RecommendationsGrid = ({
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
   const [showOccupationalModal, setShowOccupationalModal] = useState(false);
   const [showSolarModal, setShowSolarModal] = useState(false);
+
+  // SimilarLensesSheet state (E5)
+  const [similarSheetOpen, setSimilarSheetOpen] = useState(false);
+  const [similarSheetTier, setSimilarSheetTier] = useState<Tier>('essential');
 
   // Default anamnesis data if not provided
   const defaultAnamnesis: AnamnesisData = {
@@ -534,7 +548,8 @@ export const RecommendationsGrid = ({
                 onSelect={handleLensSelect}
                 alternativeCount={alternativeCount}
                 onViewAlternatives={alternativeCount > 0 ? () => {
-                  // TODO: open alternatives drawer/modal for this tier
+                  setSimilarSheetTier(tier);
+                  setSimilarSheetOpen(true);
                 } : undefined}
                 scoredFamily={primary.scoredFamily}
                 showScore={true}
@@ -615,6 +630,31 @@ export const RecommendationsGrid = ({
                     <div className="text-xs text-muted-foreground">Elegíveis ({pipelineDebug.resolvedClinicalType})</div>
                   </div>
                 </div>
+
+                {/* Eligibility Funnel (E6) */}
+                {pipelineDebug.eligibilityFunnel && (
+                  <div className="mb-3">
+                    <span className="text-xs font-medium text-muted-foreground block mb-2">Funil de Elegibilidade SKU</span>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {[
+                        { label: 'Total SKUs', value: pipelineDebug.eligibilityFunnel.totalSkus },
+                        { label: 'Ativos', value: pipelineDebug.eligibilityFunnel.passedActive },
+                        { label: 'Esfera OK', value: pipelineDebug.eligibilityFunnel.passedSphere },
+                        { label: 'Cilindro OK', value: pipelineDebug.eligibilityFunnel.passedCylinder },
+                        { label: 'Adição OK', value: pipelineDebug.eligibilityFunnel.passedAddition },
+                        { label: 'Diâmetro OK', value: pipelineDebug.eligibilityFunnel.passedDiameter },
+                        { label: 'Altura OK', value: pipelineDebug.eligibilityFunnel.passedHeight },
+                        { label: 'Elegíveis', value: pipelineDebug.eligibilityFunnel.finalEligible },
+                      ].map(item => (
+                        <div key={item.label} className="text-center p-1.5 rounded bg-background border text-xs">
+                          <div className="font-bold text-sm">{item.value}</div>
+                          <div className="text-muted-foreground">{item.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {Object.keys(pipelineDebug.countsByTier).length > 0 && (
                   <div className="flex gap-2 mb-3 flex-wrap">
                     {Object.entries(pipelineDebug.countsByTier).map(([tier, count]) => (
@@ -684,6 +724,31 @@ export const RecommendationsGrid = ({
         attributeDefs={attributeDefs}
         onAddProduct={handleAddProduct}
         primaryProduct={primaryProduct}
+      />
+
+      {/* SimilarLensesSheet (E5) */}
+      <SimilarLensesSheet
+        open={similarSheetOpen}
+        onOpenChange={setSimilarSheetOpen}
+        tierKey={similarSheetTier}
+        winnerId={tierOptions.find(t => t.tier === similarSheetTier)?.primary?.family.id || ''}
+        alternatives={(recommendations[similarSheetTier] || [])
+          .filter(f => f.scoredFamily)
+          .map(f => f.scoredFamily!)}
+        onSelectAlternative={(sf) => {
+          // Find the FamilyWithPrice for this alternative and select it
+          const fwp = (recommendations[similarSheetTier] || []).find(f => f.family.id === sf.family.id);
+          if (fwp && fwp.bestPrice) {
+            handleLensSelect({
+              familyId: fwp.family.id,
+              selectedPrice: fwp.bestPrice,
+              selectedIndex: (fwp.bestPrice as any).index_value || '1.50',
+              selectedTreatments: fwp.bestPrice.addons_detected || [],
+              totalPrice: fwp.bestPrice.price_sale_half_pair * 2,
+            });
+          }
+          setSimilarSheetOpen(false);
+        }}
       />
     </div>
   );
