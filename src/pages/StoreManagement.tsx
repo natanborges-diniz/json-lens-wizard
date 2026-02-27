@@ -22,6 +22,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { LogoUpload } from '@/components/settings/LogoUpload';
+import { SupplierPriorityManager } from '@/components/settings/SupplierPriorityManager';
 
 interface StoreData {
   id: string;
@@ -37,6 +38,7 @@ interface StoreData {
   slogan: string | null;
   footer_text: string | null;
   budget_terms: string | null;
+  supplier_priorities: string[] | null;
   is_active: boolean;
   created_at: string;
 }
@@ -54,6 +56,7 @@ const emptyStore: Omit<StoreData, 'id' | 'created_at'> = {
   slogan: null,
   footer_text: null,
   budget_terms: null,
+  supplier_priorities: null,
   is_active: true,
 };
 
@@ -87,7 +90,10 @@ const StoreManagement = () => {
         .order('name');
 
       if (error) throw error;
-      setStores(data || []);
+      setStores((data || []).map(d => ({
+        ...d,
+        supplier_priorities: Array.isArray(d.supplier_priorities) ? d.supplier_priorities as string[] : null,
+      })) as StoreData[]);
     } catch (error) {
       console.error('Error fetching stores:', error);
       toast.error('Erro ao carregar lojas');
@@ -118,6 +124,7 @@ const StoreManagement = () => {
         slogan: store.slogan,
         footer_text: store.footer_text,
         budget_terms: store.budget_terms,
+        supplier_priorities: (store as any).supplier_priorities || null,
         is_active: store.is_active,
       });
     } else {
@@ -472,6 +479,14 @@ const StoreManagement = () => {
                 </div>
               </div>
             </div>
+
+            {/* Supplier Priorities (E3) */}
+            {editingStore && (
+              <SupplierPriorityManager
+                savedPriorities={(formData.supplier_priorities as string[]) || []}
+                onChange={(priorities) => updateFormField('supplier_priorities' as any, priorities as any)}
+              />
+            )}
 
             {/* Budget Settings */}
             <div className="space-y-4">
