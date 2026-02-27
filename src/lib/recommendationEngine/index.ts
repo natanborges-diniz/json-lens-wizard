@@ -1,15 +1,12 @@
 /**
- * Recommendation Engine - Motor de Recomendação Óptica
+ * Recommendation Engine - Motor de Recomendação Óptica (Phase 4: SKU-first)
  * 
- * Implementação do Blueprint Oficial seguindo 5 camadas:
- * 1. Catalog Layer (dados do catálogo)
- * 2. Clinical Engine (score clínico - 60%)
- * 3. Commercial Engine (score comercial - 40%)
- * 4. Narrative Engine (Sprint 3 - IMPLEMENTADO)
- * 5. UX Layer (Sprint 2 - IMPLEMENTADO)
- * 
- * Fórmula oficial:
- * final_score = (clinical_score * 0.60) + (commercial_score * 0.40)
+ * Pipeline:
+ * SKUs → isSkuEligibleForRx → eligibleFamilies
+ *   → TierScore global (price median + tech percentile)
+ *   → tier_assigned (runtime only)
+ *   → StoreBoost (ranking within tier, cap 15)
+ *   → 1 winner/tier + similares list
  */
 
 import type { ClinicalType, Technology, FamilyExtended } from '@/types/lens';
@@ -20,7 +17,6 @@ import type {
   ScoredFamily,
   TierRecommendation,
 } from './types';
-import { classifySKU } from '@/lib/catalogIntegrityAnalyzer';
 
 // Re-export types
 export * from './types';
@@ -54,6 +50,10 @@ import {
   generateClosingScript,
 } from './narrativeEngine';
 
+// Re-export SKU eligibility
+export { isSkuEligibleForRx, getEligibleSkusAndFamilies } from './skuEligibility';
+export type { EligibilityFunnel, EligibilityOutput, SkuEligibilityResult } from './skuEligibility';
+
 // Re-export individual engines
 export { calculateClinicalScore, isClinicallyEligible } from './clinicalEngine';
 export { calculateCommercialScore, isCommerciallyViable } from './commercialEngine';
@@ -61,7 +61,7 @@ export { determineTierKey, SCORE_WEIGHTS } from './recommendationScorer';
 export { organizeTiersWithFallback, hasCompleteLadder, listFallbacks } from './fallbackStrategy';
 export { createAuditLog, getRecentAuditLogs, logRecommendationSummary } from './auditLogger';
 
-// Re-export narrative engine (Sprint 3)
+// Re-export narrative engine
 export {
   generateNarratives,
   generateFamilyNarrative,
@@ -76,165 +76,51 @@ export type {
 } from './narrativeEngine';
 
 // ============================================
-// TIER REBALANCING BY PRICE QUARTILE
-// ============================================
-
-/**
- * Reclassifica famílias por quartil de preço quando a classificação por metadata
- * está desequilibrada (>70% das famílias num único tier).
- * 
- * Isso resolve o problema de catálogos onde tier_target está ausente/incorreto,
- * garantindo que a escada de valor tenha preços ascendentes.
- */
-function rebalanceTiersByPrice(families: ScoredFamily[]): ScoredFamily[] {
-  const withPrice = families.filter(f => f.startingPrice !== null && f.startingPrice > 0);
-  if (withPrice.length < 4) return families;
-  
-  // Check for price inversions: get median price per tier
-  const tierOrder: TierKey[] = ['essential', 'comfort', 'advanced', 'top'];
-  const tierMedians: Record<TierKey, number> = { essential: 0, comfort: 0, advanced: 0, top: 0 };
-  const tierFamilyCounts: Record<TierKey, number> = { essential: 0, comfort: 0, advanced: 0, top: 0 };
-  
-  tierOrder.forEach(tier => {
-    const tierPrices = withPrice
-      .filter(f => f.score.tierKey === tier)
-      .map(f => f.startingPrice!)
-      .sort((a, b) => a - b);
-    
-    tierFamilyCounts[tier] = tierPrices.length;
-    if (tierPrices.length > 0) {
-      tierMedians[tier] = tierPrices[Math.floor(tierPrices.length / 2)];
-    }
-  });
-  
-  // Detect inversions: check if higher tiers have lower median prices
-  let hasInversion = false;
-  const activeTiers = tierOrder.filter(t => tierFamilyCounts[t] > 0);
-  
-  for (let i = 0; i < activeTiers.length - 1; i++) {
-    if (tierMedians[activeTiers[i]] > tierMedians[activeTiers[i + 1]] && tierMedians[activeTiers[i + 1]] > 0) {
-      hasInversion = true;
-      console.warn(`[RecommendationEngine] Price inversion: ${activeTiers[i]} median R$${tierMedians[activeTiers[i]]} > ${activeTiers[i+1]} median R$${tierMedians[activeTiers[i+1]]}`);
-    }
-  }
-  
-  // Also check: >70% in one tier
-  const maxTierCount = Math.max(...Object.values(tierFamilyCounts));
-  const isImbalanced = maxTierCount / withPrice.length > 0.70;
-  
-  if (!hasInversion && !isImbalanced) {
-    console.log('[RecommendationEngine] Tier distribution balanced, no rebalancing needed');
-    return families;
-  }
-  
-  console.warn(`[RecommendationEngine] Applying price-based quartile rebalancing (inversion=${hasInversion}, imbalance=${isImbalanced})`);
-  
-  // Sort ALL priced families by price ascending
-  const sorted = [...withPrice].sort((a, b) => (a.startingPrice || 0) - (b.startingPrice || 0));
-  
-  // Assign to quartiles
-  const q1 = Math.floor(sorted.length * 0.25);
-  const q2 = Math.floor(sorted.length * 0.50);
-  const q3 = Math.floor(sorted.length * 0.75);
-  
-  sorted.forEach((sf, idx) => {
-    let newTier: TierKey;
-    if (idx < q1) newTier = 'essential';
-    else if (idx < q2) newTier = 'comfort';
-    else if (idx < q3) newTier = 'advanced';
-    else newTier = 'top';
-    
-    sf.score.tierKey = newTier;
-  });
-  
-  // Re-rank within each tier
-  const byTier: Record<TierKey, ScoredFamily[]> = { essential: [], comfort: [], advanced: [], top: [] };
-  sorted.forEach(sf => byTier[sf.score.tierKey].push(sf));
-  Object.values(byTier).forEach(tierFams => {
-    tierFams.sort((a, b) => b.score.final - a.score.final);
-    tierFams.forEach((sf, idx) => { sf.score.rankInTier = idx + 1; });
-  });
-  
-  const newCounts = Object.entries(byTier).map(([k, v]) => `${k}:${v.length}`).join(', ');
-  console.log(`[RecommendationEngine] Rebalanced tiers: ${newCounts}`);
-  
-  const withoutPrice = families.filter(f => f.startingPrice === null || f.startingPrice === 0);
-  return [...sorted, ...withoutPrice];
-}
-
-// ============================================
 // MAIN RECOMMENDATION FUNCTION
 // ============================================
 
 /**
- * Executa o motor de recomendação completo
- * 
- * @param input - Dados de entrada (famílias, preços, anamnese, receita)
- * @returns Resultado completo com 4 tiers e estatísticas
+ * Executa o motor de recomendação completo (Phase 4: SKU-first pipeline)
  */
 export function generateRecommendations(input: RecommendationInput): RecommendationResult {
   const startTime = Date.now();
   
-  // 1. Filtrar famílias pelo tipo clínico
-  const relevantFamilies = input.families.filter(f => {
-    const category = (f as any).clinical_type || f.category;
-    return category === input.clinicalType && f.active !== false;
-  });
-  
-  // Aplicar filtros opcionais
-  let filteredFamilies = relevantFamilies;
-  
-  if (input.filters?.suppliers?.length) {
-    filteredFamilies = filteredFamilies.filter(f => 
-      input.filters!.suppliers!.includes(f.supplier)
-    );
-  }
-  
-  if (input.filters?.excludeFamilyIds?.length) {
-    filteredFamilies = filteredFamilies.filter(f => 
-      !input.filters!.excludeFamilyIds!.includes(f.id)
-    );
-  }
-
-  // 2.5. STRICT MODE: Pre-filter prices to exclude DEFAULTED/PARCIAL SKUs
-  let effectivePrices = input.prices;
-  if (input.clinicalEligibilityMode === 'strict') {
-    const familiesMap = new Map<string, FamilyExtended>();
-    filteredFamilies.forEach(f => familiesMap.set(f.id, f));
-    
-    effectivePrices = input.prices.filter(p => {
-      const metric = classifySKU(p, familiesMap.get(p.family_id));
-      // COMPLETO: always eligible
-      // LEGACY: eligible (has real specs)
-      // PARCIAL: ineligible in strict mode
-      // DEFAULTED: ineligible in strict mode
-      return metric.classification === 'COMPLETO' || metric.classification === 'LEGACY';
-    });
-    
-    console.log(`[RecommendationEngine] STRICT mode: ${input.prices.length} → ${effectivePrices.length} SKUs after clinical integrity filter`);
-  }
-  
-  // 2. Converter technology library para formato esperado
+  // Convert technology library
   const techLib: Record<string, Technology> = {};
   if (input.technologyLibrary) {
     Object.entries(input.technologyLibrary).forEach(([key, value]) => {
       techLib[key] = value;
     });
   }
-  
-  // 3. Calcular scores para todas as famílias (com macros reais do catálogo)
-  const scoredFamilies = scoreAndRankFamilies(
-    filteredFamilies,
-    effectivePrices,
+
+  // Phase 4: Use SKU-first scoring pipeline
+  const { scoredFamilies: allScored, eligibility } = scoreAndRankFamilies(
+    input.families,
+    input.prices,
     input.anamnesis,
     input.prescription,
     techLib,
     input.supplierPriorities,
-    input.macros
+    input.macros,
+    input.clinicalType,
+    undefined, // frame (from input if available)
+    input.storePriorities // store-level priorities
   );
+
+  // Apply optional price filters
+  let finalFamilies = allScored;
   
-  // 4. Aplicar filtros de preço (pós-score)
-  let finalFamilies = scoredFamilies;
+  if (input.filters?.suppliers?.length) {
+    finalFamilies = finalFamilies.filter(sf => 
+      input.filters!.suppliers!.includes(sf.family.supplier)
+    );
+  }
+  
+  if (input.filters?.excludeFamilyIds?.length) {
+    finalFamilies = finalFamilies.filter(sf => 
+      !input.filters!.excludeFamilyIds!.includes(sf.family.id)
+    );
+  }
   
   if (input.filters?.minPrice !== undefined) {
     finalFamilies = finalFamilies.filter(sf => 
@@ -247,24 +133,24 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
       sf.startingPrice === null || sf.startingPrice <= input.filters!.maxPrice!
     );
   }
-  
-  // 4.5. Reclassificar tiers por quartil de preço se metadata estiver desequilibrada
-  finalFamilies = rebalanceTiersByPrice(finalFamilies);
-  
-  // 5. Organizar em 4 tiers com fallback
+
+  // Organize into 4 tiers with fallback
   const tiers = organizeTiersWithFallback(finalFamilies);
   
-  // 6. Encontrar top recommendation
+  // Find top recommendation (by adjustedScore)
   const eligibleFamilies = finalFamilies.filter(sf => sf.score.isEligible);
   const topRecommendation = eligibleFamilies.length > 0
     ? eligibleFamilies.reduce((best, current) => 
-        current.score.final > best.score.final ? current : best
+        current.score.adjustedScore > best.score.adjustedScore ? current : best
       )
     : null;
   
-  // 7. Calcular estatísticas
+  // Stats
   const stats = {
-    totalFamiliesAnalyzed: filteredFamilies.length,
+    totalFamiliesAnalyzed: input.families.filter(f => {
+      const ct = f.clinical_type || f.category;
+      return ct === input.clinicalType && f.active !== false;
+    }).length,
     totalEligible: eligibleFamilies.length,
     totalWithFallback: countFallbackTiers(tiers),
     averageScore: eligibleFamilies.length > 0
@@ -272,23 +158,16 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
       : 0,
   };
 
-  // 7.5 Check strict mode block
-  const isStrictBlocked = input.clinicalEligibilityMode === 'strict' && eligibleFamilies.length === 0 && filteredFamilies.length > 0;
-  if (isStrictBlocked) {
-    console.warn(`[RecommendationEngine] STRICT MODE BLOCK: ${filteredFamilies.length} families analyzed, 0 eligible after clinical integrity filter`);
-  }
-  
-  // 8. Gerar ID de auditoria
+  // Strict mode block check
+  const isStrictBlocked = input.clinicalEligibilityMode === 'strict' && eligibleFamilies.length === 0 && stats.totalFamiliesAnalyzed > 0;
+
+  // Audit
   const auditId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
-  // 9. Criar log de auditoria
   const auditLog = createAuditLog(input, finalFamilies, tiers);
-  
-  // 10. Log resumido no console
   logRecommendationSummary(finalFamilies, tiers);
   
   const endTime = Date.now();
-  console.log(`[RecommendationEngine] Completed in ${endTime - startTime}ms`);
+  console.log(`[RecommendationEngine] Completed in ${endTime - startTime}ms | Funnel: ${eligibility.funnelCounts.totalSkus} SKUs → ${eligibility.funnelCounts.finalEligible} eligible → ${eligibleFamilies.length} families`);
   
   return {
     clinicalType: input.clinicalType,
@@ -299,6 +178,7 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
     auditId: auditLog.auditId,
     strictModeBlocked: isStrictBlocked,
     strictModeBlockReason: isStrictBlocked ? 'Sem opções compatíveis com a receita — todos os SKUs elegíveis dependem de Safe Defaults (modo estrito ativo)' : undefined,
+    eligibilityFunnel: eligibility.funnelCounts,
   };
 }
 
@@ -306,9 +186,6 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
 // UTILITY FUNCTIONS
 // ============================================
 
-/**
- * Recalcula recomendações quando filtros mudam
- */
 export function updateRecommendationsWithFilters(
   previousResult: RecommendationResult,
   input: RecommendationInput
@@ -316,79 +193,26 @@ export function updateRecommendationsWithFilters(
   return generateRecommendations(input);
 }
 
-/**
- * Verifica se o motor está pronto para uso
- */
 export function isEngineReady(input: Partial<RecommendationInput>): {
   ready: boolean;
   missing: string[];
 } {
   const missing: string[] = [];
-  
-  if (!input.families || input.families.length === 0) {
-    missing.push('families');
-  }
-  
-  if (!input.prices || input.prices.length === 0) {
-    missing.push('prices');
-  }
-  
-  if (!input.anamnesis) {
-    missing.push('anamnesis');
-  }
-  
-  if (!input.clinicalType) {
-    missing.push('clinicalType');
-  }
-  
-  return {
-    ready: missing.length === 0,
-    missing,
-  };
+  if (!input.families || input.families.length === 0) missing.push('families');
+  if (!input.prices || input.prices.length === 0) missing.push('prices');
+  if (!input.anamnesis) missing.push('anamnesis');
+  if (!input.clinicalType) missing.push('clinicalType');
+  return { ready: missing.length === 0, missing };
 }
-
-// ============================================
-// DEFAULT EXPORT
-// ============================================
 
 export default {
   generateRecommendations,
   updateRecommendationsWithFilters,
   isEngineReady,
-  
-  // Sub-modules
-  clinical: {
-    calculateClinicalScore,
-    isClinicallyEligible,
-  },
-  commercial: {
-    calculateCommercialScore,
-    isCommerciallyViable,
-  },
-  scoring: {
-    calculateRecommendationScore,
-    scoreFamilyComplete,
-    scoreAndRankFamilies,
-    determineTierKey,
-    SCORE_WEIGHTS,
-  },
-  fallback: {
-    organizeTiersWithFallback,
-    countFallbackTiers,
-    hasCompleteLadder,
-    listFallbacks,
-  },
-  audit: {
-    createAuditLog,
-    getRecentAuditLogs,
-    logRecommendationSummary,
-  },
-  // Narrative Engine (Sprint 3)
-  narrative: {
-    generateNarratives,
-    generateFamilyNarrative,
-    generateTierComparison,
-    generateOpeningScript,
-    generateClosingScript,
-  },
+  clinical: { calculateClinicalScore, isClinicallyEligible },
+  commercial: { calculateCommercialScore, isCommerciallyViable },
+  scoring: { calculateRecommendationScore, scoreFamilyComplete, scoreAndRankFamilies, determineTierKey, SCORE_WEIGHTS },
+  fallback: { organizeTiersWithFallback, countFallbackTiers, hasCompleteLadder, listFallbacks },
+  audit: { createAuditLog, getRecentAuditLogs, logRecommendationSummary },
+  narrative: { generateNarratives, generateFamilyNarrative, generateTierComparison, generateOpeningScript, generateClosingScript },
 };

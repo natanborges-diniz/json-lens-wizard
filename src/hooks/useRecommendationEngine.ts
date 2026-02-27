@@ -1,12 +1,5 @@
 /**
- * useRecommendationEngine - Hook para integrar o motor de recomendação
- * 
- * Centraliza a lógica de geração de recomendações usando o novo engine.
- * Fornece:
- * - Recomendações por tier com scores
- * - Top recommendation
- * - Estatísticas
- * - Logs de auditoria
+ * useRecommendationEngine - Hook para integrar o motor de recomendação (Phase 4: SKU-first)
  */
 
 import { useMemo, useEffect, useState } from 'react';
@@ -17,6 +10,7 @@ import {
   type ScoredFamily,
   type TierKey,
   type TierRecommendation,
+  type EligibilityFunnel,
 } from '@/lib/recommendationEngine';
 import type { 
   Family, 
@@ -38,6 +32,7 @@ interface UseRecommendationEngineProps {
   lensCategory: ClinicalType;
   anamnesisData?: AnamnesisData;
   prescriptionData?: Partial<Prescription>;
+  selectedStoreId?: string | null;
   filters?: {
     suppliers?: string[];
     excludeFamilyIds?: string[];
@@ -64,6 +59,7 @@ interface PipelineDebugInfo {
   countsByTier: Record<string, number>;
   resolvedClinicalType: ClinicalType;
   reasons: string[];
+  eligibilityFunnel?: EligibilityFunnel;
 }
 
 interface UseRecommendationEngineResult {
@@ -86,13 +82,16 @@ export function useRecommendationEngine({
   lensCategory,
   anamnesisData,
   prescriptionData,
+  selectedStoreId,
   filters,
 }: UseRecommendationEngineProps): UseRecommendationEngineResult {
   
-  // Load supplier priorities and clinical eligibility mode from company settings
+  // Load global supplier priorities and clinical eligibility mode
   const [supplierPriorities, setSupplierPriorities] = useState<string[]>([]);
   const [clinicalEligibilityMode, setClinicalEligibilityMode] = useState<'permissive' | 'strict'>('permissive');
+  const [storePriorities, setStorePriorities] = useState<string[] | null>(null);
   
+  // Load company settings
   useEffect(() => {
     supabase
       .from('company_settings')
@@ -108,8 +107,27 @@ export function useRecommendationEngine({
         }
       });
   }, []);
+
+  // Load store-level priorities (E3)
+  useEffect(() => {
+    if (!selectedStoreId) {
+      setStorePriorities(null);
+      return;
+    }
+    supabase
+      .from('stores')
+      .select('supplier_priorities')
+      .eq('id', selectedStoreId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.supplier_priorities && Array.isArray(data.supplier_priorities) && (data.supplier_priorities as any[]).length > 0) {
+          setStorePriorities(data.supplier_priorities as string[]);
+        } else {
+          setStorePriorities(null);
+        }
+      });
+  }, [selectedStoreId]);
   
-  // Default anamnesis if not provided
   const defaultAnamnesis: AnamnesisData = {
     primaryUse: 'mixed',
     screenHours: '3-5',
@@ -122,11 +140,8 @@ export function useRecommendationEngine({
 
   const effectiveAnamnesis = anamnesisData || defaultAnamnesis;
   const effectivePrescription = prescriptionData || {};
-
-  // Resolve effective clinical type — never null
   const effectiveClinicalType: ClinicalType = lensCategory || deriveClinicalTypeFromRx(effectivePrescription);
 
-  // Run the recommendation engine
   const { engineResult, recommendations, topRecommendationId, isReady, pipelineDebug } = useMemo(() => {
     if (!lensData || !lensData.families.length || !lensData.prices.length) {
       const reasons: string[] = [];
@@ -137,12 +152,7 @@ export function useRecommendationEngine({
       }
       return {
         engineResult: null,
-        recommendations: {
-          essential: [],
-          comfort: [],
-          advanced: [],
-          top: [],
-        } as Record<Tier, FamilyWithScore[]>,
+        recommendations: { essential: [], comfort: [], advanced: [], top: [] } as Record<Tier, FamilyWithScore[]>,
         topRecommendationId: null,
         isReady: false,
         pipelineDebug: {
@@ -158,7 +168,6 @@ export function useRecommendationEngine({
       };
     }
 
-    // Pipeline debug: compute counts
     const allFams = lensData.families as FamilyExtended[];
     const activeFams = allFams.filter(f => f.active);
     const activePricesFamilyIds = new Set(
@@ -178,7 +187,6 @@ export function useRecommendationEngine({
     const wrongCT = famsWithPrices.length - eligibleByCT.length;
     if (wrongCT > 0) debugReasons.push(`${wrongCT} famílias com tipo clínico diferente de ${effectiveClinicalType}`);
 
-    // Prepare input for the engine
     const input: RecommendationInput = {
       clinicalType: effectiveClinicalType,
       anamnesis: effectiveAnamnesis,
@@ -188,49 +196,35 @@ export function useRecommendationEngine({
       technologyLibrary: lensData.technology_library 
         ? Object.fromEntries(Object.entries(lensData.technology_library)) as Record<string, Technology>
         : {},
-      filters: filters,
+      filters,
       supplierPriorities,
       macros: lensData.macros?.map(m => ({ id: m.id, tier_key: m.tier_key, category: m.category })),
       clinicalEligibilityMode,
+      storePriorities: storePriorities || undefined,
     };
 
-    // Generate recommendations
     const result = generateRecommendations(input);
 
-    // Convert to legacy format for backward compatibility
+    // Convert to legacy format
     const legacyRecommendations: Record<Tier, FamilyWithScore[]> = {
-      essential: [],
-      comfort: [],
-      advanced: [],
-      top: [],
+      essential: [], comfort: [], advanced: [], top: [],
     };
 
-    // Process each tier
     const tierKeys: TierKey[] = ['essential', 'comfort', 'advanced', 'top'];
     const countsByTier: Record<string, number> = {};
     
     tierKeys.forEach(tierKey => {
       const tierRec = result.tiers[tierKey];
-      if (!tierRec) {
-        countsByTier[tierKey] = 0;
-        return;
-      }
+      if (!tierRec) { countsByTier[tierKey] = 0; return; }
 
       const familiesForTier: FamilyWithScore[] = [];
-
-      if (tierRec.primary) {
-        familiesForTier.push(convertScoredFamily(tierRec.primary, tierKey));
-      }
-
-      tierRec.alternatives.forEach(sf => {
-        familiesForTier.push(convertScoredFamily(sf, tierKey));
-      });
+      if (tierRec.primary) familiesForTier.push(convertScoredFamily(tierRec.primary, tierKey));
+      tierRec.alternatives.forEach(sf => familiesForTier.push(convertScoredFamily(sf, tierKey)));
 
       legacyRecommendations[tierKey] = familiesForTier;
       countsByTier[tierKey] = familiesForTier.length;
     });
 
-    // Check if all tiers are empty
     const totalResults = Object.values(countsByTier).reduce((a, b) => a + b, 0);
     if (totalResults === 0 && eligibleByCT.length > 0) {
       debugReasons.push('Famílias elegíveis existem mas foram filtradas pelo motor (receita fora dos specs?)');
@@ -245,6 +239,7 @@ export function useRecommendationEngine({
       countsByTier,
       resolvedClinicalType: effectiveClinicalType,
       reasons: debugReasons,
+      eligibilityFunnel: result.eligibilityFunnel,
     };
 
     console.log('[RecommendationEngine] Pipeline debug:', debug);
@@ -256,7 +251,7 @@ export function useRecommendationEngine({
       isReady: true,
       pipelineDebug: debug,
     };
-  }, [lensData, effectiveClinicalType, effectiveAnamnesis, effectivePrescription, filters, supplierPriorities, clinicalEligibilityMode]);
+  }, [lensData, effectiveClinicalType, effectiveAnamnesis, effectivePrescription, filters, supplierPriorities, clinicalEligibilityMode, storePriorities]);
 
   const stats = engineResult?.stats || {
     totalFamiliesAnalyzed: 0,
@@ -276,7 +271,6 @@ export function useRecommendationEngine({
   };
 }
 
-// Helper to convert ScoredFamily to legacy format
 function convertScoredFamily(sf: ScoredFamily, tier: TierKey): FamilyWithScore {
   return {
     family: sf.family as Family,
@@ -287,7 +281,7 @@ function convertScoredFamily(sf: ScoredFamily, tier: TierKey): FamilyWithScore {
       : null,
     allPrices: sf.compatiblePrices,
     tier: tier as Tier,
-    score: sf.score.final,
+    score: sf.score.adjustedScore,
     scoredFamily: sf,
   };
 }

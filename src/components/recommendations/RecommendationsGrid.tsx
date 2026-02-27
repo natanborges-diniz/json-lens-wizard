@@ -1,11 +1,5 @@
 /**
- * RecommendationsGrid - Refatorado para modelo varejo ótico
- * 
- * Layout:
- * - ConsultativeNarrativePanel (abertura + resumo)
- * - 4 cards (escada) Essential / Comfort / Advanced / Top
- * - TierComparisonCards (deltas entre tiers)
- * - Budget Panel
+ * RecommendationsGrid - Phase 4: 1 winner per tier + "Ver Similares"
  */
 
 import { useState, useMemo, useCallback } from 'react';
@@ -28,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { SimplifiedLensCard, LensCardSelection } from './SimplifiedLensCard';
+import { SimilarLensesSheet } from './SimilarLensesSheet';
 import { TierEmptyState } from './TierEmptyState';
 import { BudgetPanel } from './BudgetPanel';
 import { ConsultativeNarrativePanel } from './ConsultativeNarrativePanel';
