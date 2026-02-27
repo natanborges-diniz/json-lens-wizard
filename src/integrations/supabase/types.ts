@@ -222,6 +222,42 @@ export type Database = {
           },
         ]
       }
+      catalog_validation_runs: {
+        Row: {
+          catalog_version_id: string | null
+          conflicts_detail: Json | null
+          created_at: string
+          critical_conflicts: number
+          id: string
+          published: boolean
+          total_conflicts: number
+          user_id: string | null
+          warning_conflicts: number
+        }
+        Insert: {
+          catalog_version_id?: string | null
+          conflicts_detail?: Json | null
+          created_at?: string
+          critical_conflicts?: number
+          id?: string
+          published?: boolean
+          total_conflicts?: number
+          user_id?: string | null
+          warning_conflicts?: number
+        }
+        Update: {
+          catalog_version_id?: string | null
+          conflicts_detail?: Json | null
+          created_at?: string
+          critical_conflicts?: number
+          id?: string
+          published?: boolean
+          total_conflicts?: number
+          user_id?: string | null
+          warning_conflicts?: number
+        }
+        Relationships: []
+      }
       catalog_variant_grades: {
         Row: {
           addition_max: number | null
@@ -687,6 +723,42 @@ export type Database = {
           supplier_priorities?: Json | null
           updated_at?: string
           whatsapp?: string | null
+        }
+        Relationships: []
+      }
+      supplier_family_map: {
+        Row: {
+          active: boolean
+          catalog_family_id: string
+          confidence: string
+          created_at: string
+          created_by: string | null
+          erp_family_name: string
+          id: string
+          rule_type: string
+          supplier: string
+        }
+        Insert: {
+          active?: boolean
+          catalog_family_id: string
+          confidence?: string
+          created_at?: string
+          created_by?: string | null
+          erp_family_name: string
+          id?: string
+          rule_type?: string
+          supplier: string
+        }
+        Update: {
+          active?: boolean
+          catalog_family_id?: string
+          confidence?: string
+          created_at?: string
+          created_by?: string | null
+          erp_family_name?: string
+          id?: string
+          rule_type?: string
+          supplier?: string
         }
         Relationships: []
       }

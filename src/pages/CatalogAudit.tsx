@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { ShieldCheck } from 'lucide-react';
 import { 
   ArrowLeft, 
   Search,
@@ -58,7 +59,10 @@ import { DataSourceDiagnostic } from '@/components/audit/DataSourceDiagnostic';
 import { RecommendationLogsTab } from '@/components/audit/RecommendationLogsTab';
 import { ErpImportTab } from '@/components/audit/ErpImportTab';
 import { CommercialAuditTab } from '@/components/audit/CommercialAuditTab';
+import { CatalogStatusBanner } from '@/components/audit/CatalogStatusBanner';
+import { ClassificationTab } from '@/components/audit/ClassificationTab';
 import { useClinicalIntegrityReport } from '@/hooks/useClinicalIntegrityReport';
+import type { ConsistencyAuditResult, AutoFix } from '@/lib/catalogConsistencyAuditor';
 import type { LensData, FamilyExtended, Price, MacroExtended, Technology } from '@/types/lens';
 import { 
   runClassificationEngine, 
@@ -123,6 +127,9 @@ const CatalogAudit = () => {
     toggleFamilyActive,
     togglePriceActive,
     rawLensData,
+    catalogStatus,
+    lastAuditResult,
+    runConsistencyAudit,
   } = useLensStore();
 
   // Local state for unsaved changes
@@ -150,6 +157,51 @@ const CatalogAudit = () => {
       loadCatalog().finally(() => setIsLoading(false));
     }
   }, [families.length, loadCatalog]);
+
+  // Run consistency audit when families/prices change (Phase 5)
+  useEffect(() => {
+    if (families.length > 0 && prices.length > 0) {
+      runConsistencyAudit();
+    }
+  }, [families.length, prices.length]);
+
+  // Auto-fix handler (Phase 5)
+  const handleApplyAutoFixes = useCallback((fixes: AutoFix[]) => {
+    let updatedFamilies = [...localFamilies];
+    let changesCount = 0;
+
+    for (const fix of fixes) {
+      if (fix.field === 'clinical_type' && fix.suggestedValue !== 'REMOVE') {
+        updatedFamilies = updatedFamilies.map(f => {
+          if (f.id === fix.familyId) {
+            changesCount++;
+            return { ...f, clinical_type: fix.suggestedValue as any, category: fix.suggestedValue as any };
+          }
+          return f;
+        });
+      }
+      if (fix.type === 'REMOVE_INCOMPATIBLE_TECH') {
+        updatedFamilies = updatedFamilies.map(f => {
+          if (f.id === fix.familyId && f.technology_refs) {
+            changesCount++;
+            return { ...f, technology_refs: f.technology_refs.filter(t => t !== fix.currentValue) };
+          }
+          return f;
+        });
+      }
+    }
+
+    if (changesCount > 0) {
+      setLocalFamilies(updatedFamilies);
+      setPendingChanges(prev => [...prev, ...fixes.map(f => ({
+        type: 'category' as const,
+        familyId: f.familyId,
+        oldValue: f.currentValue || '',
+        newValue: f.suggestedValue,
+      }))]);
+      toast.success(`${changesCount} correção(ões) automática(s) aplicada(s)`);
+    }
+  }, [localFamilies]);
 
   // Get unique values for filters
   const uniqueSuppliers = useMemo(() => 
@@ -1046,9 +1098,19 @@ const CatalogAudit = () => {
           </Card>
         </div>
 
+        {/* Governance Banner (Phase 5) */}
+        <CatalogStatusBanner
+          auditResult={lastAuditResult}
+          catalogStatus={catalogStatus}
+          pendingChanges={pendingChanges.length}
+          isSaving={isSavingToCloud}
+          onPublish={saveAllChanges}
+          onApplyAutoFixes={handleApplyAutoFixes}
+        />
+
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="bg-muted/50 p-1 h-auto">
+          <TabsList className="bg-muted/50 p-1 h-auto flex-wrap">
             <TabsTrigger value="families" className="gap-1.5 text-xs py-1.5">
               <Package className="w-3.5 h-3.5" />
               Famílias ({filteredFamilies.length})
@@ -1098,6 +1160,15 @@ const CatalogAudit = () => {
             <TabsTrigger value="commercial" className="gap-1.5 text-xs py-1.5">
               <BarChart3 className="w-3.5 h-3.5" />
               Comercial
+            </TabsTrigger>
+            <TabsTrigger value="classification" className="gap-1.5 text-xs py-1.5">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Classificação
+              {lastAuditResult && lastAuditResult.summary.totalCritical > 0 && (
+                <Badge variant="destructive" className="ml-1 h-4 px-1 text-[10px]">
+                  {lastAuditResult.summary.totalCritical}
+                </Badge>
+              )}
             </TabsTrigger>
           </TabsList>
 
@@ -1685,6 +1756,15 @@ const CatalogAudit = () => {
               families={localFamilies}
               macros={macros}
               technologyLibrary={localTechnologies}
+            />
+          </TabsContent>
+
+          {/* Classification Tab (Phase 5) */}
+          <TabsContent value="classification" className="mt-0">
+            <ClassificationTab
+              families={localFamilies}
+              prices={prices}
+              auditResult={lastAuditResult}
             />
           </TabsContent>
         </Tabs>
