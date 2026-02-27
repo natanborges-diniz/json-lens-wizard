@@ -306,6 +306,8 @@ export function CommercialAuditTab({ families, macros, technologyLibrary }: Comm
           tierKey: tier,
           rankInTier: 1,
           isEligible: true,
+          storeBoost: 0,
+          adjustedScore: 75,
         },
         startingPrice: null,
         compatiblePrices: [],

@@ -107,7 +107,7 @@ export interface RecommendationScore {
   /** Score comercial (peso 40%) */
   commercial: CommercialScore;
   
-  /** Tier atribuído */
+  /** Tier atribuído (runtime only, never persisted) */
   tierKey: TierKey;
   
   /** Rank dentro do tier */
@@ -118,6 +118,15 @@ export interface RecommendationScore {
   
   /** Motivo de inelegibilidade (se aplicável) */
   ineligibilityReason?: string;
+
+  /** Store-level supplier priority boost (cap 15) */
+  storeBoost: number;
+  
+  /** Adjusted score = final + storeBoost (used for ranking within tier) */
+  adjustedScore: number;
+
+  /** TierScore used for global tier assignment (0-100) */
+  tierScore?: number;
 }
 
 // ============================================
@@ -203,6 +212,9 @@ export interface RecommendationResult {
   /** Blocked by strict clinical eligibility mode (no eligible SKUs) */
   strictModeBlocked?: boolean;
   strictModeBlockReason?: string;
+
+  /** SKU eligibility funnel counts */
+  eligibilityFunnel?: import('./skuEligibility').EligibilityFunnel;
 }
 
 // ============================================
@@ -247,6 +259,9 @@ export interface RecommendationInput {
 
   /** Modo de elegibilidade clínica: permissive (default) ou strict */
   clinicalEligibilityMode?: 'permissive' | 'strict';
+
+  /** Store-level supplier priorities (overrides global) */
+  storePriorities?: string[];
 }
 
 // ============================================

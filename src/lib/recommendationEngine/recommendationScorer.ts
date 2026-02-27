@@ -1,8 +1,8 @@
 /**
- * Recommendation Scorer - Combina Clinical e Commercial Engines
+ * Recommendation Scorer - SKU-first + Global Tier Assignment
  * 
- * Fórmula oficial do Blueprint:
- * final_score = (clinical_score * 0.60) + (commercial_score * 0.40)
+ * Phase 4: TierScore = 0.6 * PricePercentile + 0.4 * TechPercentile
+ * Tiers are assigned at runtime, never persisted to catalog.
  */
 
 import type { FamilyExtended, Price, AnamnesisData, Prescription, Technology } from '@/types/lens';
@@ -10,10 +10,10 @@ import type {
   RecommendationScore, 
   ScoredFamily, 
   TierKey, 
-  TIER_ORDER 
 } from './types';
 import { calculateClinicalScore, isClinicallyEligible } from './clinicalEngine';
 import { calculateCommercialScore, isCommerciallyViable } from './commercialEngine';
+import { getEligibleSkusAndFamilies, type EligibilityOutput } from './skuEligibility';
 
 // ============================================
 // CONSTANTS
@@ -25,55 +25,85 @@ export const SCORE_WEIGHTS = {
   COMMERCIAL: 0.40,
 };
 
-/** Mapeamento de macro para tier (fallback) */
-const MACRO_TO_TIER: Record<string, TierKey> = {
-  'PROG_BASICO': 'essential',
-  'PROG_ESSENTIAL': 'essential',
-  'PROG_CONFORTO': 'comfort',
-  'PROG_COMFORT': 'comfort',
-  'PROG_AVANCADO': 'advanced',
-  'PROG_ADVANCED': 'advanced',
-  'PROG_TOP': 'top',
-  'PROG_PREMIUM': 'top',
-  'MONO_BASICO': 'essential',
-  'MONO_ESSENTIAL': 'essential',
-  'MONO_ENTRADA': 'comfort',
-  'MONO_COMFORT': 'comfort',
-  'MONO_CONFORTO': 'comfort',
-  'MONO_INTER': 'advanced',
-  'MONO_ADVANCED': 'advanced',
-  'MONO_AVANCADO': 'advanced',
-  'MONO_TOP': 'top',
-  'MONO_PREMIUM': 'top',
-  'OCUPACIONAL_BASICO': 'essential',
-  'OCUPACIONAL_ESSENTIAL': 'essential',
-  'OCUPACIONAL_CONFORTO': 'comfort',
-  'OCUPACIONAL_COMFORT': 'comfort',
-  'OCUPACIONAL_AVANCADO': 'advanced',
-  'OCUPACIONAL_ADVANCED': 'advanced',
-  'OCUPACIONAL_TOP': 'top',
-  'OCUPACIONAL_PREMIUM': 'top',
-};
+/** Global tier thresholds based on TierScore percentile */
+const TIER_THRESHOLDS: { tier: TierKey; min: number; max: number }[] = [
+  { tier: 'essential', min: 0, max: 25 },
+  { tier: 'comfort', min: 25, max: 55 },
+  { tier: 'advanced', min: 55, max: 80 },
+  { tier: 'top', min: 80, max: 100 },
+];
 
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
 
 /**
- * Determina o tier de uma família usando dados reais do catálogo
- * Prioridade: (1) family.tier_target, (2) macro do catálogo com tier_key, (3) mapa estático, (4) inferência por nome
+ * Calculate weighted tech score for a family using technology_library weights.
+ * If weight is not defined, default = 1.
+ */
+function calculateWeightedTechScore(
+  family: FamilyExtended,
+  technologyLibrary?: Record<string, Technology>
+): number {
+  const refs = family.technology_refs || [];
+  if (refs.length === 0 || !technologyLibrary) return 0;
+
+  let score = 0;
+  for (const ref of refs) {
+    const tech = technologyLibrary[ref];
+    if (tech) {
+      score += (tech as any).weight ?? 1;
+    }
+  }
+  return score;
+}
+
+/**
+ * Calculate median of an array of numbers
+ */
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Calculate percentile rank of a value within a sorted array
+ */
+function percentileRank(value: number, allValues: number[]): number {
+  if (allValues.length <= 1) return 50;
+  const sorted = [...allValues].sort((a, b) => a - b);
+  const below = sorted.filter(v => v < value).length;
+  const equal = sorted.filter(v => v === value).length;
+  return ((below + equal * 0.5) / sorted.length) * 100;
+}
+
+/**
+ * Assign tier based on TierScore
+ */
+function assignTierFromScore(tierScore: number): TierKey {
+  for (const { tier, min, max } of TIER_THRESHOLDS) {
+    if (tierScore >= min && tierScore < max) return tier;
+  }
+  return 'top'; // score === 100
+}
+
+/**
+ * Determina o tier de uma família — kept for backward compatibility
+ * In Phase 4, this is only used as hint for small pools
  */
 export function determineTierKey(
   family: FamilyExtended,
   catalogMacros?: Array<{ id: string; tier_key?: string; category?: string }>
 ): TierKey {
-  // 1. Verificar tier_target direto na família
+  // 1. Direct tier_target
   const tierTarget = family.tier_target;
   if (tierTarget && ['essential', 'comfort', 'advanced', 'top'].includes(tierTarget)) {
     return tierTarget as TierKey;
   }
   
-  // 2. Resolver via macros reais do catálogo (tier_key da macro correspondente)
+  // 2. Via macro tier_key
   if (catalogMacros && catalogMacros.length > 0) {
     const matchingMacro = catalogMacros.find(m => m.id === family.macro);
     if (matchingMacro?.tier_key && ['essential', 'comfort', 'advanced', 'top'].includes(matchingMacro.tier_key)) {
@@ -81,97 +111,63 @@ export function determineTierKey(
     }
   }
   
-  // 3. Verificar mapeamento estático (fallback)
-  if (MACRO_TO_TIER[family.macro]) {
-    return MACRO_TO_TIER[family.macro];
-  }
-  
-  // 4. Inferir do nome do macro
-  const macroUpper = family.macro.toUpperCase();
-  if (macroUpper.includes('TOP') || macroUpper.includes('PREMIUM') || macroUpper.includes('ELITE')) {
-    return 'top';
-  }
-  if (macroUpper.includes('AVANCADO') || macroUpper.includes('ADVANCED') || macroUpper.includes('PLUS')) {
-    return 'advanced';
-  }
-  if (macroUpper.includes('CONFORTO') || macroUpper.includes('COMFORT') || macroUpper.includes('INTER')) {
-    return 'comfort';
-  }
-  
-  // 5. Default
   return 'essential';
 }
 
+// ============================================
+// MAIN FUNCTIONS
+// ============================================
+
 /**
- * Encontra o menor preço compatível
+ * Calculates clinical+commercial score for a single family.
+ * Note: tierKey is set to 'essential' initially; global tier assignment happens in scoreAndRankFamilies.
  */
-function findStartingPrice(
+export function calculateRecommendationScore(
   family: FamilyExtended,
-  prices: Price[],
-  prescription: Partial<Prescription>
-): { price: number | null; compatiblePrices: Price[] } {
-  const clinicalType = (family as any).clinical_type || family.category;
+  eligiblePrices: Price[],
+  anamnesis: AnamnesisData,
+  prescription: Partial<Prescription>,
+  technologyLibrary?: Record<string, Technology>,
+  supplierPriorities?: string[],
+  _catalogMacros?: Array<{ id: string; tier_key?: string; category?: string }>
+): RecommendationScore {
+  // Placeholder tier — will be overridden by global tier assignment
+  const placeholderTier: TierKey = 'essential';
   
-  // Filtrar preços da família
-  const familyPrices = prices.filter(p => 
-    p.family_id === family.id && 
-    p.active !== false && 
-    !p.blocked &&
-    p.price_sale_half_pair > 0
-  );
-  
-  if (familyPrices.length === 0) {
-    return { price: null, compatiblePrices: [] };
+  const clinicalScore = calculateClinicalScore(family, eligiblePrices, anamnesis, prescription, placeholderTier);
+  const commercialScore = calculateCommercialScore(family, eligiblePrices, placeholderTier, technologyLibrary, undefined); // No supplier priority in base score
+
+  const finalScore = (clinicalScore.total * SCORE_WEIGHTS.CLINICAL) + 
+                     (commercialScore.total * SCORE_WEIGHTS.COMMERCIAL);
+
+  const clinicallyEligible = isClinicallyEligible(clinicalScore);
+  const commerciallyViable = isCommerciallyViable(commercialScore);
+  const isEligible = clinicallyEligible && commerciallyViable;
+
+  let ineligibilityReason: string | undefined;
+  if (!clinicallyEligible) {
+    ineligibilityReason = clinicalScore.flags.prescriptionIncompatible 
+      ? 'Incompatível com a receita' 
+      : 'Score clínico insuficiente';
+  } else if (!commerciallyViable) {
+    ineligibilityReason = 'Sem disponibilidade comercial';
   }
-  
-  // Filtrar compatíveis com receita
-  const compatible = familyPrices.filter(p => {
-    const existingAvailability = (p as any).availability;
-    const specs = p.specs;
-    
-    let sphereMax: number, cylinderMin: number;
-    
-    if (existingAvailability?.sphere?.min != null && existingAvailability?.sphere?.max != null) {
-      sphereMax = Math.max(Math.abs(existingAvailability.sphere.min), Math.abs(existingAvailability.sphere.max));
-      cylinderMin = existingAvailability.cylinder?.min ?? -4;
-    } else if (specs && specs.sphere_min !== undefined && specs.sphere_max !== undefined) {
-      sphereMax = Math.max(Math.abs(specs.sphere_min), Math.abs(specs.sphere_max));
-      cylinderMin = specs.cyl_min ?? -4;
-    } else {
-      // No real data — SKU cannot be validated, reject it
-      return false;
-    }
-    
-    const maxSphere = Math.max(
-      Math.abs(prescription.rightSphere || 0),
-      Math.abs(prescription.leftSphere || 0)
-    );
-    const maxCylinder = Math.max(
-      Math.abs(prescription.rightCylinder || 0),
-      Math.abs(prescription.leftCylinder || 0)
-    );
-    
-    if (maxSphere > sphereMax) return false;
-    if (maxCylinder > Math.abs(cylinderMin)) return false;
-    
-    return true;
-  });
-  
-  if (compatible.length === 0) {
-    return { price: null, compatiblePrices: [] };
-  }
-  
-  // Ordenar por preço (menor primeiro)
-  compatible.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair);
-  
-  // Preço do par (half_pair * 2)
-  const startingPrice = compatible[0].price_sale_half_pair * 2;
-  
-  return { price: startingPrice, compatiblePrices: compatible };
+
+  return {
+    final: Math.round(finalScore * 100) / 100,
+    clinical: clinicalScore,
+    commercial: commercialScore,
+    tierKey: placeholderTier,
+    rankInTier: 0,
+    isEligible,
+    ineligibilityReason,
+    storeBoost: 0,
+    adjustedScore: Math.round(finalScore * 100) / 100,
+  };
 }
 
 /**
- * Extrai dados enriquecidos da família
+ * Extracts enriched data from a family
  */
 function extractFamilyData(
   family: FamilyExtended,
@@ -204,85 +200,45 @@ function extractFamilyData(
   };
 }
 
-// ============================================
-// MAIN FUNCTIONS
-// ============================================
-
-/**
- * Calcula o score completo para uma família
- */
-export function calculateRecommendationScore(
-  family: FamilyExtended,
-  prices: Price[],
-  anamnesis: AnamnesisData,
-  prescription: Partial<Prescription>,
-  technologyLibrary?: Record<string, Technology>,
-  supplierPriorities?: string[],
-  catalogMacros?: Array<{ id: string; tier_key?: string; category?: string }>
-): RecommendationScore {
-  // Determinar tier
-  const tierKey = determineTierKey(family, catalogMacros);
-  
-  // Calcular scores
-  const clinicalScore = calculateClinicalScore(family, prices, anamnesis, prescription, tierKey);
-  const commercialScore = calculateCommercialScore(family, prices, tierKey, technologyLibrary, supplierPriorities);
-  
-  // Aplicar fórmula oficial
-  const finalScore = (clinicalScore.total * SCORE_WEIGHTS.CLINICAL) + 
-                     (commercialScore.total * SCORE_WEIGHTS.COMMERCIAL);
-  
-  // Verificar elegibilidade
-  const clinicallyEligible = isClinicallyEligible(clinicalScore);
-  const commerciallyViable = isCommerciallyViable(commercialScore);
-  const isEligible = clinicallyEligible && commerciallyViable;
-  
-  let ineligibilityReason: string | undefined;
-  if (!clinicallyEligible) {
-    ineligibilityReason = clinicalScore.flags.prescriptionIncompatible 
-      ? 'Incompatível com a receita' 
-      : 'Score clínico insuficiente';
-  } else if (!commerciallyViable) {
-    ineligibilityReason = 'Sem disponibilidade comercial';
-  }
-  
-  return {
-    final: Math.round(finalScore * 100) / 100,
-    clinical: clinicalScore,
-    commercial: commercialScore,
-    tierKey,
-    rankInTier: 0,
-    isEligible,
-    ineligibilityReason,
-  };
-}
-
 /**
  * Processa uma família completa com score e dados enriquecidos
  */
 export function scoreFamilyComplete(
   family: FamilyExtended,
-  prices: Price[],
+  eligiblePrices: Price[],
   anamnesis: AnamnesisData,
   prescription: Partial<Prescription>,
   technologyLibrary?: Record<string, Technology>,
   supplierPriorities?: string[],
   catalogMacros?: Array<{ id: string; tier_key?: string; category?: string }>
 ): ScoredFamily {
-  const score = calculateRecommendationScore(family, prices, anamnesis, prescription, technologyLibrary, supplierPriorities, catalogMacros);
-  const { price, compatiblePrices } = findStartingPrice(family, prices, prescription);
+  const score = calculateRecommendationScore(family, eligiblePrices, anamnesis, prescription, technologyLibrary, supplierPriorities, catalogMacros);
+  
+  // Starting price = cheapest eligible SKU * 2 (pair)
+  const compatiblePrices = eligiblePrices.filter(p => p.family_id === family.id);
+  compatiblePrices.sort((a, b) => a.price_sale_half_pair - b.price_sale_half_pair);
+  const startingPrice = compatiblePrices.length > 0 ? compatiblePrices[0].price_sale_half_pair * 2 : null;
+  
   const enrichedData = extractFamilyData(family, technologyLibrary);
   
   return {
     family,
     score,
-    startingPrice: price,
+    startingPrice,
     compatiblePrices,
     ...enrichedData,
   };
 }
 
 /**
- * Processa e rankeia múltiplas famílias
+ * Phase 4: SKU-first scoring + global tier assignment
+ * 
+ * Pipeline:
+ * 1. Get eligible SKUs via skuEligibility
+ * 2. Score each eligible family
+ * 3. Calculate TierScore (0.6*PricePercentile + 0.4*TechPercentile)
+ * 4. Assign tiers globally
+ * 5. Apply StoreBoost for ranking within tier
  */
 export function scoreAndRankFamilies(
   families: FamilyExtended[],
@@ -291,43 +247,102 @@ export function scoreAndRankFamilies(
   prescription: Partial<Prescription>,
   technologyLibrary?: Record<string, Technology>,
   supplierPriorities?: string[],
-  catalogMacros?: Array<{ id: string; tier_key?: string; category?: string }>
-): ScoredFamily[] {
-  // Processar todas as famílias
-  const scoredFamilies = families
-    .filter(f => f.active !== false)
-    .map(family => scoreFamilyComplete(family, prices, anamnesis, prescription, technologyLibrary, supplierPriorities, catalogMacros));
+  catalogMacros?: Array<{ id: string; tier_key?: string; category?: string }>,
+  clinicalType?: string,
+  frame?: any,
+  storePriorities?: string[]
+): { scoredFamilies: ScoredFamily[]; eligibility: EligibilityOutput } {
   
-  // Agrupar por tier
+  // Step 1: SKU-first eligibility
+  const eligibility = getEligibleSkusAndFamilies(prices, families, prescription, frame, clinicalType);
+  
+  // Step 2: Score each eligible family
+  const scoredFamilies: ScoredFamily[] = [];
+  
+  eligibility.eligibleFamilies.forEach((eligiblePrices, familyId) => {
+    const family = families.find(f => f.id === familyId);
+    if (!family || family.active === false) return;
+    
+    const sf = scoreFamilyComplete(family, eligiblePrices, anamnesis, prescription, technologyLibrary, undefined, catalogMacros);
+    scoredFamilies.push(sf);
+  });
+
+  if (scoredFamilies.length === 0) {
+    return { scoredFamilies, eligibility };
+  }
+
+  // Step 3: Calculate TierScore for global tier assignment
+  // familyPriceMedian and familyTechScore for each family
+  const priceMedians: number[] = [];
+  const techScores: number[] = [];
+  const familyMetrics: Map<string, { priceMedian: number; techScore: number }> = new Map();
+
+  for (const sf of scoredFamilies) {
+    const familyPrices = sf.compatiblePrices.map(p => p.price_sale_half_pair).filter(p => p > 0);
+    const priceMedian = median(familyPrices);
+    const techScore = calculateWeightedTechScore(sf.family as FamilyExtended, technologyLibrary);
+    
+    priceMedians.push(priceMedian);
+    techScores.push(techScore);
+    familyMetrics.set(sf.family.id, { priceMedian, techScore });
+  }
+
+  // Step 4: Assign tiers globally using percentiles
+  for (const sf of scoredFamilies) {
+    const metrics = familyMetrics.get(sf.family.id)!;
+    const pricePercentile = percentileRank(metrics.priceMedian, priceMedians);
+    const techPercentile = percentileRank(metrics.techScore, techScores);
+    const tierScore = 0.6 * pricePercentile + 0.4 * techPercentile;
+    
+    sf.score.tierKey = assignTierFromScore(tierScore);
+    sf.score.tierScore = Math.round(tierScore * 100) / 100;
+  }
+
+  // Step 5: Apply StoreBoost (supplier priorities from store, then global fallback)
+  const effectivePriorities = (storePriorities && storePriorities.length > 0) 
+    ? storePriorities 
+    : supplierPriorities;
+
+  if (effectivePriorities && effectivePriorities.length > 0) {
+    for (const sf of scoredFamilies) {
+      const idx = effectivePriorities.indexOf(sf.family.supplier);
+      if (idx === -1) {
+        sf.score.storeBoost = 0;
+      } else {
+        // Linear decay: first gets max (10), last gets ~1
+        const positionRatio = 1 - (idx / effectivePriorities.length);
+        sf.score.storeBoost = Math.min(Math.round(positionRatio * 10 * 100) / 100, 10);
+      }
+      // Cap accumulated boost at 15
+      sf.score.storeBoost = Math.min(sf.score.storeBoost, 15);
+      sf.score.adjustedScore = Math.round((sf.score.final + sf.score.storeBoost) * 100) / 100;
+    }
+  }
+
+  // Step 6: Sort by tier, then by adjustedScore within tier
   const byTier: Record<TierKey, ScoredFamily[]> = {
-    essential: [],
-    comfort: [],
-    advanced: [],
-    top: [],
+    essential: [], comfort: [], advanced: [], top: [],
   };
-  
+
   scoredFamilies.forEach(sf => {
     byTier[sf.score.tierKey].push(sf);
   });
-  
-  // Ordenar cada tier por score final (descendente)
-  Object.keys(byTier).forEach(tier => {
-    byTier[tier as TierKey].sort((a, b) => b.score.final - a.score.final);
-    
-    // Atribuir rank
-    byTier[tier as TierKey].forEach((sf, idx) => {
+
+  const tierOrder: TierKey[] = ['essential', 'comfort', 'advanced', 'top'];
+  const result: ScoredFamily[] = [];
+
+  tierOrder.forEach(tier => {
+    byTier[tier].sort((a, b) => b.score.adjustedScore - a.score.adjustedScore);
+    byTier[tier].forEach((sf, idx) => {
       sf.score.rankInTier = idx + 1;
     });
-  });
-  
-  // Flatten mantendo a ordem
-  const result: ScoredFamily[] = [];
-  const tierOrder: TierKey[] = ['essential', 'comfort', 'advanced', 'top'];
-  tierOrder.forEach(tier => {
     result.push(...byTier[tier]);
   });
-  
-  return result;
+
+  const tierCounts = tierOrder.map(t => `${t}:${byTier[t].length}`).join(', ');
+  console.log(`[RecommendationScorer] Global tier assignment: ${tierCounts} (${scoredFamilies.length} families)`);
+
+  return { scoredFamilies: result, eligibility };
 }
 
 export default {
