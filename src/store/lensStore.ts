@@ -23,6 +23,7 @@ import {
   type ImportResult, 
   type ImportSummary 
 } from '@/lib/catalogImporter';
+import { auditFamilyConsistency, type ConsistencyAuditResult } from '@/lib/catalogConsistencyAuditor';
 import { supabase } from '@/integrations/supabase/client';
 // REMOVED: normalizeMacros import (PLAN 3 §3.2 - Zero Creation in Runtime)
 
@@ -40,6 +41,7 @@ export interface CatalogEvent {
 
 // Sync status type
 export type SyncStatus = 'synced' | 'syncing' | 'pending' | 'error';
+export type CatalogStatus = 'draft' | 'ready_for_publish' | 'published';
 
 interface LensState {
   // Data from JSON
@@ -85,6 +87,11 @@ interface LensState {
   syncStatus: SyncStatus;
   lastSyncedAt: string | null;
   lastSyncError: string | null;
+  
+  // Governance (Phase 5)
+  catalogStatus: CatalogStatus;
+  lastAuditResult: ConsistencyAuditResult | null;
+  runConsistencyAudit: () => ConsistencyAuditResult;
   
   // Actions
   loadLensData: (data: LensData) => void;
@@ -162,6 +169,18 @@ export const useLensStore = create<LensState>()(
       syncStatus: 'synced' as SyncStatus,
       lastSyncedAt: null,
       lastSyncError: null,
+      
+      // Governance (Phase 5)
+      catalogStatus: 'draft' as CatalogStatus,
+      lastAuditResult: null as ConsistencyAuditResult | null,
+      
+      runConsistencyAudit: (): ConsistencyAuditResult => {
+        const state = get();
+        const result = auditFamilyConsistency(state.families, state.prices, state.technologyLibrary);
+        const newStatus: CatalogStatus = result.summary.canPublish ? 'ready_for_publish' : 'draft';
+        set({ lastAuditResult: result, catalogStatus: newStatus });
+        return result;
+      },
       
       // Validate imported data - checks for required fields (legacy method, kept for compatibility)
       validateImportedData: (data: LensData) => {
@@ -608,6 +627,23 @@ export const useLensStore = create<LensState>()(
               console.warn('[LensStore] Grade gate check failed (non-blocking):', gateErr);
             }
           }
+          
+          // ─── Consistency Gate (Phase 5): absolute publication block ───
+          const consistencyResult = auditFamilyConsistency(state.families, state.prices, state.technologyLibrary);
+          set({ lastAuditResult: consistencyResult });
+          
+          if (consistencyResult.summary.totalCritical > 0) {
+            const errorMsg = `Publicação bloqueada: ${consistencyResult.summary.totalCritical} conflito(s) crítico(s) de consistência.\n\n${consistencyResult.critical.slice(0, 5).map(c => `• ${c.details}`).join('\n')}`;
+            console.warn('[LensStore] Consistency gate blocked:', consistencyResult.summary.totalCritical, 'critical conflicts');
+            set({ 
+              isSavingToCloud: false, 
+              syncStatus: 'error' as SyncStatus, 
+              lastSyncError: errorMsg,
+              catalogStatus: 'draft' as CatalogStatus,
+            });
+            return false;
+          }
+          
           // Build catalog data from current state
           const catalogData: LensData = {
             meta: {
@@ -657,10 +693,27 @@ export const useLensStore = create<LensState>()(
           }
           
           console.log('[LensStore] Catalog saved to cloud successfully');
+          
+          // Persist validation run (Phase 5)
+          try {
+            const { data: userData } = await supabase.auth.getUser();
+            await supabase.from('catalog_validation_runs').insert({
+              total_conflicts: consistencyResult.summary.totalCritical + consistencyResult.summary.totalWarnings,
+              critical_conflicts: consistencyResult.summary.totalCritical,
+              warning_conflicts: consistencyResult.summary.totalWarnings,
+              conflicts_detail: consistencyResult.critical.concat(consistencyResult.warnings),
+              user_id: userData?.user?.id || null,
+              published: true,
+            } as any);
+          } catch (persistErr) {
+            console.warn('[LensStore] Failed to persist validation run:', persistErr);
+          }
+          
           set({ 
             syncStatus: 'synced' as SyncStatus, 
             lastSyncedAt: new Date().toISOString(),
-            lastSyncError: null 
+            lastSyncError: null,
+            catalogStatus: 'published' as CatalogStatus,
           });
           return true;
         } catch (e) {
