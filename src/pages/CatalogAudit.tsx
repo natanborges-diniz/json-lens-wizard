@@ -1207,13 +1207,36 @@ const CatalogAudit = () => {
                     </Button>
                   )}
                   
-                  {/* Export Button */}
+                  {/* Export Buttons */}
                   <div className="pl-2 border-l border-border flex gap-2">
                     <ExportDialog
                       families={filteredFamilies}
                       macros={macros}
                       technologies={localTechnologies}
                     />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => {
+                        const raw = rawLensData;
+                        if (!raw) {
+                          toast.error('Catálogo não carregado');
+                          return;
+                        }
+                        const blob = new Blob([JSON.stringify(raw, null, 2)], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `catalog-default-${new Date().toISOString().slice(0, 10)}.json`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                        toast.success('Catálogo JSON exportado!');
+                      }}
+                    >
+                      <FileSpreadsheet className="w-4 h-4" />
+                      Baixar JSON
+                    </Button>
                   </div>
                 </div>
               </CardContent>
