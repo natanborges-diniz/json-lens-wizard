@@ -1,223 +1,232 @@
 
-# Fase 4: Motor Multi-Fornecedor SKU-first + Grid 1 por Tier + "Ver Similares"
+# Plan 5: Governanca de Classificacao com Bloqueio Absoluto de Publicacao
 
 ## Resumo
 
-Refatorar o motor de recomendacao para operar em modo SKU-first, classificar tiers globalmente por preco+tecnologia, aplicar prioridade comercial por loja (nao global), e apresentar 1 vencedor por tier com expansao "Ver similares".
+Implementar uma camada formal de governanca que audita consistencia de familias/SKUs (ProductKind, clinical_type, supplier, tecnologia), persiste historico de validacoes, e bloqueia absolutamente a publicacao quando conflitos criticos existem. Inclui nova tabela de mapeamento ERP-Familia e UI dedicada na pagina /audit.
 
 ---
 
-## Arquitetura Atual vs. Proposta
+## Arquitetura Atual
 
-```text
-ATUAL:
-  families -> filter clinicalType -> score (clinical+commercial) -> tier by macro
-    -> rebalanceTiersByPrice -> organizeTiersWithFallback
+- **Publicacao**: `saveCatalogToCloud()` no lensStore.ts ja tem um "Publication Gate" que verifica grades faltantes via `catalog-grade-matrix/missing`. Bloqueia se variantes sem grade existem.
+- **Validacao**: `catalogValidationEngine.ts` executa regras declarativas de `validation_rules.json` (structure, reference, field_presence, aggregation, enum_validation). Retorna blocking/warning.
+- **Integridade Clinica**: `catalogIntegrityAnalyzer.ts` classifica SKUs em COMPLETO/LEGACY/PARCIAL/DEFAULTED.
+- **Classificacao**: `skuClassificationEngine.ts` reclassifica SKUs para familias existentes.
+- **Store**: Zustand com `rawLensData`, `saveCatalogToCloud`, `loadCatalogFromCloud`.
+- **UI**: CatalogAudit.tsx com ~10 tabs (families, macros, suppliers, technologies, matching, integrity, clinical, logs, erp-import, commercial).
 
-PROPOSTA:
-  SKUs -> isSkuEligibleForRx(sku, rx, frame) -> eligibleFamilies
-    -> TierScore global (price median + tech weighted score)
-    -> tier_assigned (runtime only)
-    -> StoreBoost (ranking interno do tier, cap 15)
-    -> 1 winner/tier + similares list
+---
+
+## Mudancas de Banco de Dados
+
+### Tabela 1: `supplier_family_map`
+```sql
+CREATE TABLE public.supplier_family_map (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  supplier TEXT NOT NULL,
+  erp_family_name TEXT NOT NULL,
+  catalog_family_id TEXT NOT NULL,
+  rule_type TEXT NOT NULL DEFAULT 'manual' CHECK (rule_type IN ('exact','regex','manual')),
+  confidence TEXT NOT NULL DEFAULT 'manual' CHECK (confidence IN ('auto','manual','reviewed')),
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by UUID,
+  UNIQUE(supplier, erp_family_name)
+);
+-- RLS: admin/manager can manage, sellers can view
+```
+
+### Tabela 2: `catalog_validation_runs`
+```sql
+CREATE TABLE public.catalog_validation_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  total_conflicts INTEGER NOT NULL DEFAULT 0,
+  critical_conflicts INTEGER NOT NULL DEFAULT 0,
+  warning_conflicts INTEGER NOT NULL DEFAULT 0,
+  conflicts_detail JSONB DEFAULT '[]',
+  user_id UUID,
+  catalog_version_id UUID,
+  published BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Constraint: published=true implica critical_conflicts=0 (enforced by trigger)
+-- RLS: admin/manager can manage, sellers can view
+```
+
+### Trigger de validacao
+```sql
+CREATE OR REPLACE FUNCTION validate_publication_gate()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.published = true AND NEW.critical_conflicts > 0 THEN
+    RAISE EXCEPTION 'Cannot publish with critical conflicts (found %)', NEW.critical_conflicts;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_validate_publication
+  BEFORE INSERT OR UPDATE ON catalog_validation_runs
+  FOR EACH ROW EXECUTE FUNCTION validate_publication_gate();
 ```
 
 ---
 
-## E1: Pipeline SKU-first Eligibility
+## Novo Modulo: Auditor de Consistencia
 
-**Arquivo novo:** `src/lib/recommendationEngine/skuEligibility.ts`
+### Arquivo: `src/lib/catalogConsistencyAuditor.ts`
 
-Funcao canonica `isSkuEligibleForRx(sku, rx, frame)` com gates sequenciais:
-1. `active === true && blocked === false`
-2. Esfera OD/OE dentro de `sphere_min..sphere_max` (specs ou availability)
-3. Cilindro OD/OE dentro de `cyl_min..cyl_max`
-4. Adicao: se Rx tem adicao > 0, exigir `add_min <= add <= add_max`
-5. Diametro: se frame fornecida, calcular diametro requerido e validar `diameter_max_mm >= required`
-6. Altura minima (quando `altura_min_mm` disponivel)
+Funcao principal `auditFamilyConsistency(families, prices, technologyLibrary)` que retorna:
 
-Retorna `{ eligible: boolean; failedGate: string | null }` para funil de auditoria.
-
-Funcao `getEligibleSkusAndFamilies(prices, families, rx, frame)`:
-- Filtra SKUs elegiveis
-- Agrupa por family_id
-- Familia so entra se tiver >= 1 SKU elegivel
-- Retorna `{ eligibleSkus, eligibleFamilies: Map<string, Price[]>, funnelCounts }`
-
-**Impacto:** Substitui `isPriceCompatible` e `findStartingPrice` atuais.
-
----
-
-## E2: Tier Global por Preco + Tecnologia (com techScore ponderado)
-
-**Arquivo:** Refatorar `recommendationScorer.ts`, remover `determineTierKey` baseado em macro e `MACRO_TO_TIER`.
-
-Para cada familia elegivel:
-- `familyPriceMedian` = mediana dos `price_sale_half_pair` dos SKUs elegiveis
-- `familyTechScore` = soma ponderada dos `technology_refs`:
-  - Se `technology_library.items[ref].weight` existir, usar esse peso
-  - Se nao existir, peso default = 1
-  - Score = soma dos pesos de todos refs resolvidos
-
-Normalizacao global (todas familias elegiveis de todos fornecedores):
-- `PricePercentileGlobal` (0-100): percentil do preco mediano
-- `TechPercentileGlobal` (0-100): percentil do tech score ponderado
-
-```text
-TierScore = 0.6 * PricePercentileGlobal + 0.4 * TechPercentileGlobal
-
-Essential:  0-25
-Comfort:   25-55
-Advanced:  55-80
-Top:       80-100
-```
-
-O `tier_assigned` e salvo apenas em runtime (no `ScoredFamily.score.tierKey`), nunca gravado no catalogo.
-
-**Tratamento de tiers vazios (pool pequeno < 8 familias):**
-- Calcular TierScore global normalmente (tier puro)
-- Se algum tier ficar vazio apos classificacao:
-  - Permitir puxar 1 candidato do tier adjacente apenas na UI
-  - Marcar como `isFallback: true` com `fallbackReason: "Tier sugerido por metadata (pool pequeno)"`
-  - Registrar no audit log
-  - Nao alterar o `tier_assigned` original da familia (tier global permanece puro)
-
----
-
-## E3: Prioridade Comercial por Loja
-
-**Migracao de banco:** Adicionar coluna `supplier_priorities JSONB DEFAULT '[]'` na tabela `stores`.
-
-**Logica de resolucao (via `resolveBusinessContext` existente ou `useStoreContext`):**
-- Fonte primaria: `stores.supplier_priorities` (loja selecionada)
-- Fallback: `company_settings.supplier_priorities` (global, ja existe)
-
-**Modificacoes em `commercialEngine.ts`:**
-- Renomear score de fornecedor para `StoreBoost`
-- Aplicar boost APOS `tier_assigned`, apenas para ordenar dentro do mesmo tier
-
-```text
-AdjustedScore = BaseScore + StoreBoost
-```
-
-- Tetos: boost por regra <= 10, acumulado <= 15
-- O boost NUNCA altera ClinicalScore, elegibilidade ou tier
-
-**Tipo atualizado em `types.ts`:**
 ```typescript
-interface RecommendationScore {
-  // ...campos existentes
-  storeBoost: number;
-  adjustedScore: number;  // final + storeBoost
+interface ConsistencyAuditResult {
+  critical: ConsistencyConflict[];
+  warnings: ConsistencyConflict[];
+  summary: {
+    totalCritical: number;
+    totalWarnings: number;
+    canPublish: boolean; // totalCritical === 0
+  };
+}
+
+interface ConsistencyConflict {
+  type: string; // ex: 'SKU_WITHOUT_FAMILY', 'MIXED_PRODUCT_KIND', etc.
+  familyId?: string;
+  details: string;
+  affectedSkus?: string[];
 }
 ```
 
-**UI:** Adicionar campo `supplier_priorities` na tela de edicao de lojas (StoreManagement) com o mesmo componente `SupplierPriorityManager` ja existente.
+**Conflitos criticos verificados:**
+1. `SKU_WITHOUT_FAMILY` - SKU sem family_id valido
+2. `MIXED_PRODUCT_KIND` - Familia com SKUs de clinical_types incompativeis (ex: MONOFOCAL + PROGRESSIVA na mesma familia)
+3. `CLINICAL_TYPE_MISMATCH` - >20% dos SKUs divergem do clinical_type da familia
+4. `FAMILY_WITHOUT_ACTIVE_SKU` - Familia ativa sem nenhum SKU ativo
+5. `INCOMPATIBLE_TECHNOLOGY` - Tecnologia associada a familia com ProductKind incompativel
+6. `MIXED_SUPPLIER_FAMILY` - Familia com SKUs de fornecedores diferentes
+7. `FAMILY_WITHOUT_SUPPLIER` - Familia sem supplier definido
+8. `SKU_NULL_CLINICAL_TYPE` - SKU com clinical_type null/undefined
+9. `SKU_MISSING_ESSENTIAL_RANGE` - SKU ativo sem range minimo de esfera/cilindro
+
+**Correcoes automaticas permitidas (safe):**
+- Ajustar `family.clinical_type` se >=85% dos SKUs convergem
+- Ajustar `product_kind` se 100% dos SKUs convergem
+- Remover tecnologia incompativel com ProductKind
+
+Retorna `autoFixes: AutoFix[]` separadamente para confirmacao do usuario.
 
 ---
 
-## E4: Grid 1 Vencedor por Tier
+## Integracao com Publicacao (Bloqueio Absoluto)
 
-**Arquivo:** `RecommendationsGrid.tsx`
+### Modificar `saveCatalogToCloud()` no `lensStore.ts`
 
-Logica simplificada no `tierOptions` useMemo:
-- Para cada tier: `winner = max(adjustedScore)` entre familias do tier
-- Remover logica de "price inversion swap" (desnecessaria com tier global por preco)
-- Remover `rebalanceTiersByPrice` do `index.ts` (substituido por E2)
+Antes de salvar, executar `auditFamilyConsistency()`:
 
----
-
-## E5: Expansao "Ver Similares"
-
-**Arquivo novo:** `src/components/recommendations/SimilarLensesSheet.tsx`
-
-Para cada tier, gerar `similarOptions(tier)`:
-- Familias no mesmo tier (exceto o winner)
-- Mesmas regras de elegibilidade SKU-first
-- Ordenadas por `adjustedScore`
-- Diversidade: intercalar fornecedores (round-robin por supplier)
-- Max 6-8 items
-
-UI:
-- Botao "Ver similares (N)" no `SimplifiedLensCard` (ja tem props `alternativeCount` e `onViewAlternatives`)
-- Abrir Sheet lateral com lista de cards compactos
-- Acao "Selecionar este" substitui o winner no estado do fluxo
-- Usar componente `Sheet` existente
-
----
-
-## E6: Auditoria e Debug
-
-Em cada execucao do motor, registrar:
-
-```typescript
-interface EligibilityFunnel {
-  totalSkus: number;
-  passedActive: number;
-  passedSphere: number;
-  passedCylinder: number;
-  passedAddition: number;
-  passedDiameter: number;
-  passedHeight: number;
-  finalEligible: number;
-}
+```text
+saveCatalogToCloud():
+  1. [existente] Check grade gate (catalog-grade-matrix/missing)
+  2. [NOVO] Run auditFamilyConsistency()
+     - Se critical > 0: BLOQUEAR, set syncStatus='error', retornar mensagem
+     - Se critical === 0: prosseguir
+  3. [NOVO] Persistir resultado em catalog_validation_runs (via supabase insert)
+  4. [existente] Upload catalog-default.json
+  5. [NOVO] Marcar validation_run como published=true
 ```
 
-- Winners por tier + boosts aplicados
-- Lista resumida de similares por tier (top 3 IDs)
-- Se todos tiers vazios: painel diagnostico existente (`pipelineDebug`) atualizado com funil
+**Nao ha override manual. Nao ha excecao administrativa.**
+
+### Status do Catalogo (runtime-only, nao persistido no JSON)
+
+Derivar do estado atual:
+- `draft` = ha pendingChanges OU conflitos criticos > 0
+- `ready_for_publish` = conflitos criticos === 0 E sem pendingChanges
+- `published` = apos saveCatalogToCloud com sucesso
+
+Adicionar ao lensStore: `catalogStatus: 'draft' | 'ready_for_publish' | 'published'`
+
+---
+
+## UI no /audit
+
+### Banner fixo superior (abaixo do header, acima das tabs)
+
+```text
++------------------------------------------------------------------+
+| [icon] Status: DRAFT | Conflitos Criticos: 3 | [Publicar: disabled] |
+| Motivo: 2 familias com ProductKind misto, 1 SKU sem familia       |
++------------------------------------------------------------------+
+```
+
+- Cor vermelha se criticos > 0
+- Cor verde se ready_for_publish
+- Botao "Publicar" desabilitado se criticos > 0, com tooltip listando motivos
+
+### Nova tab: "Classificacao"
+
+Adicionar tab `classification` no TabsList existente com tabela mostrando:
+
+| Supplier | ERP Family Name | SKUs | Familia Mapeada | Status |
+|----------|----------------|------|-----------------|--------|
+| ESSILOR  | VARILUX LIBERTY | 45   | ESSILOR_VARILUX_LIBERTY | OK |
+| HOYA     | HOYALUX ID     | 32   | -               | Sem Mapping |
+
+Acoes por linha: Mapear (abre select de familias existentes), Revisar.
+
+Dados lidos da tabela `supplier_family_map` + cruzamento com catalogo em memoria.
+
+### Painel de conflitos
+
+Dentro da tab "Classificacao" ou como sub-secao da tab "Integridade":
+- Lista de todos conflitos criticos com tipo, familia afetada, e SKUs envolvidos
+- Botao "Aplicar correcoes automaticas" (apenas para as safe fixes: convergencia >=85%)
+- Cada correcao mostra preview antes de aplicar
 
 ---
 
 ## Sequencia de Implementacao
 
-1. Migracao DB: `stores.supplier_priorities` (JSONB)
-2. `skuEligibility.ts` (E1) - funcao pura, testavel isoladamente
-3. Refatorar `recommendationScorer.ts` para tier global com techScore ponderado (E2)
-4. Ajustar `commercialEngine.ts` para StoreBoost com cap (E3)
-5. Atualizar `types.ts` com `storeBoost` e `adjustedScore`
-6. Refatorar `index.ts` (remover `rebalanceTiersByPrice`, usar novo pipeline)
-7. Atualizar `useRecommendationEngine.ts` (funil + novos campos + ler store priorities)
-8. Criar `SimilarLensesSheet.tsx` (E5)
-9. Atualizar `RecommendationsGrid.tsx` e `SimplifiedLensCard.tsx` (E4 + E5)
-10. Adicionar `SupplierPriorityManager` na tela de lojas
-11. Atualizar painel de debug (E6)
-
----
-
-## Riscos e Mitigacoes
-
-| Risco | Mitigacao |
-|-------|-----------|
-| Pool pequeno gera tiers vazios | Puxar 1 candidato do tier adjacente na UI, marcado como fallback (tier global permanece puro) |
-| techScore por contagem simples distorce ranking | Usar soma ponderada (weight do technology_library, default=1) |
-| Prioridade global confundida com por loja | stores.supplier_priorities como fonte primaria, company_settings como fallback |
-| Prioridade por loja altera resultado inesperadamente | Cap de 15 pts e auditoria explicita |
-| Performance com 6250 SKUs | Pipeline O(n), sem loops aninhados |
+1. **Migracao DB**: Criar tabelas `supplier_family_map` e `catalog_validation_runs` com RLS e trigger
+2. **catalogConsistencyAuditor.ts**: Funcao pura de auditoria (9 checks criticos + auto-fixes)
+3. **Integrar no lensStore**: Adicionar `catalogStatus`, modificar `saveCatalogToCloud` com gate de consistencia
+4. **Persistencia**: Inserir resultado da validacao em `catalog_validation_runs` apos cada auditoria
+5. **UI - Banner de status**: Componente `CatalogStatusBanner` fixo no topo do /audit
+6. **UI - Tab Classificacao**: Nova tab com tabela de mapeamentos e painel de conflitos
+7. **Integracao ERP**: Atualizar `supplier_family_map` durante importacao ERP (apos sync)
 
 ---
 
 ## Arquivos Afetados
 
 **Novos:**
-- `src/lib/recommendationEngine/skuEligibility.ts`
-- `src/components/recommendations/SimilarLensesSheet.tsx`
+- `src/lib/catalogConsistencyAuditor.ts` (auditor com 9 checks + auto-fixes)
+- `src/components/audit/CatalogStatusBanner.tsx` (banner fixo de status)
+- `src/components/audit/ClassificationTab.tsx` (nova tab de classificacao/mapeamento)
 
 **Modificados:**
-- `src/lib/recommendationEngine/types.ts` (storeBoost, adjustedScore)
-- `src/lib/recommendationEngine/index.ts` (remover rebalanceTiersByPrice, usar novo pipeline)
-- `src/lib/recommendationEngine/recommendationScorer.ts` (tier global, techScore ponderado)
-- `src/lib/recommendationEngine/commercialEngine.ts` (StoreBoost com cap)
-- `src/lib/recommendationEngine/clinicalEngine.ts` (delegar eligibilidade ao skuEligibility)
-- `src/hooks/useRecommendationEngine.ts` (funil, ler store priorities)
-- `src/components/recommendations/RecommendationsGrid.tsx` (1 winner/tier, sheet similares)
-- `src/components/recommendations/SimplifiedLensCard.tsx` (ajustes menores)
-- `src/pages/StoreManagement.tsx` (SupplierPriorityManager por loja)
+- `src/store/lensStore.ts` (catalogStatus + gate de consistencia no saveCatalogToCloud)
+- `src/pages/CatalogAudit.tsx` (banner + nova tab)
 
-**Migracao DB:**
-- `ALTER TABLE stores ADD COLUMN supplier_priorities JSONB DEFAULT '[]'`
+**Migracoes DB:**
+- `supplier_family_map` (tabela + RLS)
+- `catalog_validation_runs` (tabela + RLS + trigger de validacao)
 
-**Nao alterados (Zero Criacao):**
-- Catalogo JSON
+**Nao alterados (Zero Criacao mantido):**
+- Catalogo JSON (nenhum dado inventado)
+- Motor de recomendacao (Fase 4 preservada)
 - Edge functions existentes
-- Persistencia de draft
+
+---
+
+## Garantias
+
+| Garantia | Mecanismo |
+|----------|-----------|
+| Publicacao impossivel com conflitos | Gate no saveCatalogToCloud + trigger DB |
+| Todo SKU com family_id valido | Check SKU_WITHOUT_FAMILY |
+| Nenhuma familia mistura ProductKind | Check MIXED_PRODUCT_KIND |
+| Clinical_type consistente | Check CLINICAL_TYPE_MISMATCH (>20%) |
+| Logs persistidos | catalog_validation_runs com detail |
+| UI reflete bloqueio | Banner + botao desabilitado |
+| Zero Criacao | Auditor apenas valida e sugere, nunca cria |
