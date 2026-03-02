@@ -220,7 +220,7 @@ export function CatalogVersionBadge({ onViewHistory, className = '' }: CatalogVe
 export async function saveCatalogVersion(params: {
   schemaVersion: string;
   datasetName?: string;
-  importMode: 'increment' | 'replace';
+  importMode: string;
   familiesCount: number;
   pricesCount: number;
   addonsCount: number;

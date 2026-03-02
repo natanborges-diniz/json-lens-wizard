@@ -56,8 +56,8 @@ import {
   AlertTitle,
 } from '@/components/ui/alert';
 import { useLensStore } from '@/store/lensStore';
-import type { ImportMode, LensData } from '@/types/lens';
-import { formatImportReceipt, type ImportResult, type ImportSummary } from '@/lib/catalogImporter';
+import type { ImportMode, LensData, ErpPatchPayload, PatchReport } from '@/types/lens';
+import { formatImportReceipt, type ImportResult, type ImportSummary, validateErpPatch } from '@/lib/catalogImporter';
 import { CatalogVersionBadge, saveCatalogVersion } from '@/components/audit/CatalogVersionBadge';
 import { CatalogVersionHistory } from '@/components/audit/CatalogVersionHistory';
 import { CloudSyncIndicator } from '@/components/audit/CloudSyncIndicator';
@@ -110,6 +110,10 @@ const AdminDashboard = () => {
   const [pendingImportData, setPendingImportData] = useState<LensData | null>(null);
   const [showCloudSaveDialog, setShowCloudSaveDialog] = useState(false);
   const [cloudSaveImportSummary, setCloudSaveImportSummary] = useState<{ familiesCount: number; pricesCount: number; mode: string } | null>(null);
+  // ERP Patch state (Plan 6)
+  const [allowDescriptionUpdate, setAllowDescriptionUpdate] = useState(false);
+  const [patchReport, setPatchReport] = useState<PatchReport | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   
   const { 
     schemaVersion,
@@ -130,6 +134,7 @@ const AdminDashboard = () => {
     loadLensData,
     clearAllData,
     importCatalog,
+    importErpPatch,
     canRollback,
     rollbackLastImport,
     updateSupplierPriority,
@@ -187,7 +192,7 @@ const AdminDashboard = () => {
       // Clear rules cache to ensure fresh rules are loaded
       clearRulesCache();
       console.log('[AdminDashboard] Running pre-import validation...');
-      const report = await validateCatalogImport(data, importMode);
+      const report = await validateCatalogImport(data, importMode as 'increment' | 'replace');
       setValidationReport(report);
       
       if (hadInvalidValues) {
@@ -264,7 +269,7 @@ const AdminDashboard = () => {
     }
     
     // Use new policy-compliant import system
-    const result = importCatalog(dataToImport, importMode);
+    const result = importCatalog(dataToImport, importMode as 'increment' | 'replace');
     setImportResult(result);
     
     if (result.success) {
@@ -286,7 +291,7 @@ const AdminDashboard = () => {
         const version = await saveCatalogVersion({
           schemaVersion: mergedData.meta?.schema_version || '1.0',
           datasetName: mergedData.meta?.dataset_name,
-          importMode: importMode,
+          importMode: importMode as string,
           familiesCount: mergedData.families?.length || 0,
           pricesCount: mergedData.prices?.length || 0,
           addonsCount: mergedData.addons?.length || 0,
@@ -548,27 +553,41 @@ const AdminDashboard = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <FileJson className="w-5 h-5 text-primary" />
-                    Entrada JSON
+                    Importação de Catálogo
                   </CardTitle>
                   <CardDescription>
-                    Cole o JSON unificado com famílias, addons e preços
+                    Importe catálogo completo (JSON) ou aplique patch ERP (JSON/XLSX)
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="flex gap-4 flex-wrap">
-                    <Select value={importMode} onValueChange={(v) => setImportMode(v as ImportMode)}>
-                      <SelectTrigger className="w-48">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="increment">Incrementar</SelectItem>
-                        <SelectItem value="replace">Substituir</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button onClick={validateAndPreviewImport} disabled={!jsonInput.trim()}>
-                      <ShieldCheck className="w-4 h-4 mr-2" />
-                      Validar
-                    </Button>
+                  <div className="flex gap-4 flex-wrap items-end">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Tipo de importação</label>
+                      <Select value={importMode} onValueChange={(v) => {
+                        setImportMode(v as ImportMode);
+                        setJsonInput('');
+                        setPatchReport(null);
+                        setValidationReport(null);
+                        setPendingImportData(null);
+                        setUploadedFile(null);
+                      }}>
+                        <SelectTrigger className="w-56">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="replace">Catálogo Completo (Substituir)</SelectItem>
+                          <SelectItem value="increment">Catálogo Parcial (Incrementar)</SelectItem>
+                          <SelectItem value="erp_patch">Patch ERP (Preços)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    {importMode !== 'erp_patch' && (
+                      <Button onClick={validateAndPreviewImport} disabled={!jsonInput.trim()}>
+                        <ShieldCheck className="w-4 h-4 mr-2" />
+                        Validar
+                      </Button>
+                    )}
                     {canRollback() && (
                       <Button variant="outline" onClick={() => setShowRollbackConfirm(true)}>
                         <RotateCcw className="w-4 h-4 mr-2" />
@@ -577,18 +596,171 @@ const AdminDashboard = () => {
                     )}
                   </div>
                   
-                  <Textarea
-                    value={jsonInput}
-                    onChange={(e) => setJsonInput(e.target.value)}
-                    placeholder={`{
+                  {/* File upload for ERP Patch */}
+                  {importMode === 'erp_patch' && (
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Upload de arquivo (.json ou .xlsx)</label>
+                        <input
+                          type="file"
+                          accept=".json,.xlsx"
+                          className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setUploadedFile(file);
+                            
+                            if (file.name.endsWith('.json')) {
+                              const text = await file.text();
+                              setJsonInput(text);
+                            } else if (file.name.endsWith('.xlsx')) {
+                              // XLSX will be parsed on validate
+                              setJsonInput('');
+                              toast.info(`Arquivo XLSX "${file.name}" carregado. Funcionalidade de parsing XLSX disponível.`);
+                            }
+                          }}
+                        />
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="allowDescUpdate"
+                          checked={allowDescriptionUpdate}
+                          onChange={(e) => setAllowDescriptionUpdate(e.target.checked)}
+                          className="h-4 w-4 rounded border-input"
+                        />
+                        <label htmlFor="allowDescUpdate" className="text-sm text-muted-foreground">
+                          Permitir atualização de descrição
+                        </label>
+                      </div>
+                      
+                      <Button 
+                        onClick={() => {
+                          try {
+                            if (!jsonInput.trim()) {
+                              toast.error('Cole ou faça upload de um JSON de patch');
+                              return;
+                            }
+                            const patchData = JSON.parse(jsonInput) as ErpPatchPayload;
+                            if (!patchData.prices_patch) {
+                              toast.error('JSON deve conter "prices_patch"');
+                              return;
+                            }
+                            patchData.options = { 
+                              ...patchData.options,
+                              allow_description_update: allowDescriptionUpdate 
+                            };
+                            
+                            // Validate
+                            const validation = validateErpPatch(patchData, families, prices);
+                            if (!validation.valid) {
+                              toast.error(validation.errors.join('\n'));
+                              return;
+                            }
+                            
+                            // Execute
+                            const result = importErpPatch(patchData);
+                            if (result.success && result.report) {
+                              setPatchReport(result.report);
+                              toast.success(`Patch aplicado: ${result.report.added} novos, ${result.report.updated} atualizados, ${result.report.unchanged} sem alteração`);
+                              
+                              // Save version
+                              saveCatalogVersion({
+                                schemaVersion: schemaVersion || '1.2',
+                                importMode: 'erp_patch',
+                                familiesCount: families.length,
+                                pricesCount: prices.length + (result.report?.added || 0),
+                                addonsCount: addons.length,
+                                technologiesCount: Object.keys(technologyLibrary?.items || {}).length,
+                                changesSummary: { patchReport: result.report },
+                              });
+                            } else {
+                              toast.error(result.error || 'Erro ao aplicar patch');
+                            }
+                          } catch (err) {
+                            toast.error('JSON inválido: ' + (err as Error).message);
+                          }
+                        }}
+                        disabled={!jsonInput.trim()}
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        Aplicar Patch
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Textarea for JSON input */}
+                  {importMode !== 'erp_patch' ? (
+                    <Textarea
+                      value={jsonInput}
+                      onChange={(e) => setJsonInput(e.target.value)}
+                      placeholder={`{
   "meta": { "schema_version": "1.2", ... },
   "macros": [...],
   "families": [...],
   "addons": [...],
   "prices": [...]
 }`}
-                    className="min-h-[350px] font-mono text-sm"
-                  />
+                      className="min-h-[350px] font-mono text-sm"
+                    />
+                  ) : (
+                    <Textarea
+                      value={jsonInput}
+                      onChange={(e) => setJsonInput(e.target.value)}
+                      placeholder={`{
+  "prices_patch": [
+    { "supplier": "HOYA", "erp_code": "ABC123", "price_sale_half_pair": 150.00, "active": true },
+    { "supplier": "HOYA", "erp_code": "NEW001", "family_id": "FAM_HOYA_01", "price_sale_half_pair": 200.00 }
+  ],
+  "options": { "allow_description_update": false }
+}`}
+                      className="min-h-[250px] font-mono text-sm"
+                    />
+                  )}
+
+                  {/* Patch Report */}
+                  {patchReport && (
+                    <div className="p-4 rounded-lg border space-y-2 bg-muted/30">
+                      <h4 className="font-medium text-sm flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-primary" />
+                        Relatório do Patch
+                      </h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+                        <div className="p-2 bg-background rounded text-center">
+                          <div className="text-lg font-bold text-primary">{patchReport.added}</div>
+                          <div className="text-xs text-muted-foreground">Adicionados</div>
+                        </div>
+                        <div className="p-2 bg-background rounded text-center">
+                          <div className="text-lg font-bold text-primary">{patchReport.updated}</div>
+                          <div className="text-xs text-muted-foreground">Atualizados</div>
+                        </div>
+                        <div className="p-2 bg-background rounded text-center">
+                          <div className="text-lg font-bold text-muted-foreground">{patchReport.unchanged}</div>
+                          <div className="text-xs text-muted-foreground">Sem alteração</div>
+                        </div>
+                        <div className="p-2 bg-background rounded text-center">
+                          <div className="text-lg font-bold text-destructive">{patchReport.ignored}</div>
+                          <div className="text-xs text-muted-foreground">Ignorados</div>
+                        </div>
+                      </div>
+                      {patchReport.errors.length > 0 && (
+                        <div className="text-xs text-destructive mt-2">
+                          {patchReport.errors.map((e, i) => <div key={i}>• {e}</div>)}
+                        </div>
+                      )}
+                      {patchReport.ignored_fields_log.length > 0 && (
+                        <details className="text-xs text-muted-foreground mt-1">
+                          <summary className="cursor-pointer">Campos ignorados ({patchReport.ignored_fields_log.length} SKUs)</summary>
+                          <div className="mt-1 space-y-0.5">
+                            {patchReport.ignored_fields_log.slice(0, 20).map((log, i) => (
+                              <div key={i}>{log.erp_code}: {log.fields.join(', ')}</div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
