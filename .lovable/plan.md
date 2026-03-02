@@ -1,221 +1,206 @@
 
-# Plan 5: Governanca de Classificacao com Bloqueio Absoluto de Publicacao
+
+# Plan 6 (Revisado): Importacao ERP Nativa (XLSX/JSON Patch) + Merge Granular de Prices por erp_code
 
 ## Resumo
 
-Implementar uma camada formal de governanca que audita consistencia de familias/SKUs (ProductKind, clinical_type, supplier, tecnologia), persiste historico de validacoes, e bloqueia absolutamente a publicacao quando conflitos criticos existem. Inclui nova tabela de mapeamento ERP-Familia e UI dedicada na pagina /audit.
+Evoluir o sistema de importacao para suportar um novo modo "ERP Patch" que realiza merge granular de prices por chave `supplier:erp_code`, sem substituir o array inteiro. Adicionar upload de arquivo (.json/.xlsx) no AdminDashboard e criar parser XLSX generico.
 
 ---
 
-## Arquitetura Atual
+## Ajustes Incorporados (vs. versao anterior)
 
-- **Publicacao**: `saveCatalogToCloud()` no lensStore.ts ja tem um "Publication Gate" que verifica grades faltantes via `catalog-grade-matrix/missing`. Bloqueia se variantes sem grade existem.
-- **Validacao**: `catalogValidationEngine.ts` executa regras declarativas de `validation_rules.json` (structure, reference, field_presence, aggregation, enum_validation). Retorna blocking/warning.
-- **Integridade Clinica**: `catalogIntegrityAnalyzer.ts` classifica SKUs em COMPLETO/LEGACY/PARCIAL/DEFAULTED.
-- **Classificacao**: `skuClassificationEngine.ts` reclassifica SKUs para familias existentes.
-- **Store**: Zustand com `rawLensData`, `saveCatalogToCloud`, `loadCatalogFromCloud`.
-- **UI**: CatalogAudit.tsx com ~10 tabs (families, macros, suppliers, technologies, matching, integrity, clinical, logs, erp-import, commercial).
+### Ajuste 1: family_id condicional no patch
+- SKU **novo** (key nao existe no catalogo): `family_id` obrigatorio -- sem ele, item rejeitado
+- SKU **existente** (key ja existe): `family_id` opcional e **sempre ignorado** -- se vier no payload, registrado em `ignored_fields: ['family_id']` no relatorio, nunca aplicado
+
+### Ajuste 2: description nunca sobrescrita por padrao
+- Patch **nunca** sobrescreve `description` automaticamente
+- Para permitir atualizacao de descricao, o payload deve incluir flag explicita:
+```typescript
+interface ErpPatchPayload {
+  prices_patch: PricePatch[];
+  supplier_family_map_patch?: SupplierFamilyMapEntry[];
+  options?: {
+    allow_description_update?: boolean; // default false
+  };
+}
+```
+- Sem a flag (ou `false`): campo `description` do patch e ignorado, logado em `ignored_fields`
+- Com a flag `true`: `description` aplicada normalmente
+
+### Ajuste 3: ordem estavel no rebuild de prices
+- Prices existentes mantem sua posicao original no array
+- Novos SKUs sao anexados ao final
+- Nenhuma reordenacao automatica
 
 ---
 
-## Mudancas de Banco de Dados
-
-### Tabela 1: `supplier_family_map`
-```sql
-CREATE TABLE public.supplier_family_map (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  supplier TEXT NOT NULL,
-  erp_family_name TEXT NOT NULL,
-  catalog_family_id TEXT NOT NULL,
-  rule_type TEXT NOT NULL DEFAULT 'manual' CHECK (rule_type IN ('exact','regex','manual')),
-  confidence TEXT NOT NULL DEFAULT 'manual' CHECK (confidence IN ('auto','manual','reviewed')),
-  active BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  created_by UUID,
-  UNIQUE(supplier, erp_family_name)
-);
--- RLS: admin/manager can manage, sellers can view
-```
-
-### Tabela 2: `catalog_validation_runs`
-```sql
-CREATE TABLE public.catalog_validation_runs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  total_conflicts INTEGER NOT NULL DEFAULT 0,
-  critical_conflicts INTEGER NOT NULL DEFAULT 0,
-  warning_conflicts INTEGER NOT NULL DEFAULT 0,
-  conflicts_detail JSONB DEFAULT '[]',
-  user_id UUID,
-  catalog_version_id UUID,
-  published BOOLEAN NOT NULL DEFAULT false,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
--- Constraint: published=true implica critical_conflicts=0 (enforced by trigger)
--- RLS: admin/manager can manage, sellers can view
-```
-
-### Trigger de validacao
-```sql
-CREATE OR REPLACE FUNCTION validate_publication_gate()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.published = true AND NEW.critical_conflicts > 0 THEN
-    RAISE EXCEPTION 'Cannot publish with critical conflicts (found %)', NEW.critical_conflicts;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_validate_publication
-  BEFORE INSERT OR UPDATE ON catalog_validation_runs
-  FOR EACH ROW EXECUTE FUNCTION validate_publication_gate();
-```
-
----
-
-## Novo Modulo: Auditor de Consistencia
-
-### Arquivo: `src/lib/catalogConsistencyAuditor.ts`
-
-Funcao principal `auditFamilyConsistency(families, prices, technologyLibrary)` que retorna:
+## Tipos Novos (src/types/lens.ts)
 
 ```typescript
-interface ConsistencyAuditResult {
-  critical: ConsistencyConflict[];
-  warnings: ConsistencyConflict[];
-  summary: {
-    totalCritical: number;
-    totalWarnings: number;
-    canPublish: boolean; // totalCritical === 0
+type ImportMode = 'increment' | 'replace' | 'erp_patch';
+
+interface PricePatch {
+  supplier: string;        // obrigatorio sempre
+  erp_code: string;        // obrigatorio sempre
+  family_id?: string;      // obrigatorio apenas para SKU novo
+  price_sale_half_pair?: number;
+  price_purchase_half_pair?: number;
+  active?: boolean;
+  blocked?: boolean;
+  clinical_type?: ClinicalType;
+  manufacturing_type?: string;
+  process?: ProcessType;
+  description?: string;    // aplicado somente se allow_description_update=true
+  specs?: Partial<PriceSpec>;
+}
+
+interface ErpPatchPayload {
+  prices_patch: PricePatch[];
+  supplier_family_map_patch?: SupplierFamilyMapEntry[];
+  options?: {
+    allow_description_update?: boolean;
   };
 }
 
-interface ConsistencyConflict {
-  type: string; // ex: 'SKU_WITHOUT_FAMILY', 'MIXED_PRODUCT_KIND', etc.
-  familyId?: string;
-  details: string;
-  affectedSkus?: string[];
+interface PatchReport {
+  added: number;
+  updated: number;
+  unchanged: number;
+  ignored: number;
+  ignored_fields_log: Array<{ erp_code: string; fields: string[] }>;
+  errors: string[];
 }
 ```
 
-**Conflitos criticos verificados:**
-1. `SKU_WITHOUT_FAMILY` - SKU sem family_id valido
-2. `MIXED_PRODUCT_KIND` - Familia com SKUs de clinical_types incompativeis (ex: MONOFOCAL + PROGRESSIVA na mesma familia)
-3. `CLINICAL_TYPE_MISMATCH` - >20% dos SKUs divergem do clinical_type da familia
-4. `FAMILY_WITHOUT_ACTIVE_SKU` - Familia ativa sem nenhum SKU ativo
-5. `INCOMPATIBLE_TECHNOLOGY` - Tecnologia associada a familia com ProductKind incompativel
-6. `MIXED_SUPPLIER_FAMILY` - Familia com SKUs de fornecedores diferentes
-7. `FAMILY_WITHOUT_SUPPLIER` - Familia sem supplier definido
-8. `SKU_NULL_CLINICAL_TYPE` - SKU com clinical_type null/undefined
-9. `SKU_MISSING_ESSENTIAL_RANGE` - SKU ativo sem range minimo de esfera/cilindro
+---
 
-**Correcoes automaticas permitidas (safe):**
-- Ajustar `family.clinical_type` se >=85% dos SKUs convergem
-- Ajustar `product_kind` se 100% dos SKUs convergem
-- Remover tecnologia incompativel com ProductKind
+## Logica do mergeErpPatch (catalogImporter.ts)
 
-Retorna `autoFixes: AutoFix[]` separadamente para confirmacao do usuario.
+```text
+mergeErpPatch(currentData, patchPayload):
+  1. Build Map<string, {price: Price, originalIndex: number}> do currentData.prices
+     key = supplier:erp_code
+  2. allowDescUpdate = patchPayload.options?.allow_description_update === true
+  3. For each pricePatch in patchPayload.prices_patch:
+     a. key = pricePatch.supplier + ":" + pricePatch.erp_code
+     b. IF key exists in map (SKU existente):
+        - ignoredFields = ['family_id'] se family_id presente no patch
+        - se description presente E !allowDescUpdate: add 'description' a ignoredFields
+        - Shallow merge: { ...existing, ...patchWithoutIgnored }
+        - Se nenhum campo mudou: increment "unchanged"
+        - Senao: increment "updated"
+        - Log ignored_fields se nao vazio
+     c. ELSE (SKU novo):
+        - Validar family_id presente e existente em families[]
+        - Se ausente: add to errors, increment "ignored", skip
+        - Append ao final do array
+        - Increment "added"
+  4. Rebuild prices: existentes na ordem original + novos ao final
+  5. Return merged LensData + PatchReport
+```
+
+### Campos protegidos (nunca sobrescritos em SKU existente)
+- `family_id` -- sempre ignorado, logado
+- `description` -- ignorado por padrao, so aplicado com `allow_description_update: true`
+- `index`, `index_value` -- preservados
+
+### Campos atualizaveis
+- `price_sale_half_pair`, `price_purchase_half_pair`
+- `active`, `blocked`
+- `specs` (sphere/cyl/add/diameter/altura ranges)
+- `clinical_type`, `manufacturing_type`, `process`
 
 ---
 
-## Integracao com Publicacao (Bloqueio Absoluto)
+## Validacao de Patch (validateErpPatch)
 
-### Modificar `saveCatalogToCloud()` no `lensStore.ts`
-
-Antes de salvar, executar `auditFamilyConsistency()`:
-
-```text
-saveCatalogToCloud():
-  1. [existente] Check grade gate (catalog-grade-matrix/missing)
-  2. [NOVO] Run auditFamilyConsistency()
-     - Se critical > 0: BLOQUEAR, set syncStatus='error', retornar mensagem
-     - Se critical === 0: prosseguir
-  3. [NOVO] Persistir resultado em catalog_validation_runs (via supabase insert)
-  4. [existente] Upload catalog-default.json
-  5. [NOVO] Marcar validation_run como published=true
+```typescript
+function validateErpPatch(
+  patch: ErpPatchPayload,
+  currentFamilies: FamilyExtended[],
+  currentPrices: Price[]
+): { valid: boolean; errors: string[]; warnings: string[] }
 ```
 
-**Nao ha override manual. Nao ha excecao administrativa.**
-
-### Status do Catalogo (runtime-only, nao persistido no JSON)
-
-Derivar do estado atual:
-- `draft` = ha pendingChanges OU conflitos criticos > 0
-- `ready_for_publish` = conflitos criticos === 0 E sem pendingChanges
-- `published` = apos saveCatalogToCloud com sucesso
-
-Adicionar ao lensStore: `catalogStatus: 'draft' | 'ready_for_publish' | 'published'`
+Regras:
+- Cada item deve ter `supplier` e `erp_code` (bloqueante)
+- SKU novo sem `family_id`: erro bloqueante para esse item (item ignorado, nao bloqueia todo o patch)
+- SKU novo com `family_id` inexistente em families[]: erro bloqueante para esse item
+- Patch vazio (0 items validos apos validacao): erro bloqueante global
 
 ---
 
-## UI no /audit
+## Parser XLSX (src/lib/erp/xlsxToPricesPatch.ts)
 
-### Banner fixo superior (abaixo do header, acima das tabs)
+```typescript
+interface XlsxPatchResult {
+  prices_patch: PricePatch[];
+  stats: { rows_read: number; rows_valid: number; rows_ignored: number; rows_error: number };
+  errors: string[];
+}
 
-```text
-+------------------------------------------------------------------+
-| [icon] Status: DRAFT | Conflitos Criticos: 3 | [Publicar: disabled] |
-| Motivo: 2 familias com ProductKind misto, 1 SKU sem familia       |
-+------------------------------------------------------------------+
+function xlsxToPricesPatch(
+  workbook: XLSX.WorkBook,
+  supplier: string,
+  columnMapping: Record<string, string>,
+  familyDictionary: any[],
+  catalogFamilies: FamilyExtended[]
+): XlsxPatchResult
 ```
 
-- Cor vermelha se criticos > 0
-- Cor verde se ready_for_publish
-- Botao "Publicar" desabilitado se criticos > 0, com tooltip listando motivos
+Logica:
+1. Ler primeira sheet do workbook
+2. Mapear colunas via columnMapping (supplier_profiles)
+3. Para cada row: extrair erp_code, ranges, precos, status; resolver family_id via familyDictionary
+4. family_id nao resolvido: registrar em errors, nao incluir no patch
+5. Normalizar numeros (string para number, virgula para ponto)
 
-### Nova tab: "Classificacao"
+---
 
-Adicionar tab `classification` no TabsList existente com tabela mostrando:
+## UI no AdminDashboard
 
-| Supplier | ERP Family Name | SKUs | Familia Mapeada | Status |
-|----------|----------------|------|-----------------|--------|
-| ESSILOR  | VARILUX LIBERTY | 45   | ESSILOR_VARILUX_LIBERTY | OK |
-| HOYA     | HOYALUX ID     | 32   | -               | Sem Mapping |
+Adicionar na secao de importacao:
+- **Seletor de tipo**: "Catalogo Completo (JSON)" | "Patch ERP (JSON)" | "Patch ERP (XLSX)"
+- **Upload de arquivo**: `<input type="file" accept=".json,.xlsx">`
+- **Checkbox**: "Permitir atualizacao de descricao" (mapeia para `allow_description_update`)
+- **Preview**: Mostrar PatchReport (added/updated/unchanged/ignored) antes de confirmar
+- **Confirmar**: Aplica patch, roda auditoria, salva na cloud
 
-Acoes por linha: Mapear (abre select de familias existentes), Revisar.
+---
 
-Dados lidos da tabela `supplier_family_map` + cruzamento com catalogo em memoria.
+## Integracao Pos-Patch com Governanca
 
-### Painel de conflitos
-
-Dentro da tab "Classificacao" ou como sub-secao da tab "Integridade":
-- Lista de todos conflitos criticos com tipo, familia afetada, e SKUs envolvidos
-- Botao "Aplicar correcoes automaticas" (apenas para as safe fixes: convergencia >=85%)
-- Cada correcao mostra preview antes de aplicar
+Apos aplicar patch:
+1. Rodar `runConsistencyAudit()` do lensStore
+2. Atualizar `catalogStatus` para `draft`
+3. Registrar resultado em `catalog_validation_runs`
+4. Banner no /audit reflete novos conflitos
+5. Publicacao bloqueada se conflitos criticos existirem
 
 ---
 
 ## Sequencia de Implementacao
 
-1. **Migracao DB**: Criar tabelas `supplier_family_map` e `catalog_validation_runs` com RLS e trigger
-2. **catalogConsistencyAuditor.ts**: Funcao pura de auditoria (9 checks criticos + auto-fixes)
-3. **Integrar no lensStore**: Adicionar `catalogStatus`, modificar `saveCatalogToCloud` com gate de consistencia
-4. **Persistencia**: Inserir resultado da validacao em `catalog_validation_runs` apos cada auditoria
-5. **UI - Banner de status**: Componente `CatalogStatusBanner` fixo no topo do /audit
-6. **UI - Tab Classificacao**: Nova tab com tabela de mapeamentos e painel de conflitos
-7. **Integracao ERP**: Atualizar `supplier_family_map` durante importacao ERP (apos sync)
+1. **Tipos**: Adicionar `erp_patch` ao ImportMode, criar PricePatch, ErpPatchPayload, PatchReport em types/lens.ts
+2. **catalogImporter.ts**: Implementar `mergeErpPatch()` + `validateErpPatch()` com regras de family_id condicional, description protegida, e ordem estavel
+3. **xlsxToPricesPatch.ts**: Parser XLSX usando column_mapping
+4. **AdminDashboard.tsx**: Seletor de tipo, file upload, checkbox description, preview report
+5. **lensStore.ts**: Suporte a erp_patch no importCatalog, auditoria pos-patch
 
 ---
 
 ## Arquivos Afetados
 
 **Novos:**
-- `src/lib/catalogConsistencyAuditor.ts` (auditor com 9 checks + auto-fixes)
-- `src/components/audit/CatalogStatusBanner.tsx` (banner fixo de status)
-- `src/components/audit/ClassificationTab.tsx` (nova tab de classificacao/mapeamento)
+- `src/lib/erp/xlsxToPricesPatch.ts`
 
 **Modificados:**
-- `src/store/lensStore.ts` (catalogStatus + gate de consistencia no saveCatalogToCloud)
-- `src/pages/CatalogAudit.tsx` (banner + nova tab)
-
-**Migracoes DB:**
-- `supplier_family_map` (tabela + RLS)
-- `catalog_validation_runs` (tabela + RLS + trigger de validacao)
-
-**Nao alterados (Zero Criacao mantido):**
-- Catalogo JSON (nenhum dado inventado)
-- Motor de recomendacao (Fase 4 preservada)
-- Edge functions existentes
+- `src/types/lens.ts` (ImportMode + PricePatch + ErpPatchPayload + PatchReport)
+- `src/lib/catalogImporter.ts` (mergeErpPatch, validateErpPatch, executeImport)
+- `src/pages/AdminDashboard.tsx` (seletor, upload, preview, checkbox)
+- `src/store/lensStore.ts` (importCatalog erp_patch, auditoria pos-patch)
 
 ---
 
@@ -223,10 +208,12 @@ Dentro da tab "Classificacao" ou como sub-secao da tab "Integridade":
 
 | Garantia | Mecanismo |
 |----------|-----------|
-| Publicacao impossivel com conflitos | Gate no saveCatalogToCloud + trigger DB |
-| Todo SKU com family_id valido | Check SKU_WITHOUT_FAMILY |
-| Nenhuma familia mistura ProductKind | Check MIXED_PRODUCT_KIND |
-| Clinical_type consistente | Check CLINICAL_TYPE_MISMATCH (>20%) |
-| Logs persistidos | catalog_validation_runs com detail |
-| UI reflete bloqueio | Banner + botao desabilitado |
-| Zero Criacao | Auditor apenas valida e sugere, nunca cria |
+| Patch nao apaga prices existentes | Map por chave, preserva nao-mencionados |
+| Idempotencia | Reimportar = mesmos updates, sem duplicatas |
+| Multi-fornecedor seguro | Patch HOYA nao afeta ESSILOR |
+| family_id protegido em existentes | Sempre ignorado, logado em ignored_fields |
+| description protegida por padrao | So atualiza com allow_description_update=true |
+| Ordem estavel | Existentes mantidos na posicao, novos ao final |
+| Auditoria pos-patch | runConsistencyAudit() automatico |
+| Publicacao bloqueada se conflitos | Gate existente no saveCatalogToCloud |
+
