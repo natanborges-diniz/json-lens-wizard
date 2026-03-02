@@ -34,7 +34,8 @@ const CLINICAL_DEFAULTS: Record<string, {
 
 /** Peso máximo para cada componente */
 const WEIGHTS = {
-  PRESCRIPTION: 40,
+  PRESCRIPTION: 25,
+  CLINICAL_FIT: 15,
   COMPLAINTS: 30,
   LIFESTYLE: 30,
 };
@@ -351,9 +352,9 @@ export function calculateClinicalScore(
   prescription: Partial<Prescription>,
   tierKey: TierKey
 ): ClinicalScore {
-  const allReasons: string[] = [];
+   const allReasons: string[] = [];
   
-  // 1. Score de prescrição (40 pts)
+  // 1. Score de prescrição (25 pts)
   const prescriptionResult = calculatePrescriptionScore(family, prices, prescription);
   allReasons.push(...prescriptionResult.reasons);
   
@@ -363,6 +364,7 @@ export function calculateClinicalScore(
       total: 0,
       components: {
         prescriptionMatch: 0,
+        clinicalFit: 0,
         complaintsMatch: 0,
         lifestyleMatch: 0,
       },
@@ -382,13 +384,14 @@ export function calculateClinicalScore(
   const lifestyleResult = calculateLifestyleScore(family, anamnesis, tierKey);
   allReasons.push(...lifestyleResult.reasons);
   
-  // Total
+  // Total (clinicalFit starts at 0 — filled by scorer after FitScore computation)
   const total = prescriptionResult.score + complaintsResult.score + lifestyleResult.score;
   
   return {
     total: Math.round(total * 100) / 100,
     components: {
       prescriptionMatch: Math.round(prescriptionResult.score * 100) / 100,
+      clinicalFit: 0, // Filled by recommendationScorer after computeClinicalFitScore
       complaintsMatch: Math.round(complaintsResult.score * 100) / 100,
       lifestyleMatch: Math.round(lifestyleResult.score * 100) / 100,
     },

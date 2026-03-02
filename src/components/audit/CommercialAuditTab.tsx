@@ -294,7 +294,7 @@ export function CommercialAuditTab({ families, macros, technologyLibrary }: Comm
           final: 75,
           clinical: {
             total: 70,
-            components: { prescriptionMatch: 30, complaintsMatch: 20, lifestyleMatch: 20 },
+            components: { prescriptionMatch: 30, clinicalFit: 0, complaintsMatch: 20, lifestyleMatch: 20 },
             reasons: [],
             flags: { prescriptionIncompatible: false, categoryMismatch: false },
           },

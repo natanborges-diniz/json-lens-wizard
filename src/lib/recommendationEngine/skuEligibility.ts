@@ -1,11 +1,13 @@
 /**
- * SKU-first Eligibility Pipeline (E1)
+ * SKU-first Eligibility Pipeline (Phase 4 + Plan 7)
  * 
  * Canonical function isSkuEligibleForRx filters SKUs BEFORE family ranking.
- * Gates: active/blocked → sphere → cylinder → addition → diameter → height
+ * Gates: active/blocked → price → no_specs → sphere → cylinder → addition → product_kind → diameter → height
  */
 
 import type { Price, Prescription, FrameMeasurements, FamilyExtended } from '@/types/lens';
+import { calcRequiredDiameter, type PupillaryData } from '@/lib/clinical/calcRequiredDiameter';
+import { resolveProductKind } from '@/lib/clinical/resolveProductKind';
 
 // ============================================
 // TYPES
@@ -14,6 +16,12 @@ import type { Price, Prescription, FrameMeasurements, FamilyExtended } from '@/t
 export interface SkuEligibilityResult {
   eligible: boolean;
   failedGate: string | null;
+  debug?: {
+    requiredDiameterMm?: number;
+    skuDiameterMaxMm?: number;
+    productKind?: string;
+    productKindSource?: string;
+  };
 }
 
 export interface EligibilityFunnel {
@@ -22,6 +30,7 @@ export interface EligibilityFunnel {
   passedSphere: number;
   passedCylinder: number;
   passedAddition: number;
+  passedProductKind: number;
   passedDiameter: number;
   passedHeight: number;
   finalEligible: number;
@@ -81,33 +90,19 @@ function getSkuLimits(sku: Price): {
   };
 }
 
-/**
- * Calculate required lens diameter from frame measurements and DNP.
- * Formula: max of (A + DBL - DNP, DNP) + safety margin
- */
-function calculateRequiredDiameter(frame: FrameMeasurements): number {
-  const A = frame.horizontalSize;
-  const DBL = frame.bridge;
-  const DNP = frame.dp; // interpupillary distance per eye
-  const nasal = (A + DBL) / 2 - DNP;
-  const temporal = A - nasal;
-  const halfVertical = frame.verticalSize / 2;
-  // Required = 2 * max(temporal, nasal, halfVertical) + 2mm safety
-  const maxHalf = Math.max(temporal, nasal, halfVertical);
-  return Math.ceil(maxHalf * 2) + 2;
-}
-
 // ============================================
 // MAIN FUNCTIONS
 // ============================================
 
 /**
  * Canonical SKU eligibility check with sequential gates.
+ * Gate order: active → price → no_specs → sphere → cyl → add → product_kind → diameter → height
  */
 export function isSkuEligibleForRx(
   sku: Price,
   rx: Partial<Prescription>,
-  frame?: FrameMeasurements | null
+  frame?: FrameMeasurements | null,
+  familyMap?: Map<string, FamilyExtended>
 ): SkuEligibilityResult {
   // Gate 1: Active & not blocked
   if (sku.active === false || sku.blocked) {
@@ -140,7 +135,7 @@ export function isSkuEligibleForRx(
   if (limits.cylMin !== null) {
     const cylOD = rx.rightCylinder ?? 0;
     const cylOE = rx.leftCylinder ?? 0;
-    const cylAbsMax = Math.abs(limits.cylMin); // cylMin is typically negative
+    const cylAbsMax = Math.abs(limits.cylMin);
     if (Math.abs(cylOD) > cylAbsMax) {
       return { eligible: false, failedGate: 'cylinder' };
     }
@@ -157,30 +152,73 @@ export function isSkuEligibleForRx(
         return { eligible: false, failedGate: 'addition' };
       }
     }
-    // If SKU has no addition limits but Rx requires addition, reject
     if (limits.addMin == null && limits.addMax == null) {
       return { eligible: false, failedGate: 'addition' };
     }
   }
 
-  // Gate 5: Diameter (if frame provided)
-  if (frame && frame.horizontalSize > 0 && frame.bridge > 0 && frame.dp > 0) {
-    const requiredDiameter = calculateRequiredDiameter(frame);
+  // Gate 4b: ProductKind coherence
+  const family = familyMap?.get(sku.family_id);
+  const pkResult = resolveProductKind(sku, family);
+  const hasAddition = maxAdd > 0;
+
+  if (hasAddition && (pkResult.kind === 'LP' || pkResult.kind === 'VS')) {
+    return { 
+      eligible: false, 
+      failedGate: 'product_kind',
+      debug: { productKind: pkResult.kind, productKindSource: pkResult.source },
+    };
+  }
+  if (!hasAddition && (pkResult.kind === 'PR' || pkResult.kind === 'OC')) {
+    return { 
+      eligible: false, 
+      failedGate: 'product_kind',
+      debug: { productKind: pkResult.kind, productKindSource: pkResult.source },
+    };
+  }
+
+  // Gate 5: Diameter (using canonical MBS calculation)
+  if (frame && frame.horizontalSize > 0 && frame.bridge > 0) {
+    const pd: PupillaryData = {
+      dnpOD: frame.dnpOD,
+      dnpOE: frame.dnpOE,
+      dp: frame.dp,
+    };
+    const diamCalc = calcRequiredDiameter(
+      { horizontalSize: frame.horizontalSize, verticalSize: frame.verticalSize, bridge: frame.bridge },
+      pd
+    );
     if (limits.diameterMaxMm !== null && limits.diameterMaxMm > 0) {
-      if (limits.diameterMaxMm < requiredDiameter) {
-        return { eligible: false, failedGate: 'diameter' };
+      if (limits.diameterMaxMm < diamCalc.maxRequired) {
+        return { 
+          eligible: false, 
+          failedGate: 'diameter',
+          debug: {
+            requiredDiameterMm: diamCalc.maxRequired,
+            skuDiameterMaxMm: limits.diameterMaxMm,
+            productKind: pkResult.kind,
+            productKindSource: pkResult.source,
+          },
+        };
       }
     }
   }
 
-  // Gate 6: Minimum height (when available)
+  // Gate 6: Minimum height (when available, for PR/OC)
   if (frame && frame.altura && frame.altura > 0 && limits.alturaMinMm !== null && limits.alturaMinMm > 0) {
     if (frame.altura < limits.alturaMinMm) {
       return { eligible: false, failedGate: 'height' };
     }
   }
 
-  return { eligible: true, failedGate: null };
+  return { 
+    eligible: true, 
+    failedGate: null,
+    debug: {
+      productKind: pkResult.kind,
+      productKindSource: pkResult.source,
+    },
+  };
 }
 
 /**
@@ -200,6 +238,7 @@ export function getEligibleSkusAndFamilies(
     passedSphere: 0,
     passedCylinder: 0,
     passedAddition: 0,
+    passedProductKind: 0,
     passedDiameter: 0,
     passedHeight: 0,
     finalEligible: 0,
@@ -226,15 +265,13 @@ export function getEligibleSkusAndFamilies(
   const eligibleFamiliesMap = new Map<string, Price[]>();
 
   for (const sku of prices) {
-    // Skip if family not in relevant set
     if (!relevantFamilyIds.has(sku.family_id)) continue;
 
     funnel.totalSkus++;
 
-    const result = isSkuEligibleForRx(sku, rx, frame);
+    const result = isSkuEligibleForRx(sku, rx, frame, familyMap);
 
     if (!result.eligible) {
-      // Track funnel - increment based on how far it got
       if (result.failedGate === 'active' || result.failedGate === 'price') continue;
       if (result.failedGate === 'no_specs') continue;
       funnel.passedActive++;
@@ -244,6 +281,8 @@ export function getEligibleSkusAndFamilies(
       funnel.passedCylinder++;
       if (result.failedGate === 'addition') continue;
       funnel.passedAddition++;
+      if (result.failedGate === 'product_kind') continue;
+      funnel.passedProductKind++;
       if (result.failedGate === 'diameter') continue;
       funnel.passedDiameter++;
       if (result.failedGate === 'height') continue;
@@ -256,6 +295,7 @@ export function getEligibleSkusAndFamilies(
     funnel.passedSphere++;
     funnel.passedCylinder++;
     funnel.passedAddition++;
+    funnel.passedProductKind++;
     funnel.passedDiameter++;
     funnel.passedHeight++;
     funnel.finalEligible++;

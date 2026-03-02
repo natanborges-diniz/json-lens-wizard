@@ -246,11 +246,13 @@ export interface Prescription {
 }
 
 export interface FrameMeasurements {
-  horizontalSize: number;
-  verticalSize: number;
-  bridge: number;
-  dp: number;
-  altura?: number;
+  horizontalSize: number;   // A (lens width)
+  verticalSize: number;     // B (lens height)
+  bridge: number;           // DBL (bridge width)
+  dp: number;               // binocular PD (fallback)
+  dnpOD?: number;           // monocular DNP right eye
+  dnpOE?: number;           // monocular DNP left eye
+  altura?: number;          // mounting height
 }
 
 // Anamnesis Types - based on ophthalmologic anamnesis flow

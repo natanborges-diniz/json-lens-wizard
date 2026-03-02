@@ -54,6 +54,11 @@ import {
 export { isSkuEligibleForRx, getEligibleSkusAndFamilies } from './skuEligibility';
 export type { EligibilityFunnel, EligibilityOutput, SkuEligibilityResult } from './skuEligibility';
 
+// Re-export clinical utilities
+export { calcRequiredDiameter } from '@/lib/clinical/calcRequiredDiameter';
+export { resolveProductKind } from '@/lib/clinical/resolveProductKind';
+export { computeClinicalFitScore } from '@/lib/clinical/computeClinicalFitScore';
+
 // Re-export individual engines
 export { calculateClinicalScore, isClinicallyEligible } from './clinicalEngine';
 export { calculateCommercialScore, isCommerciallyViable } from './commercialEngine';
@@ -103,7 +108,7 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
     input.supplierPriorities,
     input.macros,
     input.clinicalType,
-    undefined, // frame (from input if available)
+    input.frame, // frame measurements for diameter/height gates
     input.storePriorities // store-level priorities
   );
 

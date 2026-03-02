@@ -43,8 +43,11 @@ export interface ClinicalScore {
   
   /** Componentes do score */
   components: {
-    /** Compatibilidade com receita (0-40) */
+    /** Compatibilidade com receita (0-25) */
     prescriptionMatch: number;
+
+    /** ClinicalFitScore bonus (0-15) */
+    clinicalFit: number;
     
     /** Match com queixas visuais (0-30) */
     complaintsMatch: number;
@@ -157,6 +160,15 @@ export interface ScoredFamily {
   
   /** Knowledge para consultor */
   knowledgeConsultant: string | null;
+
+  /** Resolved clinical type from dominant SKU */
+  resolvedClinicalType?: ClinicalType;
+
+  /** Resolved product kind (LP/VS/PR/OC/BF) */
+  resolvedProductKind?: string;
+
+  /** Best ClinicalFitScore among eligible SKUs */
+  bestFitScore?: number;
 }
 
 /**
@@ -262,6 +274,9 @@ export interface RecommendationInput {
 
   /** Store-level supplier priorities (overrides global) */
   storePriorities?: string[];
+
+  /** Frame measurements (for diameter/height gates) */
+  frame?: import('@/types/lens').FrameMeasurements;
 }
 
 // ============================================
