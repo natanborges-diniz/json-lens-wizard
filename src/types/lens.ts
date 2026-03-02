@@ -302,7 +302,48 @@ export const MACRO_TO_TIER: Record<string, 'essential' | 'comfort' | 'advanced' 
 
 export type Tier = 'essential' | 'comfort' | 'advanced' | 'top';
 
-export type ImportMode = 'increment' | 'replace';
+export type ImportMode = 'increment' | 'replace' | 'erp_patch';
+
+// ERP Patch types (Plan 6)
+export interface PricePatch {
+  supplier: string;
+  erp_code: string;
+  family_id?: string;
+  price_sale_half_pair?: number;
+  price_purchase_half_pair?: number;
+  active?: boolean;
+  blocked?: boolean;
+  clinical_type?: ClinicalType;
+  manufacturing_type?: string;
+  process?: ProcessType;
+  description?: string;
+  specs?: Partial<PriceSpec>;
+}
+
+export interface SupplierFamilyMapEntry {
+  erp_family_name: string;
+  catalog_family_id: string;
+  supplier: string;
+  confidence?: string;
+  rule_type?: string;
+}
+
+export interface ErpPatchPayload {
+  prices_patch: PricePatch[];
+  supplier_family_map_patch?: SupplierFamilyMapEntry[];
+  options?: {
+    allow_description_update?: boolean;
+  };
+}
+
+export interface PatchReport {
+  added: number;
+  updated: number;
+  unchanged: number;
+  ignored: number;
+  ignored_fields_log: Array<{ erp_code: string; fields: string[] }>;
+  errors: string[];
+}
 
 // Individual addon options for selection
 export interface AddonOption {

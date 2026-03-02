@@ -20,9 +20,12 @@ import type {
 import { 
   validateImport, 
   executeImport, 
+  mergeErpPatch,
+  validateErpPatch,
   type ImportResult, 
   type ImportSummary 
 } from '@/lib/catalogImporter';
+import type { ErpPatchPayload, PatchReport } from '@/types/lens';
 import { auditFamilyConsistency, type ConsistencyAuditResult } from '@/lib/catalogConsistencyAuditor';
 import { supabase } from '@/integrations/supabase/client';
 // REMOVED: normalizeMacros import (PLAN 3 §3.2 - Zero Creation in Runtime)
@@ -100,6 +103,7 @@ interface LensState {
   
   // New import actions (policy-compliant)
   importCatalog: (data: unknown, mode: 'increment' | 'replace') => ImportResult;
+  importErpPatch: (patchPayload: ErpPatchPayload) => { success: boolean; report: PatchReport | null; error?: string };
   rollbackLastImport: () => boolean;
   canRollback: () => boolean;
   
@@ -254,8 +258,53 @@ export const useLensStore = create<LensState>()(
         
         return result;
       },
-      
-      // Rollback support (Seção 9)
+
+      // ERP Patch import (Plan 6)
+      importErpPatch: (patchPayload: ErpPatchPayload): { success: boolean; report: PatchReport | null; error?: string } => {
+        const state = get();
+        const currentData = state.rawLensData;
+
+        if (!currentData) {
+          return { success: false, report: null, error: 'Catálogo atual não carregado. Importe um catálogo completo primeiro.' };
+        }
+
+        // Validate patch
+        const validation = validateErpPatch(patchPayload, currentData.families, currentData.prices);
+        if (!validation.valid) {
+          return { success: false, report: null, error: validation.errors.join('\n') };
+        }
+
+        // Execute merge
+        const { mergedData, report } = mergeErpPatch(currentData, patchPayload);
+
+        // Store previous data for rollback
+        const previousData = JSON.parse(JSON.stringify(currentData));
+
+        set({
+          prices: mergedData.prices,
+          rawLensData: mergedData,
+          previousLensData: previousData,
+          isDataLoaded: true,
+          catalogStatus: 'draft' as CatalogStatus,
+        });
+
+        // Emit event
+        state.emitCatalogEvent('catalog_updated');
+
+        // Run consistency audit
+        const auditResult = get().runConsistencyAudit();
+        console.log('[LensStore] Post-patch audit:', auditResult.summary);
+
+        // Auto-save to cloud
+        get().saveCatalogToCloud().then(success => {
+          if (success) {
+            console.log('[LensStore] Catalog auto-saved after ERP patch');
+          }
+        });
+
+        return { success: true, report };
+      },
+
       canRollback: (): boolean => {
         return get().previousLensData !== null;
       },

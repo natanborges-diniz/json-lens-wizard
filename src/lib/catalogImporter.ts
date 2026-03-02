@@ -10,7 +10,7 @@
  * 6. Suporte a rollback
  */
 
-import type { LensData, FamilyExtended, MacroExtended, Price, Addon } from '@/types/lens';
+import type { LensData, FamilyExtended, MacroExtended, Price, Addon, PricePatch, ErpPatchPayload, PatchReport, ImportMode } from '@/types/lens';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -24,7 +24,7 @@ export interface ImportValidationResult {
 }
 
 export interface ImportSummary {
-  mode: 'increment' | 'replace';
+  mode: ImportMode;
   timestamp: string;
   schemaVersion: string;
   changes: {
@@ -394,7 +394,7 @@ function deactivateFamiliesWithoutActivePrices(data: LensData): LensData {
 // ════════════════════════════════════════════════════════════════════════════
 
 function generateImportSummary(
-  mode: 'increment' | 'replace',
+  mode: ImportMode,
   previousData: LensData | null,
   newData: LensData
 ): ImportSummary {
@@ -505,6 +505,220 @@ function generateImportSummary(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// ERP PATCH - Merge granular por supplier:erp_code (Plan 6)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Validates an ERP patch payload against current catalog
+ */
+export function validateErpPatch(
+  patch: ErpPatchPayload,
+  currentFamilies: FamilyExtended[],
+  currentPrices: Price[]
+): { valid: boolean; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!patch.prices_patch || !Array.isArray(patch.prices_patch) || patch.prices_patch.length === 0) {
+    errors.push('[ERP_PATCH] prices_patch vazio ou ausente');
+    return { valid: false, errors, warnings };
+  }
+
+  const familyIds = new Set(currentFamilies.map(f => f.id));
+  const existingKeys = new Set(currentPrices.map(p => `${p.supplier}:${p.erp_code}`));
+  let validCount = 0;
+
+  patch.prices_patch.forEach((item, i) => {
+    if (!item.supplier || !item.erp_code) {
+      errors.push(`[ERP_PATCH] Item ${i}: supplier e erp_code são obrigatórios`);
+      return;
+    }
+
+    const key = `${item.supplier}:${item.erp_code}`;
+    const isNew = !existingKeys.has(key);
+
+    if (isNew) {
+      if (!item.family_id) {
+        errors.push(`[ERP_PATCH] Item ${i} (${item.erp_code}): SKU novo requer family_id`);
+        return;
+      }
+      if (!familyIds.has(item.family_id)) {
+        errors.push(`[ERP_PATCH] Item ${i} (${item.erp_code}): family_id "${item.family_id}" não existe no catálogo`);
+        return;
+      }
+    }
+
+    validCount++;
+  });
+
+  if (validCount === 0 && patch.prices_patch.length > 0) {
+    errors.push('[ERP_PATCH] Nenhum item válido após validação');
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+/**
+ * Merges ERP patch into current catalog data with granular price updates
+ */
+export function mergeErpPatch(
+  currentData: LensData,
+  patchPayload: ErpPatchPayload
+): { mergedData: LensData; report: PatchReport } {
+  const report: PatchReport = {
+    added: 0,
+    updated: 0,
+    unchanged: 0,
+    ignored: 0,
+    ignored_fields_log: [],
+    errors: [],
+  };
+
+  const allowDescUpdate = patchPayload.options?.allow_description_update === true;
+
+  // Build index map preserving original positions
+  const priceMap = new Map<string, { price: Price; originalIndex: number }>();
+  currentData.prices.forEach((price, idx) => {
+    const key = `${price.supplier}:${price.erp_code}`;
+    priceMap.set(key, { price: { ...price }, originalIndex: idx });
+  });
+
+  const familyIds = new Set(currentData.families.map(f => f.id));
+  const newPrices: Price[] = [];
+
+  // Protected fields for existing SKUs
+  const ALWAYS_PROTECTED = ['family_id', 'index', 'index_value'];
+
+  for (const patch of patchPayload.prices_patch) {
+    if (!patch.supplier || !patch.erp_code) {
+      report.errors.push(`SKU sem supplier/erp_code ignorado`);
+      report.ignored++;
+      continue;
+    }
+
+    const key = `${patch.supplier}:${patch.erp_code}`;
+    const existing = priceMap.get(key);
+
+    if (existing) {
+      // ─── UPDATE existing SKU ───
+      const ignoredFields: string[] = [];
+      const patchFields: Partial<Price> = {};
+
+      // Build update object, skipping protected fields
+      if (patch.price_sale_half_pair !== undefined) patchFields.price_sale_half_pair = patch.price_sale_half_pair;
+      if (patch.price_purchase_half_pair !== undefined) patchFields.price_purchase_half_pair = patch.price_purchase_half_pair;
+      if (patch.active !== undefined) patchFields.active = patch.active;
+      if (patch.blocked !== undefined) patchFields.blocked = patch.blocked;
+      if (patch.clinical_type !== undefined) patchFields.clinical_type = patch.clinical_type;
+      if (patch.manufacturing_type !== undefined) patchFields.manufacturing_type = patch.manufacturing_type;
+      if (patch.process !== undefined) patchFields.process = patch.process;
+
+      // Merge specs if provided
+      if (patch.specs && Object.keys(patch.specs).length > 0) {
+        patchFields.specs = { ...existing.price.specs, ...patch.specs } as Price['specs'];
+      }
+
+      // family_id: always ignored for existing SKU
+      if (patch.family_id !== undefined) {
+        ignoredFields.push('family_id');
+      }
+
+      // description: ignored unless flag set
+      if (patch.description !== undefined) {
+        if (allowDescUpdate) {
+          patchFields.description = patch.description;
+        } else {
+          ignoredFields.push('description');
+        }
+      }
+
+      // Check if anything actually changed
+      let hasChanges = false;
+      for (const [field, value] of Object.entries(patchFields)) {
+        if (field === 'specs') {
+          // Deep compare specs
+          const oldSpecs = JSON.stringify(existing.price.specs);
+          const newSpecs = JSON.stringify(value);
+          if (oldSpecs !== newSpecs) { hasChanges = true; break; }
+        } else if ((existing.price as any)[field] !== value) {
+          hasChanges = true;
+          break;
+        }
+      }
+
+      if (hasChanges) {
+        existing.price = { ...existing.price, ...patchFields };
+        report.updated++;
+      } else {
+        report.unchanged++;
+      }
+
+      if (ignoredFields.length > 0) {
+        report.ignored_fields_log.push({ erp_code: patch.erp_code, fields: ignoredFields });
+      }
+    } else {
+      // ─── NEW SKU ───
+      if (!patch.family_id) {
+        report.errors.push(`SKU novo "${patch.erp_code}": family_id obrigatório`);
+        report.ignored++;
+        continue;
+      }
+      if (!familyIds.has(patch.family_id)) {
+        report.errors.push(`SKU novo "${patch.erp_code}": family_id "${patch.family_id}" não existe`);
+        report.ignored++;
+        continue;
+      }
+
+      const newPrice: Price = {
+        family_id: patch.family_id,
+        erp_code: patch.erp_code,
+        supplier: patch.supplier,
+        description: patch.description || '',
+        lens_category_raw: '',
+        manufacturing_type: patch.manufacturing_type || '',
+        index: '',
+        price_purchase_half_pair: patch.price_purchase_half_pair || 0,
+        price_sale_half_pair: patch.price_sale_half_pair || 0,
+        active: patch.active ?? true,
+        blocked: patch.blocked ?? false,
+        specs: {
+          diameter_min_mm: 0,
+          diameter_max_mm: 0,
+          altura_min_mm: 0,
+          altura_max_mm: 0,
+          sphere_min: 0,
+          sphere_max: 0,
+          cyl_min: 0,
+          cyl_max: 0,
+          ...(patch.specs || {}),
+        } as Price['specs'],
+        ...(patch.clinical_type && { clinical_type: patch.clinical_type }),
+        ...(patch.process && { process: patch.process }),
+      };
+
+      newPrices.push(newPrice);
+      report.added++;
+    }
+  }
+
+  // Rebuild prices: existing in original order + new at end
+  const rebuiltPrices: Price[] = new Array(currentData.prices.length);
+  for (const [, entry] of priceMap) {
+    rebuiltPrices[entry.originalIndex] = entry.price;
+  }
+  // Append new
+  rebuiltPrices.push(...newPrices);
+
+  const mergedData: LensData = {
+    ...currentData,
+    prices: rebuiltPrices,
+  };
+
+  console.log('[CatalogImporter] ERP Patch report:', report);
+  return { mergedData, report };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // FUNÇÕES PÚBLICAS
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -513,7 +727,7 @@ function generateImportSummary(
  */
 export function validateImport(
   data: unknown, 
-  mode: 'increment' | 'replace'
+  mode: ImportMode
 ): ImportValidationResult {
   // Verificar se é um objeto válido
   if (!data || typeof data !== 'object') {
@@ -527,6 +741,9 @@ export function validateImport(
 
   if (mode === 'replace') {
     return validateReplaceMode(data as LensData);
+  } else if (mode === 'erp_patch') {
+    // ERP patch validation is done separately via validateErpPatch
+    return { valid: true, errors: [], warnings: [], integrityErrors: [] };
   } else {
     return validateIncrementMode(data as Partial<LensData>);
   }
@@ -538,7 +755,7 @@ export function validateImport(
 export function executeImport(
   importData: unknown,
   currentData: LensData | null,
-  mode: 'increment' | 'replace'
+  mode: ImportMode
 ): ImportResult {
   // Validar primeiro
   const validation = validateImport(importData, mode);
