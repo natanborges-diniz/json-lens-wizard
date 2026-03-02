@@ -327,6 +327,7 @@ const SellerFlow = () => {
     lensCategory,
     anamnesisData,
     prescriptionData,
+    frameData,
   });
 
   const activeAddons = addons.filter(a => a.active && a.rules?.categories?.includes(lensCategory));
@@ -337,6 +338,7 @@ const SellerFlow = () => {
     lensCategory: 'OCUPACIONAL',
     anamnesisData,
     prescriptionData,
+    frameData,
   });
 
   // Audit logger - persist when user reaches recommendations step

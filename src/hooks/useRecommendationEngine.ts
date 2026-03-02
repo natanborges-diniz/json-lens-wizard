@@ -32,6 +32,7 @@ interface UseRecommendationEngineProps {
   lensCategory: ClinicalType;
   anamnesisData?: AnamnesisData;
   prescriptionData?: Partial<Prescription>;
+  frameData?: Partial<import('@/types/lens').FrameMeasurements>;
   selectedStoreId?: string | null;
   filters?: {
     suppliers?: string[];
@@ -82,6 +83,7 @@ export function useRecommendationEngine({
   lensCategory,
   anamnesisData,
   prescriptionData,
+  frameData,
   selectedStoreId,
   filters,
 }: UseRecommendationEngineProps): UseRecommendationEngineResult {
@@ -201,6 +203,7 @@ export function useRecommendationEngine({
       macros: lensData.macros?.map(m => ({ id: m.id, tier_key: m.tier_key, category: m.category })),
       clinicalEligibilityMode,
       storePriorities: storePriorities || undefined,
+      frame: frameData as import('@/types/lens').FrameMeasurements | undefined,
     };
 
     const result = generateRecommendations(input);
@@ -251,7 +254,7 @@ export function useRecommendationEngine({
       isReady: true,
       pipelineDebug: debug,
     };
-  }, [lensData, effectiveClinicalType, effectiveAnamnesis, effectivePrescription, filters, supplierPriorities, clinicalEligibilityMode, storePriorities]);
+  }, [lensData, effectiveClinicalType, effectiveAnamnesis, effectivePrescription, filters, supplierPriorities, clinicalEligibilityMode, storePriorities, frameData]);
 
   const stats = engineResult?.stats || {
     totalFamiliesAnalyzed: 0,

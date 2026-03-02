@@ -67,6 +67,7 @@ interface PipelineDebugInfo {
     passedSphere: number;
     passedCylinder: number;
     passedAddition: number;
+    passedProductKind?: number;
     passedDiameter: number;
     passedHeight: number;
     finalEligible: number;
@@ -635,13 +636,14 @@ export const RecommendationsGrid = ({
                 {pipelineDebug.eligibilityFunnel && (
                   <div className="mb-3">
                     <span className="text-xs font-medium text-muted-foreground block mb-2">Funil de Elegibilidade SKU</span>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                       {[
                         { label: 'Total SKUs', value: pipelineDebug.eligibilityFunnel.totalSkus },
                         { label: 'Ativos', value: pipelineDebug.eligibilityFunnel.passedActive },
                         { label: 'Esfera OK', value: pipelineDebug.eligibilityFunnel.passedSphere },
                         { label: 'Cilindro OK', value: pipelineDebug.eligibilityFunnel.passedCylinder },
                         { label: 'Adição OK', value: pipelineDebug.eligibilityFunnel.passedAddition },
+                        { label: 'Tipo OK', value: pipelineDebug.eligibilityFunnel.passedProductKind ?? '-' },
                         { label: 'Diâmetro OK', value: pipelineDebug.eligibilityFunnel.passedDiameter },
                         { label: 'Altura OK', value: pipelineDebug.eligibilityFunnel.passedHeight },
                         { label: 'Elegíveis', value: pipelineDebug.eligibilityFunnel.finalEligible },

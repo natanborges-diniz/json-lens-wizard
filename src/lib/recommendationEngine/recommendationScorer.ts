@@ -5,7 +5,7 @@
  * Tiers are assigned at runtime, never persisted to catalog.
  */
 
-import type { FamilyExtended, Price, AnamnesisData, Prescription, Technology } from '@/types/lens';
+import type { FamilyExtended, Price, AnamnesisData, Prescription, Technology, FrameMeasurements } from '@/types/lens';
 import type { 
   RecommendationScore, 
   ScoredFamily, 
@@ -14,6 +14,8 @@ import type {
 import { calculateClinicalScore, isClinicallyEligible } from './clinicalEngine';
 import { calculateCommercialScore, isCommerciallyViable } from './commercialEngine';
 import { getEligibleSkusAndFamilies, type EligibilityOutput } from './skuEligibility';
+import { computeClinicalFitScore } from '@/lib/clinical/computeClinicalFitScore';
+import { resolveProductKind } from '@/lib/clinical/resolveProductKind';
 
 // ============================================
 // CONSTANTS
@@ -210,7 +212,8 @@ export function scoreFamilyComplete(
   prescription: Partial<Prescription>,
   technologyLibrary?: Record<string, Technology>,
   supplierPriorities?: string[],
-  catalogMacros?: Array<{ id: string; tier_key?: string; category?: string }>
+  catalogMacros?: Array<{ id: string; tier_key?: string; category?: string }>,
+  frame?: FrameMeasurements | null
 ): ScoredFamily {
   const score = calculateRecommendationScore(family, eligiblePrices, anamnesis, prescription, technologyLibrary, supplierPriorities, catalogMacros);
   
@@ -220,6 +223,26 @@ export function scoreFamilyComplete(
   const startingPrice = compatiblePrices.length > 0 ? compatiblePrices[0].price_sale_half_pair * 2 : null;
   
   const enrichedData = extractFamilyData(family, technologyLibrary);
+
+  // Compute ClinicalFitScore for eligible SKUs and use best as bonus
+  let bestFitScore = 50; // neutral default
+  const pd = frame ? { dnpOD: frame.dnpOD, dnpOE: frame.dnpOE, dp: frame.dp } : null;
+  for (const sku of compatiblePrices) {
+    const fit = computeClinicalFitScore(sku, prescription, frame || null, pd);
+    if (fit.score > bestFitScore) bestFitScore = fit.score;
+  }
+
+  // Inject clinicalFit bonus into score (0-15 pts)
+  const clinicalFitBonus = Math.round((bestFitScore / 100) * 15 * 100) / 100;
+  score.clinical.components.clinicalFit = clinicalFitBonus;
+  score.clinical.total = Math.round((score.clinical.total + clinicalFitBonus) * 100) / 100;
+  // Recalculate final score with updated clinical total
+  score.final = Math.round((score.clinical.total * SCORE_WEIGHTS.CLINICAL + score.commercial.total * SCORE_WEIGHTS.COMMERCIAL) * 100) / 100;
+  score.adjustedScore = score.final + score.storeBoost;
+
+  // Resolve product kind from cheapest SKU
+  const primarySku = compatiblePrices[0];
+  const pkResult = primarySku ? resolveProductKind(primarySku, family) : null;
   
   return {
     family,
@@ -227,6 +250,9 @@ export function scoreFamilyComplete(
     startingPrice,
     compatiblePrices,
     ...enrichedData,
+    resolvedClinicalType: family.clinical_type || family.category,
+    resolvedProductKind: pkResult?.kind,
+    bestFitScore,
   };
 }
 
@@ -263,7 +289,7 @@ export function scoreAndRankFamilies(
     const family = families.find(f => f.id === familyId);
     if (!family || family.active === false) return;
     
-    const sf = scoreFamilyComplete(family, eligiblePrices, anamnesis, prescription, technologyLibrary, undefined, catalogMacros);
+    const sf = scoreFamilyComplete(family, eligiblePrices, anamnesis, prescription, technologyLibrary, undefined, catalogMacros, frame as FrameMeasurements | null);
     scoredFamilies.push(sf);
   });
 

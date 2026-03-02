@@ -86,7 +86,7 @@ export const FrameStep = ({ data, onUpdate }: FrameStepProps) => {
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">mm</span>
             </div>
-            <p className="text-xs text-muted-foreground">Mono ou binocular</p>
+            <p className="text-xs text-muted-foreground">Binocular</p>
           </div>
           
           <div className="space-y-2">
@@ -99,6 +99,38 @@ export const FrameStep = ({ data, onUpdate }: FrameStepProps) => {
                 onChange={(e) => onUpdate({ altura: parseInt(e.target.value) || 0 })}
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">mm</span>
+            </div>
+          </div>
+        </div>
+
+        {/* DNP Monocular (optional) */}
+        <div className="space-y-2">
+          <Label className="text-xs font-medium text-muted-foreground">DNP monocular (opcional)</Label>
+          <p className="text-xs text-muted-foreground -mt-1">Se disponível, informar OD e OE separados para cálculo de diâmetro mais preciso</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs">DNP OD (direito)</Label>
+              <div className="relative">
+                <Input 
+                  type="number" 
+                  placeholder="32"
+                  value={data.dnpOD || ''}
+                  onChange={(e) => onUpdate({ dnpOD: parseFloat(e.target.value) || undefined })}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">mm</span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">DNP OE (esquerdo)</Label>
+              <div className="relative">
+                <Input 
+                  type="number" 
+                  placeholder="32"
+                  value={data.dnpOE || ''}
+                  onChange={(e) => onUpdate({ dnpOE: parseFloat(e.target.value) || undefined })}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">mm</span>
+              </div>
             </div>
           </div>
         </div>
