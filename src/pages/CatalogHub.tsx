@@ -1053,7 +1053,39 @@ const CatalogHub = () => {
 
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">Upload de arquivo</label>
-                      <input type="file" accept=".json" className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer" onChange={async e => { const file = e.target.files?.[0]; if (!file) return; setUploadedFile(file); const text = await file.text(); setJsonInput(text); }} />
+                      <input
+                        type="file"
+                        accept={importMode === 'erp_patch' ? '.json,.xlsx,.xls' : '.json'}
+                        className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                        onChange={async e => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setUploadedFile(file);
+                          if (file.name.match(/\.(xlsx|xls)$/i)) {
+                            try {
+                              const XLSX = await import('xlsx');
+                              const buffer = await file.arrayBuffer();
+                              const wb = XLSX.read(buffer, { type: 'array' });
+                              const sheetName = wb.SheetNames[0];
+                              if (!sheetName) { toast.error('Planilha vazia'); return; }
+                              const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
+                              const patchPayload = { prices_patch: rows.map((row: any) => ({
+                                supplier: row.supplier || row.Fornecedor || '',
+                                erp_code: String(row.erp_code || row.Codigo || row.codigo || '').trim(),
+                                ...(row.family_id && { family_id: row.family_id }),
+                                ...(row.description || row.DescricaoCadunif ? { description: String(row.description || row.DescricaoCadunif || '') } : {}),
+                                ...(row.price_sale_half_pair != null || row.PrecoVendaMeioPar != null ? { price_sale_half_pair: Number(row.price_sale_half_pair ?? row.PrecoVendaMeioPar) } : {}),
+                                active: row.active !== undefined ? Boolean(row.active) : (row.Ativo !== undefined ? Boolean(row.Ativo) : true),
+                              })).filter((p: any) => p.erp_code) };
+                              setJsonInput(JSON.stringify(patchPayload, null, 2));
+                              toast.success(`${patchPayload.prices_patch.length} linhas lidas da planilha`);
+                            } catch (err) { toast.error('Erro ao ler planilha: ' + (err as Error).message); }
+                          } else {
+                            const text = await file.text();
+                            setJsonInput(text);
+                          }
+                        }}
+                      />
                     </div>
 
                     {patchReport && (
