@@ -4,6 +4,7 @@ import {
   ArrowLeft, 
   Upload, 
   FileJson, 
+  FileSpreadsheet,
   ListOrdered, 
   Package, 
   Settings2,
@@ -25,6 +26,7 @@ import {
   ShieldCheck,
   XCircle
 } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -596,28 +598,38 @@ const AdminDashboard = () => {
                     )}
                   </div>
                   
-                  {/* File upload for ERP Patch */}
+  {/* File upload for ERP Patch */}
                   {importMode === 'erp_patch' && (
                     <div className="space-y-3">
+                      <div className="p-3 rounded-md border border-primary/30 bg-primary/5 space-y-2">
+                        <p className="text-sm font-medium text-foreground">
+                          📊 Para importar planilhas XLSX do ERP, use o wizard completo:
+                        </p>
+                        <Link to="/audit?tab=erp-import">
+                          <Button variant="default" size="sm" className="gap-2">
+                            <FileSpreadsheet className="w-4 h-4" />
+                            Abrir Importação ERP (XLSX)
+                          </Button>
+                        </Link>
+                        <p className="text-xs text-muted-foreground">
+                          O wizard inclui: seleção de fornecedor, preview de dados, simulação dry-run e aplicação.
+                        </p>
+                      </div>
+                      
+                      <Separator />
+                      
                       <div className="space-y-1">
-                        <label className="text-xs font-medium text-muted-foreground">Upload de arquivo (.json ou .xlsx)</label>
+                        <label className="text-xs font-medium text-muted-foreground">Upload de JSON de patch (avançado)</label>
                         <input
                           type="file"
-                          accept=".json,.xlsx"
+                          accept=".json"
                           className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
                           onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (!file) return;
                             setUploadedFile(file);
-                            
-                            if (file.name.endsWith('.json')) {
-                              const text = await file.text();
-                              setJsonInput(text);
-                            } else if (file.name.endsWith('.xlsx')) {
-                              // XLSX will be parsed on validate
-                              setJsonInput('');
-                              toast.info(`Arquivo XLSX "${file.name}" carregado. Funcionalidade de parsing XLSX disponível.`);
-                            }
+                            const text = await file.text();
+                            setJsonInput(text);
                           }}
                         />
                       </div>
