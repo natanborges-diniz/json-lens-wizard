@@ -741,9 +741,6 @@ export function validateImport(
 
   if (mode === 'replace') {
     return validateReplaceMode(data as LensData);
-  } else if (mode === 'erp_patch') {
-    // ERP patch validation is done separately via validateErpPatch
-    return { valid: true, errors: [], warnings: [], integrityErrors: [] };
   } else {
     return validateIncrementMode(data as Partial<LensData>);
   }

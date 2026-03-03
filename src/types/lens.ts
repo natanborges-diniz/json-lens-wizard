@@ -304,7 +304,7 @@ export const MACRO_TO_TIER: Record<string, 'essential' | 'comfort' | 'advanced' 
 
 export type Tier = 'essential' | 'comfort' | 'advanced' | 'top';
 
-export type ImportMode = 'increment' | 'replace' | 'erp_patch';
+export type ImportMode = 'increment' | 'replace';
 
 // ERP Patch types (Plan 6)
 export interface PricePatch {

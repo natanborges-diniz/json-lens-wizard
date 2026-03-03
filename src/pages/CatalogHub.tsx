@@ -81,8 +81,8 @@ import { SupplierPriorityManager } from '@/components/settings/SupplierPriorityM
 import { useClinicalIntegrityReport } from '@/hooks/useClinicalIntegrityReport';
 import { validateCatalogImport, executePostImportActions, clearRulesCache, type ValidationReport } from '@/lib/catalogValidationEngine';
 import type { ConsistencyAuditResult, AutoFix } from '@/lib/catalogConsistencyAuditor';
-import type { LensData, FamilyExtended, Price, MacroExtended, Technology, ImportMode, ErpPatchPayload, PatchReport } from '@/types/lens';
-import { formatImportReceipt, type ImportResult, validateErpPatch } from '@/lib/catalogImporter';
+import type { LensData, FamilyExtended, Price, MacroExtended, Technology, ImportMode } from '@/types/lens';
+import { formatImportReceipt, type ImportResult } from '@/lib/catalogImporter';
 import {
   runClassificationEngine,
   getEngineFromLensData,
@@ -166,8 +166,6 @@ const CatalogHub = () => {
   const [pendingImportData, setPendingImportData] = useState<LensData | null>(null);
   const [showCloudSaveDialog, setShowCloudSaveDialog] = useState(false);
   const [cloudSaveImportSummary, setCloudSaveImportSummary] = useState<{ familiesCount: number; pricesCount: number; mode: string } | null>(null);
-  const [allowDescriptionUpdate, setAllowDescriptionUpdate] = useState(false);
-  const [patchReport, setPatchReport] = useState<PatchReport | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
   // Quality sub-tab
@@ -995,26 +993,23 @@ const CatalogHub = () => {
                       <FileJson className="w-5 h-5 text-primary" />
                       Importação JSON
                     </CardTitle>
-                    <CardDescription>Catálogo completo ou patch ERP em formato JSON</CardDescription>
+                    <CardDescription>Importação de catálogo completo ou parcial em formato JSON</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="flex gap-4 flex-wrap items-end">
                       <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">Tipo de importação</label>
-                        <Select value={importMode} onValueChange={(v) => { setImportMode(v as ImportMode); setJsonInput(''); setPatchReport(null); setValidationReport(null); setPendingImportData(null); setUploadedFile(null); }}>
+                        <Select value={importMode} onValueChange={(v) => { setImportMode(v as ImportMode); setJsonInput(''); setValidationReport(null); setPendingImportData(null); setUploadedFile(null); }}>
                           <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="replace">Catálogo Completo (Substituir)</SelectItem>
                             <SelectItem value="increment">Catálogo Parcial (Incrementar)</SelectItem>
-                            <SelectItem value="erp_patch">Patch ERP (Preços)</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
-                      {importMode !== 'erp_patch' && (
-                        <Button onClick={validateAndPreviewImport} disabled={!jsonInput.trim()}>
-                          <ShieldCheck className="w-4 h-4 mr-2" /> Validar
-                        </Button>
-                      )}
+                      <Button onClick={validateAndPreviewImport} disabled={!jsonInput.trim()}>
+                        <ShieldCheck className="w-4 h-4 mr-2" /> Validar
+                      </Button>
                       {canRollback() && (
                         <Button variant="outline" onClick={() => rollbackLastImport()}>
                           <RotateCcw className="w-4 h-4 mr-2" /> Desfazer
@@ -1022,82 +1017,23 @@ const CatalogHub = () => {
                       )}
                     </div>
 
-                    {importMode === 'erp_patch' && (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <input type="checkbox" id="allowDescUpdate" checked={allowDescriptionUpdate} onChange={e => setAllowDescriptionUpdate(e.target.checked)} className="h-4 w-4 rounded border-input" />
-                          <label htmlFor="allowDescUpdate" className="text-sm text-muted-foreground">Permitir atualização de descrição</label>
-                        </div>
-                        <Button onClick={() => {
-                          try {
-                            if (!jsonInput.trim()) { toast.error('Cole ou faça upload de um JSON de patch'); return; }
-                            const patchData = JSON.parse(jsonInput) as ErpPatchPayload;
-                            if (!patchData.prices_patch) { toast.error('JSON deve conter "prices_patch"'); return; }
-                            patchData.options = { ...patchData.options, allow_description_update: allowDescriptionUpdate };
-                            const validation = validateErpPatch(patchData, families, prices);
-                            if (!validation.valid) { toast.error(validation.errors.join('\n')); return; }
-                            const result = importErpPatch(patchData);
-                            if (result.success && result.report) {
-                              setPatchReport(result.report);
-                              toast.success(`Patch aplicado: ${result.report.added} novos, ${result.report.updated} atualizados`);
-                              saveCatalogVersion({ schemaVersion: schemaVersion || '1.2', importMode: 'erp_patch', familiesCount: families.length, pricesCount: prices.length + (result.report.added || 0), addonsCount: addons.length, technologiesCount: Object.keys(technologyLibrary?.items || {}).length, changesSummary: { patchReport: result.report } });
-                            } else { toast.error(result.error || 'Erro ao aplicar patch'); }
-                          } catch (err) { toast.error('JSON inválido: ' + (err as Error).message); }
-                        }} disabled={!jsonInput.trim()}>
-                          <Upload className="w-4 h-4 mr-2" /> Aplicar Patch
-                        </Button>
-                      </div>
-                    )}
-
-                    <Textarea value={jsonInput} onChange={e => setJsonInput(e.target.value)} placeholder={importMode === 'erp_patch' ? '{ "prices_patch": [...] }' : '{ "meta": {...}, "families": [...], ... }'} className="min-h-[250px] font-mono text-sm" />
+                    <Textarea value={jsonInput} onChange={e => setJsonInput(e.target.value)} placeholder='{ "meta": {...}, "families": [...], ... }' className="min-h-[250px] font-mono text-sm" />
 
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-muted-foreground">Upload de arquivo</label>
                       <input
                         type="file"
-                        accept={importMode === 'erp_patch' ? '.json,.xlsx,.xls' : '.json'}
+                        accept=".json"
                         className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
                         onChange={async e => {
                           const file = e.target.files?.[0];
                           if (!file) return;
                           setUploadedFile(file);
-                          if (file.name.match(/\.(xlsx|xls)$/i)) {
-                            try {
-                              const XLSX = await import('xlsx');
-                              const buffer = await file.arrayBuffer();
-                              const wb = XLSX.read(buffer, { type: 'array' });
-                              const sheetName = wb.SheetNames[0];
-                              if (!sheetName) { toast.error('Planilha vazia'); return; }
-                              const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
-                              const patchPayload = { prices_patch: rows.map((row: any) => ({
-                                supplier: row.supplier || row.Fornecedor || '',
-                                erp_code: String(row.erp_code || row.Codigo || row.codigo || '').trim(),
-                                ...(row.family_id && { family_id: row.family_id }),
-                                ...(row.description || row.DescricaoCadunif ? { description: String(row.description || row.DescricaoCadunif || '') } : {}),
-                                ...(row.price_sale_half_pair != null || row.PrecoVendaMeioPar != null ? { price_sale_half_pair: Number(row.price_sale_half_pair ?? row.PrecoVendaMeioPar) } : {}),
-                                active: row.active !== undefined ? Boolean(row.active) : (row.Ativo !== undefined ? Boolean(row.Ativo) : true),
-                              })).filter((p: any) => p.erp_code) };
-                              setJsonInput(JSON.stringify(patchPayload, null, 2));
-                              toast.success(`${patchPayload.prices_patch.length} linhas lidas da planilha`);
-                            } catch (err) { toast.error('Erro ao ler planilha: ' + (err as Error).message); }
-                          } else {
-                            const text = await file.text();
-                            setJsonInput(text);
-                          }
+                          const text = await file.text();
+                          setJsonInput(text);
                         }}
                       />
                     </div>
-
-                    {patchReport && (
-                      <div className="p-4 rounded-lg border space-y-2 bg-muted/30">
-                        <h4 className="font-medium text-sm flex items-center gap-2"><CheckCircle className="w-4 h-4 text-primary" />Relatório do Patch</h4>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-                          {[{ label: 'Adicionados', val: patchReport.added, color: 'text-primary' }, { label: 'Atualizados', val: patchReport.updated, color: 'text-primary' }, { label: 'Sem alteração', val: patchReport.unchanged, color: 'text-muted-foreground' }, { label: 'Ignorados', val: patchReport.ignored, color: 'text-destructive' }].map(r => (
-                            <div key={r.label} className="p-2 bg-background rounded text-center"><div className={cn('text-lg font-bold', r.color)}>{r.val}</div><div className="text-xs text-muted-foreground">{r.label}</div></div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
 
