@@ -1,303 +1,165 @@
 
-# Plan 7 (Revisado): Clinical Engine Real v2
 
-## Resumo
+# Plano: Redesenho da Arquitetura de Gestao de Catalogo
 
-Corrigir o bug critico de frame nunca chegar ao pipeline. Implementar calculo canonico de diametro com DNP robusto, gate de product_kind baseado em resolucao semantica (nao em `process`), ClinicalFitScore como bonus de ordenacao para elegiveis, e labels resolvidos na saida.
+## Diagnostico da Situacao Atual
+
+### Mapa de Paginas e Duplicidades
+
+```text
+ROTA              PAGINA                FUNCAO                          STATUS
+─────────────────────────────────────────────────────────────────────────────
+/admin            AdminDashboard.tsx    Importacao JSON, Patch ERP,     DUPLICADA
+                  (1296 linhas)         Prioridades, Familias,
+                                       Add-ons, Historico versao
+
+/audit            CatalogAudit.tsx      Familias, Macros, Fornecedores, PRINCIPAL
+                  (1824 linhas)         Tecnologias, Regras Match,      (muito sobrecarregada)
+                                       Integridade (2x), Logs Motor,
+                                       Importacao ERP, Comercial,
+                                       Classificacao (11 abas!)
+
+/catalog-audit    → redirect /audit     Legacy redirect                 EM DESUSO
+
+CatalogAuditPage  CatalogAuditPage.tsx  Auditoria familias vendaveis    ORFAO (657 linhas)
+                  (657 linhas)          SEM ROTA no App.tsx!
+```
+
+### Problemas Identificados
+
+1. **3 paginas fazendo coisas parecidas**: AdminDashboard, CatalogAudit e CatalogAuditPage
+2. **CatalogAuditPage.tsx e orfao** - 657 linhas de codigo morto sem rota
+3. **AdminDashboard duplica funcionalidades do CatalogAudit**: listagem de familias (toggle ativo), import JSON, historico de versoes
+4. **CatalogAudit tem 11 abas** - impossivel descobrir funcionalidades
+5. **AdminDashboard mistura importacao com visualizacao** - Patch ERP redireciona para /audit
+6. **Botoes "Edicao Manual" e "Auditoria" no header do Admin apontam para o mesmo lugar** (/audit)
+7. **Prioridades de fornecedor no Admin** duplica logica que poderia viver em /audit
+8. **Familias no Admin** e uma versao simplificada (toggle only) do que /audit ja faz com mais poder
+
+### O que esta em desuso
+
+| Item | Motivo |
+|------|--------|
+| `CatalogAuditPage.tsx` | Pagina orfao, sem rota, codigo morto |
+| Aba "Familias" no AdminDashboard | Duplica /audit com menos funcionalidade |
+| Aba "Add-ons" no AdminDashboard | Funcionalidade basica sem equivalente rico |
+| Aba "Prioridades" no AdminDashboard | Funcionalidade unica mas escondida |
+| Redirect `/catalog-audit` | Legacy, pode ser removido apos consolidacao |
+| Botoes duplicados no header Admin ("Edicao Manual" + "Auditoria") | Mesmo destino |
 
 ---
 
-## Estado Atual Confirmado
+## Proposta: Hub de Catalogo Unificado
 
-- `FrameMeasurements` tem apenas `dp: number` (binocular unico), sem DNP monocular
-- `FrameStep` coleta `dp` com label "Mono ou binocular" mas e um campo so
-- `useRecommendationEngine` NAO recebe nem passa `frameData` (linhas 325-330 de SellerFlow)
-- `index.ts` linha 106: `undefined` hardcoded para frame
-- Nao existe campo `product_kind` em `Price` nem `Family`
-- Nao existe funcao `resolveProductKind`
+### Nova Arquitetura de Navegacao
+
+```text
+/dashboard        Dashboard operacional (vendas, metricas)
+  │
+  └─ /catalog     ← NOVA ROTA: Hub de Catalogo (substitui /admin + /audit)
+       │
+       ├─ Aba "Visao Geral"      Stats + Integridade + Banner de governanca
+       ├─ Aba "Familias"         Edicao completa (do CatalogAudit atual)
+       ├─ Aba "Macros"           Macros (do CatalogAudit atual)
+       ├─ Aba "Fornecedores"     Fornecedores + Prioridades (merge)
+       ├─ Aba "Tecnologias"      Tecnologias (do CatalogAudit atual)
+       ├─ Aba "Importacao"       JSON import + ERP XLSX (unificado)
+       ├─ Aba "Qualidade"        Integridade + Clinica + Classificacao (merge 3 abas)
+       └─ Aba "Historico"        Versoes + Logs do Motor + Comercial
+```
+
+### Reducao: de 11 abas para 7, com agrupamentos logicos
+
+| Grupo | Abas atuais consolidadas | Nova aba |
+|-------|--------------------------|----------|
+| Dados | Familias | Familias |
+| Dados | Macros | Macros |
+| Dados | Fornecedores + Prioridades (do Admin) | Fornecedores |
+| Dados | Tecnologias + Regras Match | Tecnologias |
+| Fluxo | Import JSON (Admin) + Importacao ERP (/audit) | Importacao |
+| Diagnostico | Integridade + Int. Clinica + Classificacao | Qualidade |
+| Historico | Logs Motor + Comercial + Versoes | Historico |
 
 ---
 
 ## Entregaveis
 
-### E1: Estender FrameMeasurements + UI para DNP
+### E1: Criar pagina `CatalogHub.tsx` (nova rota `/catalog`)
 
-**Modificar `src/types/lens.ts`:**
-```typescript
-export interface FrameMeasurements {
-  horizontalSize: number;   // A
-  verticalSize: number;     // B
-  bridge: number;           // DBL
-  dp: number;               // binocular (fallback)
-  dnpOD?: number;           // monocular OD
-  dnpOE?: number;           // monocular OE
-  altura?: number;          // altura de montagem
-}
-```
+- Sidebar compacta a esquerda com icones + labels para as 7 seccoes
+- Header com: stats rapidos, badge de versao, CloudSync, botao Salvar/Descartar
+- Banner de governanca (CatalogStatusBanner) sempre visivel no topo
+- Toda a logica de estado local (localFamilies, pendingChanges, save/discard) migrada do CatalogAudit
 
-**Modificar `src/components/anamnesis/FrameStep.tsx`:**
-- Adicionar campos opcionais `dnpOD` e `dnpOE` abaixo do DP existente
-- Label: "DNP monocular (opcional)" com hint "Se disponivel, informar OD e OE separados"
-- Manter DP binocular como campo principal
+### E2: Aba "Visao Geral" (nova)
 
-### E2: Calculo Canonico de Diametro
+- Cards de metricas (do CatalogAudit: familias, ativas, com precos, SKUs, problemas)
+- Distribuicao por clinical_type (tabela resumo)
+- Acesso rapido: botoes grandes para cada seccao com contagem e status
+- DataSourceDiagnostic integrado
 
-**Novo arquivo: `src/lib/clinical/calcRequiredDiameter.ts`**
+### E3: Aba "Importacao" (unificada)
 
-```typescript
-interface PupillaryData {
-  dnpOD?: number;
-  dnpOE?: number;
-  dp?: number;
-}
+- Sub-seccoes com cards clicaveis: "Catalogo JSON" e "Planilha ERP (XLSX)"
+- JSON: textarea + validacao + preview (migrado do AdminDashboard)
+- ERP: wizard completo (ErpImportTab ja existente)
+- Exportar JSON integrado
 
-interface DiameterCalcResult {
-  requiredOD: number;
-  requiredOE: number;
-  maxRequired: number;
-  debug: {
-    GCD: number;
-    decentrationOD: number;
-    decentrationOE: number;
-    methodUsed: 'monocular' | 'binocular_half' | 'fallback_no_pd';
-  };
-}
+### E4: Aba "Fornecedores" com Prioridades
 
-function calcRequiredDiameter(
-  frame: { horizontalSize: number; verticalSize: number; bridge: number },
-  pd: PupillaryData,
-  safetyMarginMm: number = 2
-): DiameterCalcResult
-```
+- SupplierCard list (do CatalogAudit)
+- Seccao "Prioridades Comerciais" abaixo (migrada do AdminDashboard)
 
-Logica de resolucao de DNP:
-1. Se `pd.dnpOD` e `pd.dnpOE` presentes: usar diretamente, `methodUsed = 'monocular'`
-2. Se apenas `pd.dp` presente: `dnpOD = dnpOE = dp / 2`, `methodUsed = 'binocular_half'`
-3. Se nenhum disponivel: `dnpOD = dnpOE = frame.horizontalSize / 2`, `methodUsed = 'fallback_no_pd'`
+### E5: Aba "Qualidade" (merge de 3 abas)
 
-Calculo MBS por olho:
-```text
-GCD = A + DBL
-decentration = abs((GCD / 2) - dnp_eye)
-horizontal_need = A + 2 * decentration
-required = max(horizontal_need, B) + safetyMarginMm
-```
+- Sub-tabs: "Estrutural", "Clinica", "Classificacao"
+- Conteudo: IntegrityExportButton, clinicalReport, ClassificationTab
+- AutoFix integrado
 
-### E3: resolveProductKind (funcao canonica)
+### E6: Aba "Historico"
 
-**Novo arquivo: `src/lib/clinical/resolveProductKind.ts`**
+- CatalogVersionHistory
+- RecommendationLogsTab
+- CommercialAuditTab
 
-```typescript
-type ProductKind = 'LP' | 'VS' | 'PR' | 'OC' | 'BF' | 'UNKNOWN';
+### E7: Limpeza
 
-interface ProductKindResult {
-  kind: ProductKind;
-  source: 'product_kind' | 'clinical_type' | 'manufacturing_type' | 'description' | 'fallback';
-}
+- Deletar `CatalogAuditPage.tsx` (orfao)
+- AdminDashboard: reduzir para apenas um redirect ou painel de links rapidos para /catalog
+- Rota `/audit` redireciona para `/catalog`
+- Rota `/admin` redireciona para `/catalog` (ou manter como painel admin leve se houver funcionalidades nao-catalogo)
+- Remover redirect legacy `/catalog-audit`
 
-function resolveProductKind(sku: Price, family?: FamilyExtended): ProductKindResult
-```
+### E8: Navegacao no Dashboard
 
-Prioridade de resolucao:
-1. `(sku as any).product_kind` se existir como campo explicito
-2. `sku.clinical_type` ou `family.clinical_type`:
-   - MONOFOCAL -> LP ou VS (depende de process/manufacturing_type)
-   - PROGRESSIVA -> PR
-   - OCUPACIONAL -> OC
-   - BIFOCAL -> BF
-3. `sku.manufacturing_type` + `sku.process`:
-   - Se PRONTA + MONOFOCAL context -> LP
-   - Se SURFACADA + MONOFOCAL context -> VS
-4. Regex na `sku.description`: procurar "progressiv", "ocupacional", "bifocal"
-5. Fallback: UNKNOWN com `source = 'fallback'`
-
-### E4: Gate product_kind no skuEligibility
-
-**Modificar `src/lib/recommendationEngine/skuEligibility.ts`:**
-
-Novo gate entre addition e diameter (Gate 4b):
-
-```typescript
-// Gate 4b: ProductKind coherence
-const pkResult = resolveProductKind(sku, familyMap.get(sku.family_id));
-const hasAddition = maxAdd > 0;
-
-if (hasAddition && (pkResult.kind === 'LP' || pkResult.kind === 'VS')) {
-  return { eligible: false, failedGate: 'product_kind' };
-}
-if (!hasAddition && (pkResult.kind === 'PR' || pkResult.kind === 'OC')) {
-  return { eligible: false, failedGate: 'product_kind' };
-}
-```
-
-Expandir `SkuEligibilityResult` com debug:
-```typescript
-export interface SkuEligibilityResult {
-  eligible: boolean;
-  failedGate: string | null;
-  debug?: {
-    requiredDiameterMm?: number;
-    skuDiameterMaxMm?: number;
-    productKind?: string;
-    productKindSource?: string;
-  };
-}
-```
-
-Expandir `EligibilityFunnel` com `passedProductKind`.
-
-Gate order final: active -> price -> no_specs -> sphere -> cyl -> add -> product_kind -> diameter -> height
-
-### E5: ClinicalFitScore (apenas para elegiveis)
-
-**Novo arquivo: `src/lib/clinical/computeClinicalFitScore.ts`**
-
-```typescript
-interface ClinicalFitResult {
-  score: number;  // 0-100
-  penalties: {
-    sphereNearLimit: number;
-    cylinderNearLimit: number;
-    additionNearLimit: number;
-    diameterTight: number;
-    heightUnknown: number;
-    dnpMissing: number;
-  };
-  reasons: string[];
-}
-
-function computeClinicalFitScore(
-  sku: Price,
-  rx: Partial<Prescription>,
-  frame: FrameMeasurements | null,
-  pd: PupillaryData | null
-): ClinicalFitResult
-```
-
-Regras:
-- Comeca em 100
-- Para cada eixo: calcula margem entre valor Rx e limite do SKU
-  - Margem < 10% do range: -15
-  - Margem < 25% do range: -10
-  - Margem < 50% do range: -5
-- Diametro (margem entre sku.diameter_max e requiredDiameter):
-  - < 2mm: -20
-  - < 5mm: -10
-  - < 10mm: -5
-- Altura desconhecida em PR/OC: -10
-- DNP faltante: -5
-
-**REGRA CRITICA**: FitScore so e calculado para SKUs que JA passaram todos os gates. Nunca reintroduz SKU reprovado.
-
-### E6: Integracao no Pipeline
-
-**Modificar `src/lib/recommendationEngine/types.ts`:**
-- Adicionar `frame?: FrameMeasurements` ao `RecommendationInput`
-
-**Modificar `src/lib/recommendationEngine/index.ts`:**
-- Linha 106: trocar `undefined` por `input.frame`
-
-**Modificar `src/hooks/useRecommendationEngine.ts`:**
-- Adicionar `frameData?: Partial<FrameMeasurements>` nas props
-- Passar `frame: frameData as FrameMeasurements` no input do motor
-
-**Modificar `src/pages/SellerFlow.tsx`:**
-- Passar `frameData` nas duas chamadas de `useRecommendationEngine` (linhas 325-330 e 335-340)
-
-**Modificar `src/lib/recommendationEngine/clinicalEngine.ts`:**
-- `prescriptionMatch` permanece 40pts (compatibilidade binaria ratio)
-- Adicionar componente `clinicalFit` ao `ClinicalScore`:
-  - `clinicalFit: number` (0-15pts) baseado no melhor FitScore da familia normalizado
-  - Formula: `clinicalFit = (bestFitScore / 100) * 15`
-- Ajustar `prescriptionMatch` de 40 para 25pts
-- Total clinico: 25 (prescriptionMatch) + 15 (clinicalFit) + 30 (complaints) + 30 (lifestyle) = 100
-
-### E7: Campos resolvidos na saida
-
-**Modificar `ScoredFamily` em types.ts:**
-```typescript
-export interface ScoredFamily {
-  // ... campos existentes
-  resolvedClinicalType?: ClinicalType;
-  resolvedProductKind?: string;  // LP/VS/PR/OC/BF
-}
-```
-
-Preenchidos no `scoreFamilyComplete` a partir do clinical_type efetivo e do product_kind do SKU vencedor (menor preco).
-
-**UI usa esses campos para label** em vez de macro/tier legacy.
-
-### E8: Debug Clinico Expandido
-
-**Modificar `PipelineDebugInfo` no hook:**
-```typescript
-clinicalDebug?: {
-  requiredDiameterOD?: number;
-  requiredDiameterOE?: number;
-  diameterMethod?: string;
-  frameAltura?: number;
-  productKindDistribution?: Record<string, number>;
-  avgFitScore?: number;
-  topRejectionReasons?: Array<{ gate: string; count: number }>;
-};
-```
-
-**Modificar `RecommendationsGrid.tsx`:**
-- No painel debug existente, adicionar secao "Diagnostico Clinico" com os campos acima quando disponiveis
-
----
-
-## Sequencia de Implementacao
-
-1. **Tipos**: Estender `FrameMeasurements` (dnpOD/dnpOE), adicionar `frame` ao `RecommendationInput`, expandir `SkuEligibilityResult`, `EligibilityFunnel`, `ScoredFamily`, `ClinicalScore`
-2. **`src/lib/clinical/calcRequiredDiameter.ts`**: Funcao pura com PupillaryData robusto
-3. **`src/lib/clinical/resolveProductKind.ts`**: Funcao canonica com prioridade de fontes
-4. **`src/lib/clinical/computeClinicalFitScore.ts`**: Score 0-100 apenas para elegiveis
-5. **`src/lib/recommendationEngine/skuEligibility.ts`**: Refatorar gates (usar calcRequiredDiameter, adicionar gate product_kind, expandir debug)
-6. **`src/lib/recommendationEngine/clinicalEngine.ts`**: Integrar clinicalFit (25+15 = 40pts prescricao)
-7. **`src/lib/recommendationEngine/recommendationScorer.ts`**: Passar frame, computar fitScore por familia
-8. **`src/lib/recommendationEngine/index.ts`**: Corrigir `undefined` -> `input.frame`
-9. **`src/hooks/useRecommendationEngine.ts`**: Receber e passar frameData
-10. **`src/pages/SellerFlow.tsx`**: Passar frameData nas chamadas do hook
-11. **`src/components/anamnesis/FrameStep.tsx`**: Campos DNP monocular opcionais
-12. **`src/components/recommendations/RecommendationsGrid.tsx`**: Expandir debug clinico
+- Adicionar card/botao "Gestao de Catalogo" no Dashboard que leva a `/catalog`
+- Sidebar ou breadcrumbs para contexto de navegacao
 
 ---
 
 ## Arquivos Afetados
 
 **Novos:**
-- `src/lib/clinical/calcRequiredDiameter.ts`
-- `src/lib/clinical/resolveProductKind.ts`
-- `src/lib/clinical/computeClinicalFitScore.ts`
+- `src/pages/CatalogHub.tsx` - Hub unificado
 
 **Modificados:**
-- `src/types/lens.ts` (FrameMeasurements + dnpOD/dnpOE)
-- `src/lib/recommendationEngine/skuEligibility.ts` (gates + debug)
-- `src/lib/recommendationEngine/types.ts` (frame no input, ScoredFamily resolvedFields)
-- `src/lib/recommendationEngine/clinicalEngine.ts` (clinicalFit 15pts)
-- `src/lib/recommendationEngine/recommendationScorer.ts` (frame passado, fitScore)
-- `src/lib/recommendationEngine/index.ts` (corrigir undefined)
-- `src/hooks/useRecommendationEngine.ts` (frameData prop)
-- `src/pages/SellerFlow.tsx` (passar frameData)
-- `src/components/anamnesis/FrameStep.tsx` (campos DNP mono)
-- `src/components/recommendations/RecommendationsGrid.tsx` (debug clinico)
+- `src/App.tsx` - Nova rota `/catalog`, redirects
+- `src/pages/Dashboard.tsx` - Link para /catalog
+- `src/pages/AdminDashboard.tsx` - Simplificar drasticamente (redirect ou links)
 
-**Nao alterados:**
-- commercialEngine.ts, fallbackStrategy.ts, narrativeEngine.ts
-- Catalogo JSON (Zero Criacao mantido)
+**Deletados:**
+- `src/pages/CatalogAuditPage.tsx` - Codigo morto
+
+**Mantidos sem alteracao:**
+- Todos os componentes de `/components/audit/*` - Reutilizados no Hub
+- `ErpImportTab`, `CommercialAuditTab`, `ClassificationTab`, etc.
 
 ---
 
-## Garantias
+## Resultado Esperado
 
-| Garantia | Mecanismo |
-|----------|-----------|
-| Frame data chega ao pipeline | Bug corrigido: input.frame passado em toda a cadeia |
-| DNP robusto | 3 fallbacks: monocular -> dp/2 -> A/2, com methodUsed no debug |
-| Gate product_kind correto | resolveProductKind com 5 niveis de prioridade, nunca usa `process` sozinho |
-| Rx com adicao nunca gera LP/VS | Gate product_kind rejeita SKUs incompativeis |
-| FitScore so em elegiveis | Calculado apos gates, como bonus de ordenacao |
-| Score 60/40 preservado | 25 + 15 + 30 + 30 = 100 clinico; formula 60/40 inalterada |
-| Labels corretos na UI | resolvedClinicalType e resolvedProductKind expostos na ScoredFamily |
-| Ordem de gates estavel | active -> price -> no_specs -> sphere -> cyl -> add -> product_kind -> diameter -> height |
+- 1 unico ponto de entrada para tudo relacionado a catalogo
+- De 3 paginas confusas para 1 hub claro com 7 seccoes logicas
+- Eliminacao de ~2000 linhas de codigo duplicado/morto
+- Funcionalidades antes escondidas (prioridades, diagnostico, qualidade clinica) ganham visibilidade
+
