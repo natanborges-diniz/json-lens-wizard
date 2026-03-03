@@ -6,8 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
-import AdminDashboard from "./pages/AdminDashboard";
-import CatalogAudit from "./pages/CatalogAudit";
+import CatalogHub from "./pages/CatalogHub";
 import SellerFlow from "./pages/SellerFlow";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -55,18 +54,15 @@ const App = () => (
                 <StoreManagement />
               </ProtectedRoute>
             } />
-            <Route path="/admin" element={
+            <Route path="/catalog" element={
               <ProtectedRoute allowedRoles={['admin']}>
-                <AdminDashboard />
+                <CatalogHub />
               </ProtectedRoute>
             } />
-            <Route path="/audit" element={
-              <ProtectedRoute allowedRoles={['admin']}>
-                <CatalogAudit />
-              </ProtectedRoute>
-            } />
-            {/* Redirect old route to unified /audit */}
-            <Route path="/catalog-audit" element={<Navigate to="/audit" replace />} />
+            {/* Legacy redirects to unified /catalog */}
+            <Route path="/admin" element={<Navigate to="/catalog" replace />} />
+            <Route path="/audit" element={<Navigate to="/catalog" replace />} />
+            <Route path="/catalog-audit" element={<Navigate to="/catalog" replace />} />
             <Route path="/seller" element={
               <ProtectedRoute allowedRoles={['admin', 'manager', 'seller']}>
                 <SellerFlow />

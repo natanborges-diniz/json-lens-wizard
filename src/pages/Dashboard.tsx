@@ -155,10 +155,10 @@ const Dashboard = () => {
             
             <div className="flex items-center gap-2">
               {isAdmin && (
-                <Link to="/admin">
+                <Link to="/catalog">
                   <Button variant="outline" size="sm" className="gap-2">
                     <Settings className="w-4 h-4" />
-                    <span className="hidden sm:inline">Configurações</span>
+                    <span className="hidden sm:inline">Catálogo</span>
                   </Button>
                 </Link>
               )}
@@ -349,15 +349,15 @@ const Dashboard = () => {
                   </Card>
                 </Link>
 
-                <Link to="/admin">
+                <Link to="/catalog">
                   <Card className="hover:border-primary/50 transition-colors cursor-pointer">
                     <CardHeader>
                       <CardTitle className="text-base flex items-center gap-2">
                         <Eye className="w-5 h-5" />
-                        Gestão de Lentes
+                        Gestão do Catálogo
                       </CardTitle>
                       <CardDescription>
-                        Importe dados, configure prioridades e gerencie famílias de lentes
+                        Famílias, fornecedores, importação, qualidade e histórico
                       </CardDescription>
                     </CardHeader>
                   </Card>
