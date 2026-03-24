@@ -1,165 +1,127 @@
 
 
-# Plano: Redesenho da Arquitetura de Gestao de Catalogo
+# Plano: Expandir Dicionario de Familias HOYA
 
-## Diagnostico da Situacao Atual
+## Problema
 
-### Mapa de Paginas e Duplicidades
+402 SKUs HOYA nao foram mapeados durante o sync ERP porque:
+1. O dicionario de familias (`family_dictionary`) so tem 4 regras
+2. Os `family_id` referenciados nao existem no catalogo JSON (`family_exists: false`)
 
-```text
-ROTA              PAGINA                FUNCAO                          STATUS
-─────────────────────────────────────────────────────────────────────────────
-/admin            AdminDashboard.tsx    Importacao JSON, Patch ERP,     DUPLICADA
-                  (1296 linhas)         Prioridades, Familias,
-                                       Add-ons, Historico versao
+Ou seja: mesmo que uma regra acerte o matching, o `family_id` destino nao existe no catalogo, entao o SKU vai para pendencias.
 
-/audit            CatalogAudit.tsx      Familias, Macros, Fornecedores, PRINCIPAL
-                  (1824 linhas)         Tecnologias, Regras Match,      (muito sobrecarregada)
-                                       Integridade (2x), Logs Motor,
-                                       Importacao ERP, Comercial,
-                                       Classificacao (11 abas!)
-
-/catalog-audit    → redirect /audit     Legacy redirect                 EM DESUSO
-
-CatalogAuditPage  CatalogAuditPage.tsx  Auditoria familias vendaveis    ORFAO (657 linhas)
-                  (657 linhas)          SEM ROTA no App.tsx!
-```
-
-### Problemas Identificados
-
-1. **3 paginas fazendo coisas parecidas**: AdminDashboard, CatalogAudit e CatalogAuditPage
-2. **CatalogAuditPage.tsx e orfao** - 657 linhas de codigo morto sem rota
-3. **AdminDashboard duplica funcionalidades do CatalogAudit**: listagem de familias (toggle ativo), import JSON, historico de versoes
-4. **CatalogAudit tem 11 abas** - impossivel descobrir funcionalidades
-5. **AdminDashboard mistura importacao com visualizacao** - Patch ERP redireciona para /audit
-6. **Botoes "Edicao Manual" e "Auditoria" no header do Admin apontam para o mesmo lugar** (/audit)
-7. **Prioridades de fornecedor no Admin** duplica logica que poderia viver em /audit
-8. **Familias no Admin** e uma versao simplificada (toggle only) do que /audit ja faz com mais poder
-
-### O que esta em desuso
-
-| Item | Motivo |
-|------|--------|
-| `CatalogAuditPage.tsx` | Pagina orfao, sem rota, codigo morto |
-| Aba "Familias" no AdminDashboard | Duplica /audit com menos funcionalidade |
-| Aba "Add-ons" no AdminDashboard | Funcionalidade basica sem equivalente rico |
-| Aba "Prioridades" no AdminDashboard | Funcionalidade unica mas escondida |
-| Redirect `/catalog-audit` | Legacy, pode ser removido apos consolidacao |
-| Botoes duplicados no header Admin ("Edicao Manual" + "Auditoria") | Mesmo destino |
-
----
-
-## Proposta: Hub de Catalogo Unificado
-
-### Nova Arquitetura de Navegacao
+## Produtos Pendentes (18 linhas de produto)
 
 ```text
-/dashboard        Dashboard operacional (vendas, metricas)
-  │
-  └─ /catalog     ← NOVA ROTA: Hub de Catalogo (substitui /admin + /audit)
-       │
-       ├─ Aba "Visao Geral"      Stats + Integridade + Banner de governanca
-       ├─ Aba "Familias"         Edicao completa (do CatalogAudit atual)
-       ├─ Aba "Macros"           Macros (do CatalogAudit atual)
-       ├─ Aba "Fornecedores"     Fornecedores + Prioridades (merge)
-       ├─ Aba "Tecnologias"      Tecnologias (do CatalogAudit atual)
-       ├─ Aba "Importacao"       JSON import + ERP XLSX (unificado)
-       ├─ Aba "Qualidade"        Integridade + Clinica + Classificacao (merge 3 abas)
-       └─ Aba "Historico"        Versoes + Logs do Motor + Comercial
+PRODUTO                QTD   TIPO ERP    CLINICAL_TYPE
+────────────────────────────────────────────────────────
+LIFESTYLE 4            77    LG PR       PROGRESSIVA
+LIFESTYLE 4I           65    LG PR       PROGRESSIVA
+DAYNAMIC               56    LG PR       PROGRESSIVA
+SPORTIVE (VS)          42    LG VS       MONOFOCAL
+SPORTIVE (PR)          36    LG PR       PROGRESSIVA
+AMPLUS                 31    LG PR       PROGRESSIVA
+BALANSIS               21    LG PR       PROGRESSIVA
+NULUX (VS)             17    LG VS       MONOFOCAL
+MYSELF                 12    LG PR       PROGRESSIVA
+MYSTYLE V+             12    LG PR       PROGRESSIVA
+IDENTITY V+            11    LG VS       MONOFOCAL
+AMPLITUDE              6     LG PR       PROGRESSIVA
+SYNC III (VS)          6     LG VS       MONOFOCAL
+TRUEFORM               4     LG VS       MONOFOCAL
+WORKSMART ROOM         3     LG OC       OCUPACIONAL
+WORKSTYLE 3            1     LG OC       OCUPACIONAL
+ARGOS FF               1     LG PR       PROGRESSIVA
+HILUX (VS)             1     LG VS       MONOFOCAL
 ```
 
-### Reducao: de 11 abas para 7, com agrupamentos logicos
+## O que precisa ser feito
 
-| Grupo | Abas atuais consolidadas | Nova aba |
-|-------|--------------------------|----------|
-| Dados | Familias | Familias |
-| Dados | Macros | Macros |
-| Dados | Fornecedores + Prioridades (do Admin) | Fornecedores |
-| Dados | Tecnologias + Regras Match | Tecnologias |
-| Fluxo | Import JSON (Admin) + Importacao ERP (/audit) | Importacao |
-| Diagnostico | Integridade + Int. Clinica + Classificacao | Qualidade |
-| Historico | Logs Motor + Comercial + Versoes | Historico |
+Duas acoes obrigatorias (uma sem a outra nao funciona):
 
----
+### Etapa 1 — Criar familias HOYA no catalogo JSON
 
-## Entregaveis
+As familias precisam existir no array `families` do catalogo (`catalog-default.json` no Storage). Cada familia precisa de:
+- `id` (ex: `HOYA_LIFESTYLE_4`)
+- `supplier`: `"HOYA"`
+- `clinical_type`: `PROGRESSIVA`, `MONOFOCAL` ou `OCUPACIONAL`
+- `macro`: vinculo ao macro correto (`PROG_CONFORTO`, `MONO_INTER`, etc.)
+- `attributes_base`, `active: true`
 
-### E1: Criar pagina `CatalogHub.tsx` (nova rota `/catalog`)
+Familias a criar (14 novas, as 4 existentes ja mapeadas no dict):
 
-- Sidebar compacta a esquerda com icones + labels para as 7 seccoes
-- Header com: stats rapidos, badge de versao, CloudSync, botao Salvar/Descartar
-- Banner de governanca (CatalogStatusBanner) sempre visivel no topo
-- Toda a logica de estado local (localFamilies, pendingChanges, save/discard) migrada do CatalogAudit
+| family_id | Produto | clinical_type | macro sugerido |
+|-----------|---------|---------------|----------------|
+| HOYA_LIFESTYLE_4 | Lifestyle 4 | PROGRESSIVA | PROG_CONFORTO |
+| HOYA_LIFESTYLE_4I | Lifestyle 4i | PROGRESSIVA | PROG_AVANCADO |
+| HOYA_DAYNAMIC | Daynamic | PROGRESSIVA | PROG_AVANCADO |
+| HOYA_SPORTIVE_PR | Sportive (prog) | PROGRESSIVA | PROG_CONFORTO |
+| HOYA_SPORTIVE_VS | Sportive (mono) | MONOFOCAL | MONO_INTER |
+| HOYA_AMPLUS | Amplus | PROGRESSIVA | PROG_CONFORTO |
+| HOYA_BALANSIS | Balansis | PROGRESSIVA | PROG_AVANCADO |
+| HOYA_NULUX | Nulux | MONOFOCAL | MONO_ENTRADA |
+| HOYA_MYSELF | MySelf | PROGRESSIVA | PROG_TOP |
+| HOYA_MYSTYLE_V | MyStyle V+ | PROGRESSIVA | PROG_TOP |
+| HOYA_IDENTITY_V | iDentity V+ | MONOFOCAL | MONO_TOP |
+| HOYA_AMPLITUDE | Amplitude | PROGRESSIVA | PROG_BASICO |
+| HOYA_TRUEFORM | TrueForm | MONOFOCAL | MONO_BASICO |
+| HOYA_WORKSMART | WorkSmart Room | OCUPACIONAL | OC_CONFORTO |
+| HOYA_WORKSTYLE | WorkStyle 3 | OCUPACIONAL | OC_AVANCADO |
+| HOYA_ARGOS | Argos FF | PROGRESSIVA | PROG_BASICO |
+| HOYA_HILUX | Hilux | MONOFOCAL | MONO_BASICO |
 
-### E2: Aba "Visao Geral" (nova)
+### Etapa 2 — Expandir o `family_dictionary` no perfil HOYA
 
-- Cards de metricas (do CatalogAudit: familias, ativas, com precos, SKUs, problemas)
-- Distribuicao por clinical_type (tabela resumo)
-- Acesso rapido: botoes grandes para cada seccao com contagem e status
-- DataSourceDiagnostic integrado
+Atualizar `supplier_profiles.family_dictionary` para HOYA com 17 novas regras (total: ~21 regras). Regras especificas primeiro (alta prioridade), genericas depois.
 
-### E3: Aba "Importacao" (unificada)
+```text
+REGRA                          CONTAINS               FAMILY_ID           PRIORIDADE
+───────────────────────────────────────────────────────────────────────────────────────
+Lifestyle 4i (antes de 4)      ["lifestyle","4i"]      HOYA_LIFESTYLE_4I   10
+Lifestyle 4                    ["lifestyle","4"]       HOYA_LIFESTYLE_4    5
+MyStyle V+                     ["mystyle"]             HOYA_MYSTYLE_V      5
+MySelf                         ["myself"]              HOYA_MYSELF         5
+iDentity V+                    ["identity"]            HOYA_IDENTITY_V     5
+Daynamic                       ["daynamic"]            HOYA_DAYNAMIC       5
+Balansis                       ["balansis"]            HOYA_BALANSIS       5
+Amplus                         ["amplus"]              HOYA_AMPLUS         5
+Amplitude                      ["amplitude"]           HOYA_AMPLITUDE      5
+Sportive + PR                  ["sportive","lg pr"]    HOYA_SPORTIVE_PR    8
+Sportive + VS                  ["sportive","lg vs"]    HOYA_SPORTIVE_VS    8
+WorkSmart Room                 ["worksmart"]           HOYA_WORKSMART      5
+WorkStyle                      ["workstyle"]           HOYA_WORKSTYLE      5
+Argos FF                       ["argos"]               HOYA_ARGOS          3
+TrueForm                       ["trueform"]            HOYA_TRUEFORM       5
+Nulux (generico, sem EP)       ["nulux"]               HOYA_NULUX          2
+Hilux                          ["hilux"]               HOYA_HILUX          2
+```
 
-- Sub-seccoes com cards clicaveis: "Catalogo JSON" e "Planilha ERP (XLSX)"
-- JSON: textarea + validacao + preview (migrado do AdminDashboard)
-- ERP: wizard completo (ErpImportTab ja existente)
-- Exportar JSON integrado
+### Etapa 3 — Limpar pendencias e refazer sync
 
-### E4: Aba "Fornecedores" com Prioridades
+1. Marcar os 402 `catalog_pending_skus` com status `resolved` ou deleta-los
+2. Refazer o sync ERP com `create_missing=true` — agora as familias existem e o dicionario cobre todos os 18 produtos
 
-- SupplierCard list (do CatalogAudit)
-- Seccao "Prioridades Comerciais" abaixo (migrada do AdminDashboard)
+## Implementacao Tecnica
 
-### E5: Aba "Qualidade" (merge de 3 abas)
-
-- Sub-tabs: "Estrutural", "Clinica", "Classificacao"
-- Conteudo: IntegrityExportButton, clinicalReport, ClassificationTab
-- AutoFix integrado
-
-### E6: Aba "Historico"
-
-- CatalogVersionHistory
-- RecommendationLogsTab
-- CommercialAuditTab
-
-### E7: Limpeza
-
-- Deletar `CatalogAuditPage.tsx` (orfao)
-- AdminDashboard: reduzir para apenas um redirect ou painel de links rapidos para /catalog
-- Rota `/audit` redireciona para `/catalog`
-- Rota `/admin` redireciona para `/catalog` (ou manter como painel admin leve se houver funcionalidades nao-catalogo)
-- Remover redirect legacy `/catalog-audit`
-
-### E8: Navegacao no Dashboard
-
-- Adicionar card/botao "Gestao de Catalogo" no Dashboard que leva a `/catalog`
-- Sidebar ou breadcrumbs para contexto de navegacao
-
----
+1. **Edge function `audit-catalog`**: Adicionar um novo modo `inject-families` que recebe um array de familias e as insere no catalogo JSON no Storage (ou fazer via script direto)
+2. **Alternativa mais simples**: Criar um script que:
+   - Baixa o catalogo do Storage
+   - Adiciona as 17 familias ao array `families`
+   - Faz upload do catalogo atualizado
+   - Atualiza o `family_dictionary` no `supplier_profiles` via SQL
+   - Limpa os pending SKUs
+3. **Tudo executado via edge function existente ou nova**
 
 ## Arquivos Afetados
 
-**Novos:**
-- `src/pages/CatalogHub.tsx` - Hub unificado
+- `supabase/functions/audit-catalog/index.ts` — possivel novo modo `inject-families`
+- `supplier_profiles` (tabela) — atualizar `family_dictionary` para HOYA
+- `catalog_pending_skus` (tabela) — limpar pendencias HOYA
+- Catalogo JSON no Storage (`catalog-default.json`) — adicionar familias
 
-**Modificados:**
-- `src/App.tsx` - Nova rota `/catalog`, redirects
-- `src/pages/Dashboard.tsx` - Link para /catalog
-- `src/pages/AdminDashboard.tsx` - Simplificar drasticamente (redirect ou links)
+## Resultado
 
-**Deletados:**
-- `src/pages/CatalogAuditPage.tsx` - Codigo morto
-
-**Mantidos sem alteracao:**
-- Todos os componentes de `/components/audit/*` - Reutilizados no Hub
-- `ErpImportTab`, `CommercialAuditTab`, `ClassificationTab`, etc.
-
----
-
-## Resultado Esperado
-
-- 1 unico ponto de entrada para tudo relacionado a catalogo
-- De 3 paginas confusas para 1 hub claro com 7 seccoes logicas
-- Eliminacao de ~2000 linhas de codigo duplicado/morto
-- Funcionalidades antes escondidas (prioridades, diagnostico, qualidade clinica) ganham visibilidade
+- 402 SKUs pendentes resolvidos
+- Cobertura HOYA completa para sincronizacao ERP
+- De 4 para ~21 regras de matching
 
