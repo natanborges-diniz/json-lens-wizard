@@ -27,6 +27,7 @@ export interface SkuEligibilityResult {
 export interface EligibilityFunnel {
   totalSkus: number;
   passedActive: number;
+  passedNoGrade: number;
   passedSphere: number;
   passedCylinder: number;
   passedAddition: number;
