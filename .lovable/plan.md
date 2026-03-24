@@ -1,127 +1,86 @@
 
 
-# Plano: Expandir Dicionario de Familias HOYA
+# Plano: Dados Qualitativos + Busca Avulsa de Produtos
 
-## Problema
+## Contexto
 
-402 SKUs HOYA nao foram mapeados durante o sync ERP porque:
-1. O dicionario de familias (`family_dictionary`) so tem 4 regras
-2. Os `family_id` referenciados nao existem no catalogo JSON (`family_exists: false`)
+SKUs sem grade de dioptria (~90% com sphere min/max = 0) nao devem ser tratados como "sem restricao". Em vez disso, serao **excluidos do motor de recomendacao** mas permanecerao **disponiveis para consulta manual** via uma nova funcionalidade de busca avulsa.
 
-Ou seja: mesmo que uma regra acerte o matching, o `family_id` destino nao existe no catalogo, entao o SKU vai para pendencias.
+## Estrategia
 
-## Produtos Pendentes (18 linhas de produto)
+### Etapa 1 — Excluir SKUs sem grade do motor de recomendacao
 
-```text
-PRODUTO                QTD   TIPO ERP    CLINICAL_TYPE
-────────────────────────────────────────────────────────
-LIFESTYLE 4            77    LG PR       PROGRESSIVA
-LIFESTYLE 4I           65    LG PR       PROGRESSIVA
-DAYNAMIC               56    LG PR       PROGRESSIVA
-SPORTIVE (VS)          42    LG VS       MONOFOCAL
-SPORTIVE (PR)          36    LG PR       PROGRESSIVA
-AMPLUS                 31    LG PR       PROGRESSIVA
-BALANSIS               21    LG PR       PROGRESSIVA
-NULUX (VS)             17    LG VS       MONOFOCAL
-MYSELF                 12    LG PR       PROGRESSIVA
-MYSTYLE V+             12    LG PR       PROGRESSIVA
-IDENTITY V+            11    LG VS       MONOFOCAL
-AMPLITUDE              6     LG PR       PROGRESSIVA
-SYNC III (VS)          6     LG VS       MONOFOCAL
-TRUEFORM               4     LG VS       MONOFOCAL
-WORKSMART ROOM         3     LG OC       OCUPACIONAL
-WORKSTYLE 3            1     LG OC       OCUPACIONAL
-ARGOS FF               1     LG PR       PROGRESSIVA
-HILUX (VS)             1     LG VS       MONOFOCAL
-```
+No `skuEligibility.ts`, o gate `no_specs` ja rejeita SKUs sem specs. Precisamos garantir que SKUs com `sphere_min === 0 && sphere_max === 0` tambem sejam rejeitados (tratando zeros como "sem dados reais"):
 
-## O que precisa ser feito
+- **Arquivo**: `src/lib/recommendationEngine/skuEligibility.ts`
+- **Mudanca**: No gate `no_specs`, adicionar condicao: se `sphereMin === 0 && sphereMax === 0`, rejeitar com `failedGate: 'no_grade'`
+- SKUs rejeitados por `no_grade` continuam visiveis no catalogo e na busca
 
-Duas acoes obrigatorias (uma sem a outra nao funciona):
+### Etapa 2 — Classificar Tiers das 138 Familias
 
-### Etapa 1 — Criar familias HOYA no catalogo JSON
-
-As familias precisam existir no array `families` do catalogo (`catalog-default.json` no Storage). Cada familia precisa de:
-- `id` (ex: `HOYA_LIFESTYLE_4`)
-- `supplier`: `"HOYA"`
-- `clinical_type`: `PROGRESSIVA`, `MONOFOCAL` ou `OCUPACIONAL`
-- `macro`: vinculo ao macro correto (`PROG_CONFORTO`, `MONO_INTER`, etc.)
-- `attributes_base`, `active: true`
-
-Familias a criar (14 novas, as 4 existentes ja mapeadas no dict):
-
-| family_id | Produto | clinical_type | macro sugerido |
-|-----------|---------|---------------|----------------|
-| HOYA_LIFESTYLE_4 | Lifestyle 4 | PROGRESSIVA | PROG_CONFORTO |
-| HOYA_LIFESTYLE_4I | Lifestyle 4i | PROGRESSIVA | PROG_AVANCADO |
-| HOYA_DAYNAMIC | Daynamic | PROGRESSIVA | PROG_AVANCADO |
-| HOYA_SPORTIVE_PR | Sportive (prog) | PROGRESSIVA | PROG_CONFORTO |
-| HOYA_SPORTIVE_VS | Sportive (mono) | MONOFOCAL | MONO_INTER |
-| HOYA_AMPLUS | Amplus | PROGRESSIVA | PROG_CONFORTO |
-| HOYA_BALANSIS | Balansis | PROGRESSIVA | PROG_AVANCADO |
-| HOYA_NULUX | Nulux | MONOFOCAL | MONO_ENTRADA |
-| HOYA_MYSELF | MySelf | PROGRESSIVA | PROG_TOP |
-| HOYA_MYSTYLE_V | MyStyle V+ | PROGRESSIVA | PROG_TOP |
-| HOYA_IDENTITY_V | iDentity V+ | MONOFOCAL | MONO_TOP |
-| HOYA_AMPLITUDE | Amplitude | PROGRESSIVA | PROG_BASICO |
-| HOYA_TRUEFORM | TrueForm | MONOFOCAL | MONO_BASICO |
-| HOYA_WORKSMART | WorkSmart Room | OCUPACIONAL | OC_CONFORTO |
-| HOYA_WORKSTYLE | WorkStyle 3 | OCUPACIONAL | OC_AVANCADO |
-| HOYA_ARGOS | Argos FF | PROGRESSIVA | PROG_BASICO |
-| HOYA_HILUX | Hilux | MONOFOCAL | MONO_BASICO |
-
-### Etapa 2 — Expandir o `family_dictionary` no perfil HOYA
-
-Atualizar `supplier_profiles.family_dictionary` para HOYA com 17 novas regras (total: ~21 regras). Regras especificas primeiro (alta prioridade), genericas depois.
+Sem mudanca em relacao ao plano anterior — atualizar `tier_target` no `catalog-default.json` baseado no posicionamento real de mercado. Implementar via script na edge function `audit-catalog` (modo `classify-tiers`).
 
 ```text
-REGRA                          CONTAINS               FAMILY_ID           PRIORIDADE
-───────────────────────────────────────────────────────────────────────────────────────
-Lifestyle 4i (antes de 4)      ["lifestyle","4i"]      HOYA_LIFESTYLE_4I   10
-Lifestyle 4                    ["lifestyle","4"]       HOYA_LIFESTYLE_4    5
-MyStyle V+                     ["mystyle"]             HOYA_MYSTYLE_V      5
-MySelf                         ["myself"]              HOYA_MYSELF         5
-iDentity V+                    ["identity"]            HOYA_IDENTITY_V     5
-Daynamic                       ["daynamic"]            HOYA_DAYNAMIC       5
-Balansis                       ["balansis"]            HOYA_BALANSIS       5
-Amplus                         ["amplus"]              HOYA_AMPLUS         5
-Amplitude                      ["amplitude"]           HOYA_AMPLITUDE      5
-Sportive + PR                  ["sportive","lg pr"]    HOYA_SPORTIVE_PR    8
-Sportive + VS                  ["sportive","lg vs"]    HOYA_SPORTIVE_VS    8
-WorkSmart Room                 ["worksmart"]           HOYA_WORKSMART      5
-WorkStyle                      ["workstyle"]           HOYA_WORKSTYLE      5
-Argos FF                       ["argos"]               HOYA_ARGOS          3
-TrueForm                       ["trueform"]            HOYA_TRUEFORM       5
-Nulux (generico, sem EP)       ["nulux"]               HOYA_NULUX          2
-Hilux                          ["hilux"]               HOYA_HILUX          2
+FORNECEDOR   ESSENTIAL         COMFORT           ADVANCED          TOP
+─────────────────────────────────────────────────────────────────────────
+ESSILOR      Orma, Airwear     Varilux Comfort   Varilux X/E      Varilux XR Pro
+HOYA         Hilux, Nulux      Lifestyle 4       Balansis, Dayn.   MySelf, MyStyle
+ZEISS        Cosmolite, SPH    SmartLife Pure     SmartLife Sup.    SmartLife Indiv.
 ```
 
-### Etapa 3 — Limpar pendencias e refazer sync
+### Etapa 3 — Popular Technology Library + Vincular Refs
 
-1. Marcar os 402 `catalog_pending_skus` com status `resolved` ou deleta-los
-2. Refazer o sync ERP com `create_missing=true` — agora as familias existem e o dicionario cobre todos os 18 produtos
+Injetar ~30-40 tecnologias reais (Crizal, Transitions, Sensity, BlueGuard, etc.) no `technology_library` do catalogo JSON e vincular `technology_refs` nas familias. Isso desbloqueia narrativas consultivas e sales pills.
 
-## Implementacao Tecnica
+### Etapa 4 — Expandir Dicionario ZEISS
 
-1. **Edge function `audit-catalog`**: Adicionar um novo modo `inject-families` que recebe um array de familias e as insere no catalogo JSON no Storage (ou fazer via script direto)
-2. **Alternativa mais simples**: Criar um script que:
-   - Baixa o catalogo do Storage
-   - Adiciona as 17 familias ao array `families`
-   - Faz upload do catalogo atualizado
-   - Atualiza o `family_dictionary` no `supplier_profiles` via SQL
-   - Limpa os pending SKUs
-3. **Tudo executado via edge function existente ou nova**
+De 5 para ~15 regras de matching (SmartLife, Cosmolite, Individual, etc.).
+
+### Etapa 5 — Busca Avulsa de Produtos (nova funcionalidade)
+
+Nova pagina/componente que permite consultar **todo o catalogo** sem necessidade de receita:
+
+- **Rota**: `/products` ou integrar como aba no CatalogHub (para admin) + botao no SellerFlow (para vendedor)
+- **Funcionalidade**:
+  - Campo de busca por texto (nome, fornecedor, familia, indice, tratamento)
+  - Filtros laterais: fornecedor, tipo clinico, tier, faixa de preco, indice
+  - Resultados em cards compactos mostrando: nome comercial, fornecedor, tier, preco, indice, tratamentos, status da grade (com/sem dados tecnicos)
+  - Ao clicar: drawer com detalhes completos do SKU (especificacoes, disponibilidade, familia, tecnologias)
+  - Badge visual indicando "Sem grade tecnica" para SKUs com dados zerados
+  - Botao "Adicionar ao orcamento" quando acessado dentro do fluxo de venda (sem validacao clinica — o vendedor assume a responsabilidade)
+
+- **Diferenca do SmartSearch atual**: O SmartSearch existente funciona dentro do contexto de recomendacao (exige anamnese, lensCategory, filtra por elegibilidade). A busca avulsa e independente — nao exige receita, mostra tudo, e permite selecao manual.
 
 ## Arquivos Afetados
 
-- `supabase/functions/audit-catalog/index.ts` — possivel novo modo `inject-families`
-- `supplier_profiles` (tabela) — atualizar `family_dictionary` para HOYA
-- `catalog_pending_skus` (tabela) — limpar pendencias HOYA
-- Catalogo JSON no Storage (`catalog-default.json`) — adicionar familias
+**Modificados:**
+- `src/lib/recommendationEngine/skuEligibility.ts` — novo gate `no_grade` para zeros
+- `supabase/functions/audit-catalog/index.ts` — modos `classify-tiers`, `inject-technologies`
+- `src/App.tsx` — nova rota `/products`
+- Catalogo JSON no Storage — tiers, technology_library, technology_refs
+
+**Novos:**
+- `src/pages/ProductSearch.tsx` — pagina de busca avulsa
+- `src/components/search/ProductSearchFilters.tsx` — filtros laterais
+- `src/components/search/ProductDetailDrawer.tsx` — detalhes do produto
+
+**Banco:**
+- `supplier_profiles` — expandir `family_dictionary` da ZEISS
+
+## Ordem de Execucao
+
+1. Gate `no_grade` no skuEligibility (protege o motor imediatamente)
+2. Classificar tiers (desbloqueia escada de valor)
+3. Technology library + refs (desbloqueia narrativas)
+4. Busca avulsa de produtos (nova funcionalidade)
+5. Expandir dicionario ZEISS
 
 ## Resultado
 
-- 402 SKUs pendentes resolvidos
-- Cobertura HOYA completa para sincronizacao ERP
-- De 4 para ~21 regras de matching
+- Motor de recomendacao so usa SKUs com dados tecnicos reais
+- SKUs sem grade permanecem consultaveis via busca avulsa
+- Vendedor pode buscar e selecionar qualquer produto manualmente, assumindo responsabilidade clinica
+- Escada de valor funcional com 4 tiers
+- Narrativas consultivas ativas
+- Cobertura ZEISS expandida
 
