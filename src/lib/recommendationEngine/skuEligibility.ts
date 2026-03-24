@@ -242,6 +242,7 @@ export function getEligibleSkusAndFamilies(
   const funnel: EligibilityFunnel = {
     totalSkus: 0,
     passedActive: 0,
+    passedNoGrade: 0,
     passedSphere: 0,
     passedCylinder: 0,
     passedAddition: 0,
