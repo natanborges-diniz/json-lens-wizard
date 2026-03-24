@@ -223,6 +223,7 @@ export function isSkuEligibleForRx(
   return { 
     eligible: true, 
     failedGate: null,
+    usingSafeDefaults: isZeroedGrade,
     debug: {
       productKind: pkResult.kind,
       productKindSource: pkResult.source,
