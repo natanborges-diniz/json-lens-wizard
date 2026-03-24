@@ -15,6 +15,7 @@ import Settings from "./pages/Settings";
 import UserManagement from "./pages/UserManagement";
 import StoreManagement from "./pages/StoreManagement";
 import CatalogDocumentation from "./pages/CatalogDocumentation";
+import ProductSearch from "./pages/ProductSearch";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
