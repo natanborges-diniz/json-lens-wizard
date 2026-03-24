@@ -69,6 +69,11 @@ const App = () => (
                 <SellerFlow />
               </ProtectedRoute>
             } />
+            <Route path="/products" element={
+              <ProtectedRoute allowedRoles={['admin', 'manager', 'seller']}>
+                <ProductSearch />
+              </ProtectedRoute>
+            } />
             <Route path="/docs" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <CatalogDocumentation />
