@@ -16,6 +16,8 @@ import { resolveProductKind } from '@/lib/clinical/resolveProductKind';
 export interface SkuEligibilityResult {
   eligible: boolean;
   failedGate: string | null;
+  /** True when SKU has zeroed grade data (sphere 0/0) — eligible but penalized */
+  usingSafeDefaults?: boolean;
   debug?: {
     requiredDiameterMm?: number;
     skuDiameterMaxMm?: number;
