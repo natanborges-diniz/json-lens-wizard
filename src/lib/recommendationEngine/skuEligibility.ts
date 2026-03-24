@@ -121,6 +121,12 @@ export function isSkuEligibleForRx(
     return { eligible: false, failedGate: 'no_specs' };
   }
 
+  // Gate 2b: Zeroed grade (ERP sends 0/0 when no real data) → exclude from recommendations
+  // These SKUs remain available for manual search/consultation
+  if (limits.sphereMin === 0 && limits.sphereMax === 0) {
+    return { eligible: false, failedGate: 'no_grade' };
+  }
+
   // Gate 2: Sphere OD/OE
   const sphereOD = rx.rightSphere ?? 0;
   const sphereOE = rx.leftSphere ?? 0;
