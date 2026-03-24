@@ -124,20 +124,20 @@ export function isSkuEligibleForRx(
     return { eligible: false, failedGate: 'no_specs' };
   }
 
-  // Gate 2b: Zeroed grade (ERP sends 0/0 when no real data) → exclude from recommendations
-  // These SKUs remain available for manual search/consultation
-  if (limits.sphereMin === 0 && limits.sphereMax === 0) {
-    return { eligible: false, failedGate: 'no_grade' };
-  }
+  // Gate 2b: Zeroed grade (ERP sends 0/0 when no real data)
+  // Hybrid mode: eligible but flagged with usingSafeDefaults for scoring penalty
+  const isZeroedGrade = limits.sphereMin === 0 && limits.sphereMax === 0;
 
-  // Gate 2: Sphere OD/OE
-  const sphereOD = rx.rightSphere ?? 0;
-  const sphereOE = rx.leftSphere ?? 0;
-  if (sphereOD < limits.sphereMin || sphereOD > limits.sphereMax) {
-    return { eligible: false, failedGate: 'sphere' };
-  }
-  if (sphereOE < limits.sphereMin || sphereOE > limits.sphereMax) {
-    return { eligible: false, failedGate: 'sphere' };
+  // Gate 2: Sphere OD/OE (skip sphere check for zeroed grades — they pass with penalty)
+  if (!isZeroedGrade) {
+    const sphereOD = rx.rightSphere ?? 0;
+    const sphereOE = rx.leftSphere ?? 0;
+    if (sphereOD < limits.sphereMin || sphereOD > limits.sphereMax) {
+      return { eligible: false, failedGate: 'sphere' };
+    }
+    if (sphereOE < limits.sphereMin || sphereOE > limits.sphereMax) {
+      return { eligible: false, failedGate: 'sphere' };
+    }
   }
 
   // Gate 3: Cylinder OD/OE
