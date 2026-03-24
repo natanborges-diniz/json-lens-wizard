@@ -283,6 +283,8 @@ export function getEligibleSkusAndFamilies(
       if (result.failedGate === 'active' || result.failedGate === 'price') continue;
       if (result.failedGate === 'no_specs') continue;
       funnel.passedActive++;
+      if (result.failedGate === 'no_grade') continue;
+      funnel.passedNoGrade++;
       if (result.failedGate === 'sphere') continue;
       funnel.passedSphere++;
       if (result.failedGate === 'cylinder') continue;
