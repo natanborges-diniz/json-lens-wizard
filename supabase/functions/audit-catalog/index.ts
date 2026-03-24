@@ -276,6 +276,91 @@ async function erpSync(req: Request, params: URLSearchParams) {
   return json(report);
 }
 
+// ── classify-tiers ──
+async function classifyTiers(req: Request) {
+  if (req.method !== "POST") return json({ error: "POST required" }, 405);
+  const body = await req.json();
+  const tierMap: Record<string, string> = body.tier_map || {};
+  if (!Object.keys(tierMap).length) return json({ error: "tier_map is empty" }, 400);
+
+  const sb = getSupabase();
+  const catalog = await downloadCatalog();
+  let updated = 0;
+
+  for (const fam of (catalog.families || [])) {
+    const tier = tierMap[fam.id];
+    if (tier && ["essential", "comfort", "advanced", "top"].includes(tier)) {
+      fam.tier_target = tier;
+      fam.tier_confidence = "high";
+      updated++;
+    }
+  }
+
+  const blob = new Blob([JSON.stringify(catalog, null, 2)], { type: "application/json" });
+  const { error: ue } = await sb.storage.from(BUCKET).upload(CATALOG_FILE, blob, { upsert: true, contentType: "application/json" });
+  if (ue) return json({ error: "Upload failed: " + ue.message }, 500);
+
+  await sb.from("catalog_versions").insert({
+    version_number: "tier-classify-" + Date.now(),
+    schema_version: catalog.schema_version || "1.0",
+    import_mode: "tier-classify",
+    dataset_name: "Tier Classification",
+    families_count: (catalog.families || []).length,
+    prices_count: (catalog.prices || []).length,
+    notes: [`Classified ${updated} families into tiers`],
+    changes_summary: { updated, tier_map: tierMap },
+  });
+
+  return json({ mode: "classify-tiers", families_updated: updated, total_families: (catalog.families || []).length });
+}
+
+// ── inject-technologies ──
+async function injectTechnologies(req: Request) {
+  if (req.method !== "POST") return json({ error: "POST required" }, 405);
+  const body = await req.json();
+  const technologies: Record<string, any> = body.technologies || {};
+  const techRefs: Record<string, string[]> = body.tech_refs || {};
+
+  const sb = getSupabase();
+  const catalog = await downloadCatalog();
+
+  // Merge technologies into library
+  if (!catalog.technology_library) catalog.technology_library = { items: {} };
+  let techAdded = 0;
+  for (const [id, tech] of Object.entries(technologies)) {
+    catalog.technology_library.items[id] = tech;
+    techAdded++;
+  }
+
+  // Link tech_refs to families
+  let refsLinked = 0;
+  for (const fam of (catalog.families || [])) {
+    const refs = techRefs[fam.id];
+    if (refs && refs.length) {
+      fam.technology_refs = [...new Set([...(fam.technology_refs || []), ...refs])];
+      refsLinked++;
+    }
+  }
+
+  const blob = new Blob([JSON.stringify(catalog, null, 2)], { type: "application/json" });
+  const { error: ue } = await sb.storage.from(BUCKET).upload(CATALOG_FILE, blob, { upsert: true, contentType: "application/json" });
+  if (ue) return json({ error: "Upload failed: " + ue.message }, 500);
+
+  await sb.from("catalog_versions").insert({
+    version_number: "tech-inject-" + Date.now(),
+    schema_version: catalog.schema_version || "1.0",
+    import_mode: "tech-inject",
+    dataset_name: "Technology Library Update",
+    families_count: (catalog.families || []).length,
+    prices_count: (catalog.prices || []).length,
+    technologies_count: Object.keys(catalog.technology_library.items).length,
+    notes: [`Added ${techAdded} technologies, linked refs to ${refsLinked} families`],
+    changes_summary: { technologies_added: techAdded, families_with_refs: refsLinked },
+  });
+
+  return json({ mode: "inject-technologies", technologies_added: techAdded, families_with_refs_linked: refsLinked, total_tech: Object.keys(catalog.technology_library.items).length });
+}
+
 // ── Router ──
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -283,6 +368,8 @@ serve(async (req) => {
     const url = new URL(req.url);
     const mode = url.searchParams.get("mode") || "field-audit";
     if (mode === "erp-sync") return await erpSync(req, url.searchParams);
+    if (mode === "classify-tiers") return await classifyTiers(req);
+    if (mode === "inject-technologies") return await injectTechnologies(req);
     const catalog = await downloadCatalog();
     if (mode === "field-audit") return json(await fieldAudit(catalog, url.searchParams));
     if (mode === "coverage") return json(await coverage(catalog, url.searchParams));
