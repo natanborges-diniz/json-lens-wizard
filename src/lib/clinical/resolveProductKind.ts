@@ -31,7 +31,9 @@ export function resolveProductKind(sku: Price, family?: FamilyExtended): Product
   }
 
   // Level 2: clinical_type → kind mapping
-  const clinicalType: ClinicalType | undefined = sku.clinical_type || family?.clinical_type || family?.category;
+  // Priority: family clinical_type > SKU clinical_type > family category
+  // Family is the authoritative source per catalog governance hierarchy
+  const clinicalType: ClinicalType | undefined = family?.clinical_type || family?.category || sku.clinical_type;
   if (clinicalType) {
     const mapped = mapClinicalTypeToKind(clinicalType, sku);
     if (mapped) return { kind: mapped, source: 'clinical_type' };

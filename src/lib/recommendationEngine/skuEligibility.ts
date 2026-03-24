@@ -288,7 +288,7 @@ export function getEligibleSkusAndFamilies(
 
     funnel.totalSkus++;
 
-    const result = isSkuEligibleForRx(sku, rx, frame, familyMap);
+    const result = isSkuEligibleForRx(sku, rx, frame, familyMap, clinicalType);
 
     if (!result.eligible) {
       if (result.failedGate === 'active' || result.failedGate === 'price') continue;
