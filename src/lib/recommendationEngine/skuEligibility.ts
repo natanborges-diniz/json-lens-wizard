@@ -105,7 +105,8 @@ export function isSkuEligibleForRx(
   sku: Price,
   rx: Partial<Prescription>,
   frame?: FrameMeasurements | null,
-  familyMap?: Map<string, FamilyExtended>
+  familyMap?: Map<string, FamilyExtended>,
+  clinicalType?: string
 ): SkuEligibilityResult {
   // Gate 1: Active & not blocked
   if (sku.active === false || sku.blocked) {
