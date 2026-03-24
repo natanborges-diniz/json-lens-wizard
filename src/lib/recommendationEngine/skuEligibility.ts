@@ -105,7 +105,8 @@ export function isSkuEligibleForRx(
   sku: Price,
   rx: Partial<Prescription>,
   frame?: FrameMeasurements | null,
-  familyMap?: Map<string, FamilyExtended>
+  familyMap?: Map<string, FamilyExtended>,
+  clinicalType?: string
 ): SkuEligibilityResult {
   // Gate 1: Active & not blocked
   if (sku.active === false || sku.blocked) {
@@ -167,18 +168,24 @@ export function isSkuEligibleForRx(
   }
 
   // Gate 4b: ProductKind coherence
+  // Use clinicalType (from anamnesis/selection) as primary coherence signal,
+  // falling back to hasAddition from Rx only when clinicalType is not available
   const family = familyMap?.get(sku.family_id);
   const pkResult = resolveProductKind(sku, family);
   const hasAddition = maxAdd > 0;
 
-  if (hasAddition && (pkResult.kind === 'LP' || pkResult.kind === 'VS')) {
+  // Determine if the request expects multifocal products (PR/OC/BF)
+  const expectsMultifocal = clinicalType === 'PROGRESSIVA' || clinicalType === 'OCUPACIONAL' || clinicalType === 'BIFOCAL' || hasAddition;
+  const expectsMonofocal = clinicalType === 'MONOFOCAL' || (!clinicalType && !hasAddition);
+
+  if (expectsMultifocal && (pkResult.kind === 'LP' || pkResult.kind === 'VS')) {
     return { 
       eligible: false, 
       failedGate: 'product_kind',
       debug: { productKind: pkResult.kind, productKindSource: pkResult.source },
     };
   }
-  if (!hasAddition && (pkResult.kind === 'PR' || pkResult.kind === 'OC')) {
+  if (expectsMonofocal && (pkResult.kind === 'PR' || pkResult.kind === 'OC')) {
     return { 
       eligible: false, 
       failedGate: 'product_kind',
@@ -281,7 +288,7 @@ export function getEligibleSkusAndFamilies(
 
     funnel.totalSkus++;
 
-    const result = isSkuEligibleForRx(sku, rx, frame, familyMap);
+    const result = isSkuEligibleForRx(sku, rx, frame, familyMap, clinicalType);
 
     if (!result.eligible) {
       if (result.failedGate === 'active' || result.failedGate === 'price') continue;
