@@ -27,6 +27,7 @@ export interface SkuEligibilityResult {
 export interface EligibilityFunnel {
   totalSkus: number;
   passedActive: number;
+  passedNoGrade: number;
   passedSphere: number;
   passedCylinder: number;
   passedAddition: number;
@@ -119,6 +120,12 @@ export function isSkuEligibleForRx(
   // Gate 2: No specs at all → cannot validate → reject
   if (limits.sphereMin === null || limits.sphereMax === null) {
     return { eligible: false, failedGate: 'no_specs' };
+  }
+
+  // Gate 2b: Zeroed grade (ERP sends 0/0 when no real data) → exclude from recommendations
+  // These SKUs remain available for manual search/consultation
+  if (limits.sphereMin === 0 && limits.sphereMax === 0) {
+    return { eligible: false, failedGate: 'no_grade' };
   }
 
   // Gate 2: Sphere OD/OE
@@ -235,6 +242,7 @@ export function getEligibleSkusAndFamilies(
   const funnel: EligibilityFunnel = {
     totalSkus: 0,
     passedActive: 0,
+    passedNoGrade: 0,
     passedSphere: 0,
     passedCylinder: 0,
     passedAddition: 0,
@@ -275,6 +283,8 @@ export function getEligibleSkusAndFamilies(
       if (result.failedGate === 'active' || result.failedGate === 'price') continue;
       if (result.failedGate === 'no_specs') continue;
       funnel.passedActive++;
+      if (result.failedGate === 'no_grade') continue;
+      funnel.passedNoGrade++;
       if (result.failedGate === 'sphere') continue;
       funnel.passedSphere++;
       if (result.failedGate === 'cylinder') continue;
@@ -292,6 +302,7 @@ export function getEligibleSkusAndFamilies(
 
     // Passed all gates
     funnel.passedActive++;
+    funnel.passedNoGrade++;
     funnel.passedSphere++;
     funnel.passedCylinder++;
     funnel.passedAddition++;
