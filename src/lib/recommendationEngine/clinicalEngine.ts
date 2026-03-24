@@ -277,6 +277,9 @@ function calculateLifestyleScore(
   const outdoorTime = anamnesis.outdoorTime || 'no';
   const aestheticPriority = anamnesis.aestheticPriority || 'medium';
   
+  // Use tier_target from catalog if available (classified data), otherwise fall back to runtime tierKey
+  const effectiveTier = ((family as any).tier_target as TierKey) || tierKey;
+  
   // 1. Match com uso primário
   const usePrefs = PRIMARY_USE_PREFERENCES[primaryUse];
   if (usePrefs) {
@@ -308,16 +311,24 @@ function calculateLifestyleScore(
     reasons.push(`+${screenBonus} pts por ${screenHours}h em telas`);
   }
   
-  // 3. Match de prioridade estética com tier
+  // 3. Match de prioridade estética com tier (using effective tier from catalog)
   const aestheticTierMatch: Record<string, TierKey[]> = {
     'low': ['essential', 'comfort'],
     'medium': ['comfort', 'advanced'],
     'high': ['advanced', 'top'],
   };
   
-  if (aestheticTierMatch[aestheticPriority]?.includes(tierKey)) {
+  if (aestheticTierMatch[aestheticPriority]?.includes(effectiveTier)) {
     score += 5;
     reasons.push('Tier alinhado com prioridade estética');
+  }
+
+  // 3b. Tier differentiation bonus: higher tiers get incremental bonus
+  const tierBonus: Record<TierKey, number> = { essential: 0, comfort: 2, advanced: 4, top: 6 };
+  const tb = tierBonus[effectiveTier] || 0;
+  if (tb > 0) {
+    score += tb;
+    reasons.push(`+${tb} pts tier ${effectiveTier}`);
   }
   
   // 4. Outdoor + fotossensível

@@ -16,6 +16,8 @@ import { resolveProductKind } from '@/lib/clinical/resolveProductKind';
 export interface SkuEligibilityResult {
   eligible: boolean;
   failedGate: string | null;
+  /** True when SKU has zeroed grade data (sphere 0/0) — eligible but penalized */
+  usingSafeDefaults?: boolean;
   debug?: {
     requiredDiameterMm?: number;
     skuDiameterMaxMm?: number;
@@ -27,7 +29,6 @@ export interface SkuEligibilityResult {
 export interface EligibilityFunnel {
   totalSkus: number;
   passedActive: number;
-  passedNoGrade: number;
   passedSphere: number;
   passedCylinder: number;
   passedAddition: number;
@@ -35,6 +36,7 @@ export interface EligibilityFunnel {
   passedDiameter: number;
   passedHeight: number;
   finalEligible: number;
+  safeDefaultsCount: number;
 }
 
 export interface EligibilityOutput {
@@ -122,24 +124,24 @@ export function isSkuEligibleForRx(
     return { eligible: false, failedGate: 'no_specs' };
   }
 
-  // Gate 2b: Zeroed grade (ERP sends 0/0 when no real data) → exclude from recommendations
-  // These SKUs remain available for manual search/consultation
-  if (limits.sphereMin === 0 && limits.sphereMax === 0) {
-    return { eligible: false, failedGate: 'no_grade' };
+  // Gate 2b: Zeroed grade (ERP sends 0/0 when no real data)
+  // Hybrid mode: eligible but flagged with usingSafeDefaults for scoring penalty
+  const isZeroedGrade = limits.sphereMin === 0 && limits.sphereMax === 0;
+
+  // Gate 2: Sphere OD/OE (skip sphere check for zeroed grades — they pass with penalty)
+  if (!isZeroedGrade) {
+    const sphereOD = rx.rightSphere ?? 0;
+    const sphereOE = rx.leftSphere ?? 0;
+    if (sphereOD < limits.sphereMin || sphereOD > limits.sphereMax) {
+      return { eligible: false, failedGate: 'sphere' };
+    }
+    if (sphereOE < limits.sphereMin || sphereOE > limits.sphereMax) {
+      return { eligible: false, failedGate: 'sphere' };
+    }
   }
 
-  // Gate 2: Sphere OD/OE
-  const sphereOD = rx.rightSphere ?? 0;
-  const sphereOE = rx.leftSphere ?? 0;
-  if (sphereOD < limits.sphereMin || sphereOD > limits.sphereMax) {
-    return { eligible: false, failedGate: 'sphere' };
-  }
-  if (sphereOE < limits.sphereMin || sphereOE > limits.sphereMax) {
-    return { eligible: false, failedGate: 'sphere' };
-  }
-
-  // Gate 3: Cylinder OD/OE
-  if (limits.cylMin !== null) {
+  // Gate 3: Cylinder OD/OE (skip for zeroed grades)
+  if (!isZeroedGrade && limits.cylMin !== null) {
     const cylOD = rx.rightCylinder ?? 0;
     const cylOE = rx.leftCylinder ?? 0;
     const cylAbsMax = Math.abs(limits.cylMin);
@@ -151,9 +153,9 @@ export function isSkuEligibleForRx(
     }
   }
 
-  // Gate 4: Addition (only if Rx has addition > 0)
+  // Gate 4: Addition (only if Rx has addition > 0, skip for zeroed grades)
   const maxAdd = Math.max(rx.rightAddition ?? 0, rx.leftAddition ?? 0);
-  if (maxAdd > 0) {
+  if (!isZeroedGrade && maxAdd > 0) {
     if (limits.addMin != null && limits.addMax != null) {
       if (maxAdd < limits.addMin || maxAdd > limits.addMax) {
         return { eligible: false, failedGate: 'addition' };
@@ -221,6 +223,7 @@ export function isSkuEligibleForRx(
   return { 
     eligible: true, 
     failedGate: null,
+    usingSafeDefaults: isZeroedGrade,
     debug: {
       productKind: pkResult.kind,
       productKindSource: pkResult.source,
@@ -242,7 +245,6 @@ export function getEligibleSkusAndFamilies(
   const funnel: EligibilityFunnel = {
     totalSkus: 0,
     passedActive: 0,
-    passedNoGrade: 0,
     passedSphere: 0,
     passedCylinder: 0,
     passedAddition: 0,
@@ -250,6 +252,7 @@ export function getEligibleSkusAndFamilies(
     passedDiameter: 0,
     passedHeight: 0,
     finalEligible: 0,
+    safeDefaultsCount: 0,
   };
 
   // Build family lookup for clinical type filtering
@@ -271,6 +274,7 @@ export function getEligibleSkusAndFamilies(
 
   const eligibleSkus: Price[] = [];
   const eligibleFamiliesMap = new Map<string, Price[]>();
+  const safeDefaultSkus = new Set<string>();
 
   for (const sku of prices) {
     if (!relevantFamilyIds.has(sku.family_id)) continue;
@@ -283,8 +287,6 @@ export function getEligibleSkusAndFamilies(
       if (result.failedGate === 'active' || result.failedGate === 'price') continue;
       if (result.failedGate === 'no_specs') continue;
       funnel.passedActive++;
-      if (result.failedGate === 'no_grade') continue;
-      funnel.passedNoGrade++;
       if (result.failedGate === 'sphere') continue;
       funnel.passedSphere++;
       if (result.failedGate === 'cylinder') continue;
@@ -302,7 +304,6 @@ export function getEligibleSkusAndFamilies(
 
     // Passed all gates
     funnel.passedActive++;
-    funnel.passedNoGrade++;
     funnel.passedSphere++;
     funnel.passedCylinder++;
     funnel.passedAddition++;
@@ -311,7 +312,16 @@ export function getEligibleSkusAndFamilies(
     funnel.passedHeight++;
     funnel.finalEligible++;
 
+    if (result.usingSafeDefaults) {
+      funnel.safeDefaultsCount++;
+      safeDefaultSkus.add(sku.erp_code || sku.sku_erp || '');
+    }
+
     eligibleSkus.push(sku);
+    // Tag SKU with safe defaults flag for downstream scoring
+    if (result.usingSafeDefaults) {
+      (sku as any)._usingSafeDefaults = true;
+    }
 
     const existing = eligibleFamiliesMap.get(sku.family_id);
     if (existing) {

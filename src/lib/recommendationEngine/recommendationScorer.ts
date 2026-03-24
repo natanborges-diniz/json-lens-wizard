@@ -224,6 +224,10 @@ export function scoreFamilyComplete(
   
   const enrichedData = extractFamilyData(family, technologyLibrary);
 
+  // Check if family has any SKU with real grade data (not safe defaults)
+  const hasRealGradeData = compatiblePrices.some(p => !(p as any)._usingSafeDefaults);
+  const allSafeDefaults = compatiblePrices.length > 0 && !hasRealGradeData;
+
   // Compute ClinicalFitScore for eligible SKUs and use best as bonus
   let bestFitScore = 50; // neutral default
   const pd = frame ? { dnpOD: frame.dnpOD, dnpOE: frame.dnpOE, dp: frame.dp } : null;
@@ -236,6 +240,20 @@ export function scoreFamilyComplete(
   const clinicalFitBonus = Math.round((bestFitScore / 100) * 15 * 100) / 100;
   score.clinical.components.clinicalFit = clinicalFitBonus;
   score.clinical.total = Math.round((score.clinical.total + clinicalFitBonus) * 100) / 100;
+
+  // Apply safe defaults penalty: -15 on prescriptionMatch when all SKUs lack real grade
+  if (allSafeDefaults) {
+    const penalty = 15;
+    score.clinical.components.prescriptionMatch = Math.max(0, score.clinical.components.prescriptionMatch - penalty);
+    score.clinical.total = Math.round((
+      score.clinical.components.prescriptionMatch +
+      score.clinical.components.clinicalFit +
+      score.clinical.components.complaintsMatch +
+      score.clinical.components.lifestyleMatch
+    ) * 100) / 100;
+    score.clinical.reasons.push('Penalidade -15: sem grade técnica real (safe defaults)');
+  }
+
   // Recalculate final score with updated clinical total
   score.final = Math.round((score.clinical.total * SCORE_WEIGHTS.CLINICAL + score.commercial.total * SCORE_WEIGHTS.COMMERCIAL) * 100) / 100;
   score.adjustedScore = score.final + score.storeBoost;
