@@ -302,6 +302,7 @@ export function getEligibleSkusAndFamilies(
 
     // Passed all gates
     funnel.passedActive++;
+    funnel.passedNoGrade++;
     funnel.passedSphere++;
     funnel.passedCylinder++;
     funnel.passedAddition++;
