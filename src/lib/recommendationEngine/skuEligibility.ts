@@ -140,8 +140,8 @@ export function isSkuEligibleForRx(
     }
   }
 
-  // Gate 3: Cylinder OD/OE
-  if (limits.cylMin !== null) {
+  // Gate 3: Cylinder OD/OE (skip for zeroed grades)
+  if (!isZeroedGrade && limits.cylMin !== null) {
     const cylOD = rx.rightCylinder ?? 0;
     const cylOE = rx.leftCylinder ?? 0;
     const cylAbsMax = Math.abs(limits.cylMin);
@@ -153,9 +153,9 @@ export function isSkuEligibleForRx(
     }
   }
 
-  // Gate 4: Addition (only if Rx has addition > 0)
+  // Gate 4: Addition (only if Rx has addition > 0, skip for zeroed grades)
   const maxAdd = Math.max(rx.rightAddition ?? 0, rx.leftAddition ?? 0);
-  if (maxAdd > 0) {
+  if (!isZeroedGrade && maxAdd > 0) {
     if (limits.addMin != null && limits.addMax != null) {
       if (maxAdd < limits.addMin || maxAdd > limits.addMax) {
         return { eligible: false, failedGate: 'addition' };
