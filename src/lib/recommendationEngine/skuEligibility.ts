@@ -245,7 +245,6 @@ export function getEligibleSkusAndFamilies(
   const funnel: EligibilityFunnel = {
     totalSkus: 0,
     passedActive: 0,
-    passedNoGrade: 0,
     passedSphere: 0,
     passedCylinder: 0,
     passedAddition: 0,
@@ -253,6 +252,7 @@ export function getEligibleSkusAndFamilies(
     passedDiameter: 0,
     passedHeight: 0,
     finalEligible: 0,
+    safeDefaultsCount: 0,
   };
 
   // Build family lookup for clinical type filtering
@@ -274,6 +274,7 @@ export function getEligibleSkusAndFamilies(
 
   const eligibleSkus: Price[] = [];
   const eligibleFamiliesMap = new Map<string, Price[]>();
+  const safeDefaultSkus = new Set<string>();
 
   for (const sku of prices) {
     if (!relevantFamilyIds.has(sku.family_id)) continue;
@@ -286,8 +287,6 @@ export function getEligibleSkusAndFamilies(
       if (result.failedGate === 'active' || result.failedGate === 'price') continue;
       if (result.failedGate === 'no_specs') continue;
       funnel.passedActive++;
-      if (result.failedGate === 'no_grade') continue;
-      funnel.passedNoGrade++;
       if (result.failedGate === 'sphere') continue;
       funnel.passedSphere++;
       if (result.failedGate === 'cylinder') continue;
@@ -305,7 +304,6 @@ export function getEligibleSkusAndFamilies(
 
     // Passed all gates
     funnel.passedActive++;
-    funnel.passedNoGrade++;
     funnel.passedSphere++;
     funnel.passedCylinder++;
     funnel.passedAddition++;
@@ -314,7 +312,16 @@ export function getEligibleSkusAndFamilies(
     funnel.passedHeight++;
     funnel.finalEligible++;
 
+    if (result.usingSafeDefaults) {
+      funnel.safeDefaultsCount++;
+      safeDefaultSkus.add(sku.erp_code || sku.sku_erp || '');
+    }
+
     eligibleSkus.push(sku);
+    // Tag SKU with safe defaults flag for downstream scoring
+    if (result.usingSafeDefaults) {
+      (sku as any)._usingSafeDefaults = true;
+    }
 
     const existing = eligibleFamiliesMap.get(sku.family_id);
     if (existing) {
