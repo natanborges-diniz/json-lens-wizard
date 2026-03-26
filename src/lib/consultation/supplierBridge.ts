@@ -236,9 +236,9 @@ async function loadGrades(): Promise<VariantGradeRow[]> {
   return (data || []) as unknown as VariantGradeRow[];
 }
 
-async function loadTechnologies(supplierCodes?: string[]): Promise<SupplierTechnologyRow[]> {
+async function loadBenefits(supplierCodes?: string[]): Promise<SupplierBenefitRow[]> {
   let query = supabase
-    .from('supplier_technologies')
+    .from('supplier_benefits')
     .select('*')
     .eq('active', true);
 
@@ -248,10 +248,22 @@ async function loadTechnologies(supplierCodes?: string[]): Promise<SupplierTechn
 
   const { data, error } = await query;
   if (error) {
-    console.error('[SupplierBridge] Failed to load technologies:', error);
+    console.error('[SupplierBridge] Failed to load benefits:', error);
     return [];
   }
-  return (data || []) as unknown as SupplierTechnologyRow[];
+  return (data || []) as unknown as SupplierBenefitRow[];
+}
+
+function convertBenefits(rows: SupplierBenefitRow[]): BenefitRecord[] {
+  return rows.map(row => ({
+    id: row.id,
+    supplierCode: row.supplier_code,
+    text: row.original_text,
+    category: row.benefit_category,
+    shortArgument: row.short_argument,
+    perceivedValue: row.perceived_value,
+    applicableTo: row.applicable_to,
+  }));
 }
 
 // ============================================
