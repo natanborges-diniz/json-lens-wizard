@@ -75,6 +75,11 @@ const App = () => (
                 <ProductSearch />
               </ProtectedRoute>
             } />
+            <Route path="/suppliers" element={
+              <ProtectedRoute allowedRoles={['admin', 'manager']}>
+                <SupplierHub />
+              </ProtectedRoute>
+            } />
             <Route path="/docs" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <CatalogDocumentation />
