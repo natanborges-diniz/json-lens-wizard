@@ -16,6 +16,7 @@ import UserManagement from "./pages/UserManagement";
 import StoreManagement from "./pages/StoreManagement";
 import CatalogDocumentation from "./pages/CatalogDocumentation";
 import ProductSearch from "./pages/ProductSearch";
+import SupplierHub from "./pages/SupplierHub";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -72,6 +73,11 @@ const App = () => (
             <Route path="/products" element={
               <ProtectedRoute allowedRoles={['admin', 'manager', 'seller']}>
                 <ProductSearch />
+              </ProtectedRoute>
+            } />
+            <Route path="/suppliers" element={
+              <ProtectedRoute allowedRoles={['admin', 'manager']}>
+                <SupplierHub />
               </ProtectedRoute>
             } />
             <Route path="/docs" element={
