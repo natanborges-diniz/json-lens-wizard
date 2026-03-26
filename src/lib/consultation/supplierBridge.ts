@@ -87,16 +87,40 @@ interface SupplierTechnologyRow {
   icon: string | null;
 }
 
+/** Raw benefit row from DB */
+interface SupplierBenefitRow {
+  id: string;
+  supplier_code: string;
+  original_text: string;
+  benefit_category: string;
+  short_argument: string | null;
+  perceived_value: string | null;
+  applicable_to: string[] | null;
+}
+
+/** Benefit record for engine consumption */
+export interface BenefitRecord {
+  id: string;
+  supplierCode: string;
+  text: string;
+  category: string;
+  shortArgument: string | null;
+  perceivedValue: string | null;
+  applicableTo: string[] | null;
+}
+
 /** Bridge output: engine-ready data */
 export interface SupplierBridgeOutput {
   families: FamilyExtended[];
   prices: Price[];
   technologyLibrary: Record<string, Technology>;
+  benefits: BenefitRecord[];
   meta: {
     familiesLoaded: number;
     pricesLoaded: number;
     gradesLoaded: number;
     technologiesLoaded: number;
+    benefitsLoaded: number;
     suppliers: string[];
   };
 }
@@ -114,16 +138,18 @@ export async function loadSupplierDataForEngine(
   supplierCodes?: string[]
 ): Promise<SupplierBridgeOutput> {
   // Parallel DB queries
-  const [familiesResult, pricesResult, gradesResult, techResult] = await Promise.all([
+  const [familiesResult, pricesResult, gradesResult, techResult, benefitsResult] = await Promise.all([
     loadFamilies(clinicalType, supplierCodes),
     loadPrices(supplierCodes),
     loadGrades(),
     loadTechnologies(supplierCodes),
+    loadBenefits(supplierCodes),
   ]);
 
   // Build lookup maps
   const gradesByFamilyIndex = buildGradeMap(gradesResult);
   const techMap = buildTechnologyLibrary(techResult);
+  const benefits = convertBenefits(benefitsResult);
 
   // Convert families
   const families = familiesResult.map(row => 
@@ -141,14 +167,15 @@ export async function loadSupplierDataForEngine(
     families,
     prices,
     technologyLibrary: techMap,
+    benefits,
     meta: {
       familiesLoaded: families.length,
       pricesLoaded: prices.length,
       gradesLoaded: gradesResult.length,
       technologiesLoaded: techResult.length,
+      benefitsLoaded: benefits.length,
       suppliers,
     },
-  };
 }
 
 // ============================================
@@ -209,9 +236,9 @@ async function loadGrades(): Promise<VariantGradeRow[]> {
   return (data || []) as unknown as VariantGradeRow[];
 }
 
-async function loadTechnologies(supplierCodes?: string[]): Promise<SupplierTechnologyRow[]> {
+async function loadBenefits(supplierCodes?: string[]): Promise<SupplierBenefitRow[]> {
   let query = supabase
-    .from('supplier_technologies')
+    .from('supplier_benefits')
     .select('*')
     .eq('active', true);
 
@@ -221,10 +248,22 @@ async function loadTechnologies(supplierCodes?: string[]): Promise<SupplierTechn
 
   const { data, error } = await query;
   if (error) {
-    console.error('[SupplierBridge] Failed to load technologies:', error);
+    console.error('[SupplierBridge] Failed to load benefits:', error);
     return [];
   }
-  return (data || []) as unknown as SupplierTechnologyRow[];
+  return (data || []) as unknown as SupplierBenefitRow[];
+}
+
+function convertBenefits(rows: SupplierBenefitRow[]): BenefitRecord[] {
+  return rows.map(row => ({
+    id: row.id,
+    supplierCode: row.supplier_code,
+    text: row.original_text,
+    category: row.benefit_category,
+    shortArgument: row.short_argument,
+    perceivedValue: row.perceived_value,
+    applicableTo: row.applicable_to,
+  }));
 }
 
 // ============================================
