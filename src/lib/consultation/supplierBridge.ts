@@ -138,16 +138,18 @@ export async function loadSupplierDataForEngine(
   supplierCodes?: string[]
 ): Promise<SupplierBridgeOutput> {
   // Parallel DB queries
-  const [familiesResult, pricesResult, gradesResult, techResult] = await Promise.all([
+  const [familiesResult, pricesResult, gradesResult, techResult, benefitsResult] = await Promise.all([
     loadFamilies(clinicalType, supplierCodes),
     loadPrices(supplierCodes),
     loadGrades(),
     loadTechnologies(supplierCodes),
+    loadBenefits(supplierCodes),
   ]);
 
   // Build lookup maps
   const gradesByFamilyIndex = buildGradeMap(gradesResult);
   const techMap = buildTechnologyLibrary(techResult);
+  const benefits = convertBenefits(benefitsResult);
 
   // Convert families
   const families = familiesResult.map(row => 
@@ -165,11 +167,16 @@ export async function loadSupplierDataForEngine(
     families,
     prices,
     technologyLibrary: techMap,
+    benefits,
     meta: {
       familiesLoaded: families.length,
       pricesLoaded: prices.length,
       gradesLoaded: gradesResult.length,
       technologiesLoaded: techResult.length,
+      benefitsLoaded: benefits.length,
+      suppliers,
+    },
+  };
       suppliers,
     },
   };
