@@ -174,8 +174,9 @@ export async function loadSupplierDataForEngine(
       gradesLoaded: gradesResult.length,
       technologiesLoaded: techResult.length,
       benefitsLoaded: benefits.length,
-      suppliers,
+      suppliers: suppliers as string[],
     },
+  };
 }
 
 // ============================================
@@ -252,6 +253,24 @@ async function loadBenefits(supplierCodes?: string[]): Promise<SupplierBenefitRo
     return [];
   }
   return (data || []) as unknown as SupplierBenefitRow[];
+}
+
+async function loadTechnologies(supplierCodes?: string[]): Promise<SupplierTechnologyRow[]> {
+  let query = supabase
+    .from('supplier_technologies')
+    .select('*')
+    .eq('active', true);
+
+  if (supplierCodes?.length) {
+    query = query.in('supplier_code', supplierCodes);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('[SupplierBridge] Failed to load technologies:', error);
+    return [];
+  }
+  return (data || []) as unknown as SupplierTechnologyRow[];
 }
 
 function convertBenefits(rows: SupplierBenefitRow[]): BenefitRecord[] {
