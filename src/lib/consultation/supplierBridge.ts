@@ -176,10 +176,6 @@ export async function loadSupplierDataForEngine(
       benefitsLoaded: benefits.length,
       suppliers,
     },
-  };
-      suppliers,
-    },
-  };
 }
 
 // ============================================
