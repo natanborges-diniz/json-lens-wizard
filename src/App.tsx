@@ -81,6 +81,11 @@ const App = () => (
                 <SupplierHub />
               </ProtectedRoute>
             } />
+            <Route path="/compare" element={
+              <ProtectedRoute allowedRoles={['admin', 'manager', 'seller']}>
+                <ComparisonHub />
+              </ProtectedRoute>
+            } />
             <Route path="/docs" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <CatalogDocumentation />
