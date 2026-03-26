@@ -174,8 +174,8 @@ export async function loadSupplierDataForEngine(
       gradesLoaded: gradesResult.length,
       technologiesLoaded: techResult.length,
       benefitsLoaded: benefits.length,
-      suppliers,
-    },
+    suppliers,
+  };
 }
 
 // ============================================
