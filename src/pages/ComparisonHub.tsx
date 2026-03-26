@@ -72,10 +72,13 @@ const ComparisonHub = () => {
             <SelectTrigger className="w-48">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+             <SelectContent>
               <SelectItem value="PROGRESSIVA">Progressivas</SelectItem>
               <SelectItem value="MONOFOCAL">Monofocais</SelectItem>
               <SelectItem value="OCUPACIONAL">Ocupacionais</SelectItem>
+              <SelectItem value="CONTROLE_MIOPIA">Controle de Miopia</SelectItem>
+              <SelectItem value="ESPECIALIDADE">Especialidades</SelectItem>
+              <SelectItem value="FOTOCROMATICA">Fotocromáticas</SelectItem>
             </SelectContent>
           </Select>
         </div>

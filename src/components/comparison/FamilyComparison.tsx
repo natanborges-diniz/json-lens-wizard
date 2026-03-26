@@ -1,8 +1,12 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import type { SupplierFamily, ValueAxes } from '@/types/supplier';
 import { SUPPORTED_SUPPLIERS, VALUE_AXES_LABELS } from '@/types/supplier';
+import { Cpu, Zap } from 'lucide-react';
 
 interface Props {
   families: SupplierFamily[];
