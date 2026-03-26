@@ -113,6 +113,114 @@ export type Database = {
           },
         ]
       }
+      canonical_families: {
+        Row: {
+          active: boolean
+          canonical_name: string
+          clinical_type: string
+          commercial_tier: string
+          comparable_attributes: string[] | null
+          confidence: Database["public"]["Enums"]["data_confidence"]
+          created_at: string
+          description: string | null
+          id: string
+          review_status: Database["public"]["Enums"]["data_review_status"]
+          updated_at: string
+          value_axes: Json | null
+        }
+        Insert: {
+          active?: boolean
+          canonical_name: string
+          clinical_type: string
+          commercial_tier: string
+          comparable_attributes?: string[] | null
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          description?: string | null
+          id?: string
+          review_status?: Database["public"]["Enums"]["data_review_status"]
+          updated_at?: string
+          value_axes?: Json | null
+        }
+        Update: {
+          active?: boolean
+          canonical_name?: string
+          clinical_type?: string
+          commercial_tier?: string
+          comparable_attributes?: string[] | null
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          description?: string | null
+          id?: string
+          review_status?: Database["public"]["Enums"]["data_review_status"]
+          updated_at?: string
+          value_axes?: Json | null
+        }
+        Relationships: []
+      }
+      canonical_materials: {
+        Row: {
+          active: boolean
+          aesthetic_score: number | null
+          canonical_name: string
+          created_at: string
+          description: string | null
+          id: string
+          refractive_index: number
+          thickness_category: string | null
+        }
+        Insert: {
+          active?: boolean
+          aesthetic_score?: number | null
+          canonical_name: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          refractive_index: number
+          thickness_category?: string | null
+        }
+        Update: {
+          active?: boolean
+          aesthetic_score?: number | null
+          canonical_name?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          refractive_index?: number
+          thickness_category?: string | null
+        }
+        Relationships: []
+      }
+      canonical_treatments: {
+        Row: {
+          active: boolean
+          canonical_name: string
+          created_at: string
+          description: string | null
+          id: string
+          performance_level: number | null
+          treatment_type: string
+        }
+        Insert: {
+          active?: boolean
+          canonical_name: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          performance_level?: number | null
+          treatment_type: string
+        }
+        Update: {
+          active?: boolean
+          canonical_name?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          performance_level?: number | null
+          treatment_type?: string
+        }
+        Relationships: []
+      }
       catalog_pending_skus: {
         Row: {
           created_at: string
@@ -468,6 +576,87 @@ export type Database = {
         }
         Relationships: []
       }
+      family_equivalences: {
+        Row: {
+          canonical_family_id: string | null
+          created_at: string
+          created_by: string | null
+          equivalence_confidence: string
+          equivalence_notes: string | null
+          id: string
+          supplier_family_id: string | null
+        }
+        Insert: {
+          canonical_family_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          equivalence_confidence?: string
+          equivalence_notes?: string | null
+          id?: string
+          supplier_family_id?: string | null
+        }
+        Update: {
+          canonical_family_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          equivalence_confidence?: string
+          equivalence_notes?: string | null
+          id?: string
+          supplier_family_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "family_equivalences_canonical_family_id_fkey"
+            columns: ["canonical_family_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "family_equivalences_supplier_family_id_fkey"
+            columns: ["supplier_family_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_families"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_equivalences: {
+        Row: {
+          canonical_material_id: string | null
+          created_at: string
+          id: string
+          supplier_material_id: string | null
+        }
+        Insert: {
+          canonical_material_id?: string | null
+          created_at?: string
+          id?: string
+          supplier_material_id?: string | null
+        }
+        Update: {
+          canonical_material_id?: string | null
+          created_at?: string
+          id?: string
+          supplier_material_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_equivalences_canonical_material_id_fkey"
+            columns: ["canonical_material_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_equivalences_supplier_material_id_fkey"
+            columns: ["supplier_material_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -726,6 +915,148 @@ export type Database = {
         }
         Relationships: []
       }
+      supplier_benefits: {
+        Row: {
+          active: boolean
+          applicable_to: string[] | null
+          benefit_category: string
+          confidence: Database["public"]["Enums"]["data_confidence"]
+          created_at: string
+          id: string
+          original_text: string
+          perceived_value: string | null
+          review_status: Database["public"]["Enums"]["data_review_status"]
+          short_argument: string | null
+          source_document_id: string | null
+          supplier_code: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          applicable_to?: string[] | null
+          benefit_category: string
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          id?: string
+          original_text: string
+          perceived_value?: string | null
+          review_status?: Database["public"]["Enums"]["data_review_status"]
+          short_argument?: string | null
+          source_document_id?: string | null
+          supplier_code: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          applicable_to?: string[] | null
+          benefit_category?: string
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          id?: string
+          original_text?: string
+          perceived_value?: string | null
+          review_status?: Database["public"]["Enums"]["data_review_status"]
+          short_argument?: string | null
+          source_document_id?: string | null
+          supplier_code?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_benefits_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_source_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_families: {
+        Row: {
+          active: boolean
+          benefit_ids: string[] | null
+          clinical_type: string
+          commercial_category: string | null
+          confidence: Database["public"]["Enums"]["data_confidence"]
+          created_at: string
+          description: string | null
+          display_name: string | null
+          id: string
+          key_differentiator: string | null
+          material_ids: string[] | null
+          original_name: string
+          review_status: Database["public"]["Enums"]["data_review_status"]
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source_document_id: string | null
+          supplier_code: string
+          target_audience: string | null
+          technology_ids: string[] | null
+          tier_position: string | null
+          treatment_ids: string[] | null
+          updated_at: string
+          value_axes: Json | null
+        }
+        Insert: {
+          active?: boolean
+          benefit_ids?: string[] | null
+          clinical_type: string
+          commercial_category?: string | null
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          description?: string | null
+          display_name?: string | null
+          id?: string
+          key_differentiator?: string | null
+          material_ids?: string[] | null
+          original_name: string
+          review_status?: Database["public"]["Enums"]["data_review_status"]
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_document_id?: string | null
+          supplier_code: string
+          target_audience?: string | null
+          technology_ids?: string[] | null
+          tier_position?: string | null
+          treatment_ids?: string[] | null
+          updated_at?: string
+          value_axes?: Json | null
+        }
+        Update: {
+          active?: boolean
+          benefit_ids?: string[] | null
+          clinical_type?: string
+          commercial_category?: string | null
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          description?: string | null
+          display_name?: string | null
+          id?: string
+          key_differentiator?: string | null
+          material_ids?: string[] | null
+          original_name?: string
+          review_status?: Database["public"]["Enums"]["data_review_status"]
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_document_id?: string | null
+          supplier_code?: string
+          target_audience?: string | null
+          technology_ids?: string[] | null
+          tier_position?: string | null
+          treatment_ids?: string[] | null
+          updated_at?: string
+          value_axes?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_families_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_source_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplier_family_map: {
         Row: {
           active: boolean
@@ -761,6 +1092,77 @@ export type Database = {
           supplier?: string
         }
         Relationships: []
+      }
+      supplier_materials: {
+        Row: {
+          abbe_number: number | null
+          active: boolean
+          aesthetic_score: number | null
+          confidence: Database["public"]["Enums"]["data_confidence"]
+          created_at: string
+          density: number | null
+          description: string | null
+          id: string
+          impact_resistance: string | null
+          material_type: string
+          original_name: string
+          refractive_index: number | null
+          review_status: Database["public"]["Enums"]["data_review_status"]
+          source_document_id: string | null
+          supplier_code: string
+          thickness_reduction_percent: number | null
+          updated_at: string
+          uv_protection_percent: number | null
+        }
+        Insert: {
+          abbe_number?: number | null
+          active?: boolean
+          aesthetic_score?: number | null
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          density?: number | null
+          description?: string | null
+          id?: string
+          impact_resistance?: string | null
+          material_type: string
+          original_name: string
+          refractive_index?: number | null
+          review_status?: Database["public"]["Enums"]["data_review_status"]
+          source_document_id?: string | null
+          supplier_code: string
+          thickness_reduction_percent?: number | null
+          updated_at?: string
+          uv_protection_percent?: number | null
+        }
+        Update: {
+          abbe_number?: number | null
+          active?: boolean
+          aesthetic_score?: number | null
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          density?: number | null
+          description?: string | null
+          id?: string
+          impact_resistance?: string | null
+          material_type?: string
+          original_name?: string
+          refractive_index?: number | null
+          review_status?: Database["public"]["Enums"]["data_review_status"]
+          source_document_id?: string | null
+          supplier_code?: string
+          thickness_reduction_percent?: number | null
+          updated_at?: string
+          uv_protection_percent?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_materials_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_source_documents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       supplier_profiles: {
         Row: {
@@ -806,6 +1208,244 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      supplier_source_documents: {
+        Row: {
+          created_at: string
+          document_type: string
+          file_hash: string | null
+          file_name: string
+          file_url: string | null
+          id: string
+          notes: string | null
+          parse_result: Json | null
+          parse_status: string
+          parsed_at: string | null
+          parsed_by: string | null
+          supplier_code: string
+          updated_at: string
+          uploaded_by: string | null
+          version_label: string | null
+        }
+        Insert: {
+          created_at?: string
+          document_type: string
+          file_hash?: string | null
+          file_name: string
+          file_url?: string | null
+          id?: string
+          notes?: string | null
+          parse_result?: Json | null
+          parse_status?: string
+          parsed_at?: string | null
+          parsed_by?: string | null
+          supplier_code: string
+          updated_at?: string
+          uploaded_by?: string | null
+          version_label?: string | null
+        }
+        Update: {
+          created_at?: string
+          document_type?: string
+          file_hash?: string | null
+          file_name?: string
+          file_url?: string | null
+          id?: string
+          notes?: string | null
+          parse_result?: Json | null
+          parse_status?: string
+          parsed_at?: string | null
+          parsed_by?: string | null
+          supplier_code?: string
+          updated_at?: string
+          uploaded_by?: string | null
+          version_label?: string | null
+        }
+        Relationships: []
+      }
+      supplier_technologies: {
+        Row: {
+          active: boolean
+          benefits: string[] | null
+          confidence: Database["public"]["Enums"]["data_confidence"]
+          created_at: string
+          description_long: string | null
+          description_short: string | null
+          display_name: string | null
+          icon: string | null
+          id: string
+          impact_axes: Json | null
+          original_name: string
+          review_status: Database["public"]["Enums"]["data_review_status"]
+          source_document_id: string | null
+          supplier_code: string
+          tech_group: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          benefits?: string[] | null
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          description_long?: string | null
+          description_short?: string | null
+          display_name?: string | null
+          icon?: string | null
+          id?: string
+          impact_axes?: Json | null
+          original_name: string
+          review_status?: Database["public"]["Enums"]["data_review_status"]
+          source_document_id?: string | null
+          supplier_code: string
+          tech_group?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          benefits?: string[] | null
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          description_long?: string | null
+          description_short?: string | null
+          display_name?: string | null
+          icon?: string | null
+          id?: string
+          impact_axes?: Json | null
+          original_name?: string
+          review_status?: Database["public"]["Enums"]["data_review_status"]
+          source_document_id?: string | null
+          supplier_code?: string
+          tech_group?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_technologies_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_source_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_treatments: {
+        Row: {
+          active: boolean
+          anti_reflective_level: number | null
+          blue_light_filter_percent: number | null
+          compatible_materials: string[] | null
+          confidence: Database["public"]["Enums"]["data_confidence"]
+          created_at: string
+          description: string | null
+          display_name: string | null
+          easy_clean_level: number | null
+          id: string
+          key_benefit: string | null
+          original_name: string
+          performance_level: number | null
+          photochromic_darkening_percent: number | null
+          photochromic_speed: string | null
+          review_status: Database["public"]["Enums"]["data_review_status"]
+          scratch_resistance_level: number | null
+          source_document_id: string | null
+          supplier_code: string
+          treatment_type: string
+          updated_at: string
+          uv_filter_percent: number | null
+        }
+        Insert: {
+          active?: boolean
+          anti_reflective_level?: number | null
+          blue_light_filter_percent?: number | null
+          compatible_materials?: string[] | null
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          description?: string | null
+          display_name?: string | null
+          easy_clean_level?: number | null
+          id?: string
+          key_benefit?: string | null
+          original_name: string
+          performance_level?: number | null
+          photochromic_darkening_percent?: number | null
+          photochromic_speed?: string | null
+          review_status?: Database["public"]["Enums"]["data_review_status"]
+          scratch_resistance_level?: number | null
+          source_document_id?: string | null
+          supplier_code: string
+          treatment_type: string
+          updated_at?: string
+          uv_filter_percent?: number | null
+        }
+        Update: {
+          active?: boolean
+          anti_reflective_level?: number | null
+          blue_light_filter_percent?: number | null
+          compatible_materials?: string[] | null
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          description?: string | null
+          display_name?: string | null
+          easy_clean_level?: number | null
+          id?: string
+          key_benefit?: string | null
+          original_name?: string
+          performance_level?: number | null
+          photochromic_darkening_percent?: number | null
+          photochromic_speed?: string | null
+          review_status?: Database["public"]["Enums"]["data_review_status"]
+          scratch_resistance_level?: number | null
+          source_document_id?: string | null
+          supplier_code?: string
+          treatment_type?: string
+          updated_at?: string
+          uv_filter_percent?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_treatments_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_source_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treatment_equivalences: {
+        Row: {
+          canonical_treatment_id: string | null
+          created_at: string
+          id: string
+          supplier_treatment_id: string | null
+        }
+        Insert: {
+          canonical_treatment_id?: string | null
+          created_at?: string
+          id?: string
+          supplier_treatment_id?: string | null
+        }
+        Update: {
+          canonical_treatment_id?: string | null
+          created_at?: string
+          id?: string
+          supplier_treatment_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treatment_equivalences_canonical_treatment_id_fkey"
+            columns: ["canonical_treatment_id"]
+            isOneToOne: false
+            referencedRelation: "canonical_treatments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treatment_equivalences_supplier_treatment_id_fkey"
+            columns: ["supplier_treatment_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_treatments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -880,6 +1520,8 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "manager" | "seller"
+      data_confidence: "explicit" | "inferred" | "manual" | "ai_extracted"
+      data_review_status: "draft" | "reviewed" | "approved" | "rejected"
       service_status:
         | "draft"
         | "in_progress"
@@ -1014,6 +1656,8 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "manager", "seller"],
+      data_confidence: ["explicit", "inferred", "manual", "ai_extracted"],
+      data_review_status: ["draft", "reviewed", "approved", "rejected"],
       service_status: [
         "draft",
         "in_progress",
