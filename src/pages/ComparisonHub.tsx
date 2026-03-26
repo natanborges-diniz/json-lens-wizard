@@ -112,7 +112,7 @@ const ComparisonHub = () => {
         .eq('active', true)
         .order('refractive_index');
       if (error) throw error;
-      return data || [];
+      return (data || []) as any[];
     },
   });
 
@@ -125,7 +125,7 @@ const ComparisonHub = () => {
         .eq('active', true)
         .order('treatment_type');
       if (error) throw error;
-      return data || [];
+      return (data || []) as any[];
     },
   });
 
