@@ -17,6 +17,7 @@ import StoreManagement from "./pages/StoreManagement";
 import CatalogDocumentation from "./pages/CatalogDocumentation";
 import ProductSearch from "./pages/ProductSearch";
 import SupplierHub from "./pages/SupplierHub";
+import ComparisonHub from "./pages/ComparisonHub";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -78,6 +79,11 @@ const App = () => (
             <Route path="/suppliers" element={
               <ProtectedRoute allowedRoles={['admin', 'manager']}>
                 <SupplierHub />
+              </ProtectedRoute>
+            } />
+            <Route path="/compare" element={
+              <ProtectedRoute allowedRoles={['admin', 'manager', 'seller']}>
+                <ComparisonHub />
               </ProtectedRoute>
             } />
             <Route path="/docs" element={
