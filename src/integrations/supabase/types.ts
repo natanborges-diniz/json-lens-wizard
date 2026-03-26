@@ -1164,6 +1164,75 @@ export type Database = {
           },
         ]
       }
+      supplier_prices: {
+        Row: {
+          active: boolean
+          confidence: Database["public"]["Enums"]["data_confidence"]
+          created_at: string
+          currency: string
+          effective_date: string
+          family_id: string | null
+          id: string
+          lens_state: string
+          material_index: string
+          notes: string | null
+          price_value: number
+          source_document_id: string | null
+          supplier_code: string
+          treatment_combo: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          currency?: string
+          effective_date?: string
+          family_id?: string | null
+          id?: string
+          lens_state?: string
+          material_index: string
+          notes?: string | null
+          price_value: number
+          source_document_id?: string | null
+          supplier_code: string
+          treatment_combo?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          confidence?: Database["public"]["Enums"]["data_confidence"]
+          created_at?: string
+          currency?: string
+          effective_date?: string
+          family_id?: string | null
+          id?: string
+          lens_state?: string
+          material_index?: string
+          notes?: string | null
+          price_value?: number
+          source_document_id?: string | null
+          supplier_code?: string
+          treatment_combo?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_prices_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_prices_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_source_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplier_profiles: {
         Row: {
           abbreviation_map: Json | null
