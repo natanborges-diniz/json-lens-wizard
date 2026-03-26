@@ -87,16 +87,40 @@ interface SupplierTechnologyRow {
   icon: string | null;
 }
 
+/** Raw benefit row from DB */
+interface SupplierBenefitRow {
+  id: string;
+  supplier_code: string;
+  original_text: string;
+  benefit_category: string;
+  short_argument: string | null;
+  perceived_value: string | null;
+  applicable_to: string[] | null;
+}
+
+/** Benefit record for engine consumption */
+export interface BenefitRecord {
+  id: string;
+  supplierCode: string;
+  text: string;
+  category: string;
+  shortArgument: string | null;
+  perceivedValue: string | null;
+  applicableTo: string[] | null;
+}
+
 /** Bridge output: engine-ready data */
 export interface SupplierBridgeOutput {
   families: FamilyExtended[];
   prices: Price[];
   technologyLibrary: Record<string, Technology>;
+  benefits: BenefitRecord[];
   meta: {
     familiesLoaded: number;
     pricesLoaded: number;
     gradesLoaded: number;
     technologiesLoaded: number;
+    benefitsLoaded: number;
     suppliers: string[];
   };
 }
