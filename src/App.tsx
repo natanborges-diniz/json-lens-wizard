@@ -16,6 +16,7 @@ import UserManagement from "./pages/UserManagement";
 import StoreManagement from "./pages/StoreManagement";
 import CatalogDocumentation from "./pages/CatalogDocumentation";
 import ProductSearch from "./pages/ProductSearch";
+import SupplierHub from "./pages/SupplierHub";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
