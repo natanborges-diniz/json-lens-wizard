@@ -28,7 +28,19 @@ export {
 export {
   loadSupplierDataForEngine,
   type SupplierBridgeOutput,
+  type BenefitRecord,
 } from './supplierBridge';
+
+// Treatment Resolver
+export {
+  loadTreatments,
+  isTreatmentCompatibleWithMaterial,
+  resolveFamilyTreatments,
+  filterTreatmentsByConstraints,
+  type TreatmentRecord,
+  type TreatmentCompatibility,
+  type FamilyTreatmentReport,
+} from './treatmentResolver';
 
 // Availability Resolver
 export {
