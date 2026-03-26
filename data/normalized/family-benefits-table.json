@@ -1,0 +1,18 @@
+{
+  "schema_version": "0.2",
+  "status": "draft-family-benefits",
+  "benefits": [
+    {"supplier": "Essilor", "family": "Varilux XR Pro", "benefits_explicit": ["maior nitidez", "melhor contraste visual", "adaptacao imediata"], "benefit_tags": ["performance", "adaptacao"], "confidence": "medium"},
+    {"supplier": "Essilor", "family": "Eyezen Start", "benefits_explicit": ["conforto visual", "reducao de fadiga visual", "filtro blue uv"], "benefit_tags": ["conforto", "blue-uv"], "confidence": "medium"},
+    {"supplier": "Essilor", "family": "Stellest", "benefits_explicit": ["controle de miopia", "beneficio clinico especializado"], "benefit_tags": ["controle-miopia", "clinico"], "confidence": "medium"},
+
+    {"supplier": "Hoya", "family": "Hoyalux iD MySelf", "benefits_explicit": ["personalizacao", "ampliacao de campo visual", "melhor adaptacao"], "benefit_tags": ["personalizacao", "adaptacao", "campo-visual"], "confidence": "medium"},
+    {"supplier": "Hoya", "family": "Nulux TrueForm", "benefits_explicit": ["acuidade visual", "visao simples premium"], "benefit_tags": ["performance", "visao-simples"], "confidence": "medium"},
+    {"supplier": "Hoya", "family": "MiYOSMART", "benefits_explicit": ["controle de miopia", "evidencia clinica"], "benefit_tags": ["controle-miopia", "clinico"], "confidence": "medium"},
+
+    {"supplier": "Zeiss", "family": "SmartLife Individual 3", "benefits_explicit": ["visao natural", "rapida adaptacao", "personalizacao premium"], "benefit_tags": ["conforto", "adaptacao", "personalizacao"], "confidence": "medium"},
+    {"supplier": "Zeiss", "family": "ClearView", "benefits_explicit": ["campo de visao ampliado", "lente mais plana", "melhor estetica"], "benefit_tags": ["campo-visual", "estetica"], "confidence": "medium"},
+    {"supplier": "Zeiss", "family": "MyoCare", "benefits_explicit": ["controle de miopia", "beneficio clinico especializado"], "benefit_tags": ["controle-miopia", "clinico"], "confidence": "high"},
+    {"supplier": "Zeiss", "family": "DriveSafe", "benefits_explicit": ["uso especializado para direcao", "seguranca visual"], "benefit_tags": ["direcao", "especialidade"], "confidence": "medium"}
+  ]
+}

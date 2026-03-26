@@ -1,0 +1,110 @@
+{
+  "schema_version": "0.1",
+  "status": "draft-treatments-canonical-map",
+  "treatments": [
+    {
+      "supplier": "Essilor",
+      "original_treatment_name": "Crizal Sapphire HR",
+      "canonical_treatment_name": "antirreflexo premium",
+      "canonical_treatment_type": "premium-ar",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Essilor",
+      "original_treatment_name": "Crizal Rock",
+      "canonical_treatment_name": "antirreflexo premium resistente",
+      "canonical_treatment_type": "premium-ar-durability",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Essilor",
+      "original_treatment_name": "Crizal EasyPro",
+      "canonical_treatment_name": "antirreflexo com foco em limpeza",
+      "canonical_treatment_type": "ar-cleaning",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Essilor",
+      "original_treatment_name": "Crizal Prevencia",
+      "canonical_treatment_name": "antirreflexo com protecao blue uv",
+      "canonical_treatment_type": "ar-blue-uv",
+      "confidence": "medium",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_treatment_name": "Hi-Vision Meiryo",
+      "canonical_treatment_name": "antirreflexo premium",
+      "canonical_treatment_type": "premium-ar",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_treatment_name": "Hi-Vision Sun Pro",
+      "canonical_treatment_name": "tratamento para lentes solares",
+      "canonical_treatment_type": "sun-treatment",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_treatment_name": "Hi-Vision LongLife BlueControl",
+      "canonical_treatment_name": "antirreflexo com protecao blue uv",
+      "canonical_treatment_type": "ar-blue-uv",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_treatment_name": "Hi-Vision LongLife UVControl",
+      "canonical_treatment_name": "antirreflexo com protecao uv",
+      "canonical_treatment_type": "ar-uv",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_treatment_name": "No-Risk BlueControl",
+      "canonical_treatment_name": "tratamento com blue control",
+      "canonical_treatment_type": "blue-control",
+      "confidence": "medium",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_treatment_name": "No-Risk",
+      "canonical_treatment_name": "tratamento padrao",
+      "canonical_treatment_type": "standard-treatment",
+      "confidence": "medium",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_treatment_name": "CleanExtra",
+      "canonical_treatment_name": "tratamento com foco em limpeza",
+      "canonical_treatment_type": "cleaning-treatment",
+      "confidence": "medium",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_treatment_name": "Hi-Vision Hard",
+      "canonical_treatment_name": "camada dura",
+      "canonical_treatment_type": "hard-coat",
+      "confidence": "medium",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_treatment_name": "Hi-Vision Aqua",
+      "canonical_treatment_name": "antirreflexo hidrofobico",
+      "canonical_treatment_type": "ar-hydrophobic",
+      "confidence": "medium",
+      "notes": []
+    }
+  ]
+}

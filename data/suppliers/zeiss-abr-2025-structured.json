@@ -1,0 +1,74 @@
+{
+  "supplier": "Zeiss",
+  "source_document": "docs/suppliers/zeiss-abr-2025.pdf",
+  "document_label": "Zeiss Abr 2025",
+  "status": "initial-structured-extraction",
+  "entities": {
+    "product_families": [
+      {"name": "SmartLife Individual 3", "category": "progressiva", "confidence": "high"},
+      {"name": "SmartLife", "category": "progressiva", "confidence": "medium"},
+      {"name": "SmartLife Young", "category": "visao-simples", "confidence": "medium"},
+      {"name": "Light 2", "category": "progressiva", "confidence": "medium"},
+      {"name": "ClearView", "category": "visao-simples", "confidence": "high"},
+      {"name": "MyoCare", "category": "controle-miopia", "confidence": "high"},
+      {"name": "MyoCare S", "category": "controle-miopia", "confidence": "high"},
+      {"name": "FreeForm Kids", "category": "visao-simples", "confidence": "medium"},
+      {"name": "Individual 3", "category": "progressiva", "confidence": "high"},
+      {"name": "Superb", "category": "progressiva", "confidence": "medium"},
+      {"name": "Plus", "category": "progressiva", "confidence": "medium"},
+      {"name": "Pure", "category": "progressiva", "confidence": "medium"},
+      {"name": "Essential", "category": "progressiva", "confidence": "medium"},
+      {"name": "EnergizeMe", "category": "especialidade", "confidence": "medium"},
+      {"name": "DriveSafe", "category": "especialidade", "confidence": "high"},
+      {"name": "OfficeLens", "category": "ocupacional", "confidence": "high"},
+      {"name": "Sport", "category": "especialidade", "confidence": "medium"}
+    ],
+    "materials": [
+      {"name": "Resina 1.50", "refractive_index": "1.50", "confidence": "high"},
+      {"name": "Policarbonato 1.59", "refractive_index": "1.59", "confidence": "high"},
+      {"name": "1.60", "refractive_index": "1.60", "confidence": "high"},
+      {"name": "1.67", "refractive_index": "1.67", "confidence": "high"},
+      {"name": "1.74", "refractive_index": "1.74", "confidence": "high"},
+      {"name": "Mineral 1.7", "refractive_index": "1.7", "confidence": "medium"},
+      {"name": "Mineral 1.8", "refractive_index": "1.8", "confidence": "medium"},
+      {"name": "Mineral 1.9", "refractive_index": "1.9", "confidence": "medium"}
+    ],
+    "treatments": [
+      {"name": "DuraVision Platinum UV", "type": "premium-ar", "confidence": "high"},
+      {"name": "DuraVision Silver UV", "type": "ar-uv", "confidence": "high"},
+      {"name": "DuraVision Chrome UV", "type": "standard-treatment", "confidence": "medium"},
+      {"name": "PhotoFusion X", "type": "fotocromatico", "confidence": "high"},
+      {"name": "BlueGuard", "type": "blue-uv", "confidence": "high"},
+      {"name": "UVProtect", "type": "uv", "confidence": "high"}
+    ],
+    "technologies": [
+      {"name": "SmartView 2.0", "confidence": "medium"},
+      {"name": "Luminance Design 2.0", "confidence": "medium"},
+      {"name": "FaceFit Technology", "confidence": "medium"},
+      {"name": "IndividualFit", "confidence": "high"},
+      {"name": "Intelligence Augmented Design", "confidence": "medium"},
+      {"name": "Digital Inside", "confidence": "medium"},
+      {"name": "Dynamic AgeFit", "confidence": "medium"},
+      {"name": "FreeForm", "confidence": "medium"},
+      {"name": "EasyFocus", "confidence": "medium"},
+      {"name": "C.A.R.E", "confidence": "low"}
+    ],
+    "benefit_claims": [
+      {"text": "visao natural", "type": "conforto", "confidence": "medium"},
+      {"text": "lentes mais finas e leves", "type": "estetica", "confidence": "medium"},
+      {"text": "rapida adaptacao", "type": "adaptacao", "confidence": "medium"},
+      {"text": "protecao uv integrada", "type": "protecao", "confidence": "high"},
+      {"text": "reducao de fadiga ocular", "type": "conforto", "confidence": "medium"},
+      {"text": "controle de miopia", "type": "clinico", "confidence": "high"}
+    ],
+    "commercial_signals": [
+      {"family": "SmartLife Individual 3", "signal": "premium", "confidence": "high"},
+      {"family": "SmartLife", "signal": "intermediario-premium", "confidence": "medium"},
+      {"family": "Light 2", "signal": "intermediario", "confidence": "medium"},
+      {"family": "ClearView", "signal": "entrada-intermediario", "confidence": "medium"},
+      {"family": "MyoCare", "signal": "clinico-especializado", "confidence": "high"},
+      {"family": "DriveSafe", "signal": "especializado", "confidence": "high"},
+      {"family": "OfficeLens", "signal": "ocupacional-especializado", "confidence": "high"}
+    ]
+  }
+}

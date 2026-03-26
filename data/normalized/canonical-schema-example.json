@@ -1,0 +1,48 @@
+{
+  "supplier": {
+    "supplier_name": "Essilor",
+    "source_document": "docs/suppliers/essilor-ago-2025.pdf",
+    "document_version": "Essilor Ago 2025"
+  },
+  "families": [
+    {
+      "family_name": "Varilux XR Pro",
+      "brand": "Varilux",
+      "category_clinical": "progressiva",
+      "commercial_positioning": "premium",
+      "confidence": "high",
+      "source": "catalog extraction"
+    }
+  ],
+  "materials": [
+    {
+      "material_name": "Orma 1.50",
+      "refractive_index": "1.50",
+      "confidence": "high"
+    }
+  ],
+  "treatments": [
+    {
+      "treatment_name": "Crizal Sapphire HR",
+      "type": "antirreflexo",
+      "confidence": "high"
+    }
+  ],
+  "benefits": [
+    {
+      "entity": "Varilux XR Pro",
+      "benefit_text": "maior nitidez e contraste visual",
+      "benefit_type": "performance",
+      "confidence": "medium"
+    }
+  ],
+  "governance": {
+    "status": "draft-structured",
+    "needs_review": true,
+    "conflicts": [],
+    "notes": [
+      "nao usar como catalogo final sem revisao",
+      "precos e disponibilidade ainda nao estruturados"
+    ]
+  }
+}

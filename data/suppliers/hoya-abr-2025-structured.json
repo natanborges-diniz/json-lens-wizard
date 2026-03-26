@@ -1,0 +1,101 @@
+{
+  "supplier": "Hoya",
+  "source_documents": [
+    "docs/suppliers/hoya-abr-2025.pdf",
+    "docs/suppliers/hoyalux-d-2.pdf"
+  ],
+  "document_label": "Hoya Abr 2025",
+  "status": "initial-structured-extraction",
+  "entities": {
+    "product_families": [
+      {"name": "MiYOSMART", "category": "controle-miopia", "confidence": "high"},
+      {"name": "Nulux iDentity V+", "category": "visao-simples", "confidence": "high"},
+      {"name": "Nulux TrueForm", "category": "visao-simples", "confidence": "high"},
+      {"name": "Nulux", "category": "visao-simples", "confidence": "medium"},
+      {"name": "Hilux", "category": "visao-simples", "confidence": "medium"},
+      {"name": "Hoyalux iD MySelf", "category": "progressiva", "confidence": "high"},
+      {"name": "Hoyalux iD MyStyle V+", "category": "progressiva", "confidence": "high"},
+      {"name": "Hoyalux iD LifeStyle 4i", "category": "progressiva", "confidence": "high"},
+      {"name": "Hoyalux Balansis", "category": "progressiva", "confidence": "high"},
+      {"name": "Hoyalux Daynamic", "category": "progressiva", "confidence": "medium"},
+      {"name": "Hoyalux Argos", "category": "progressiva", "confidence": "medium"},
+      {"name": "Hoyalux Amplus", "category": "progressiva", "confidence": "medium"},
+      {"name": "Hoyalux iD WorkStyle 3", "category": "ocupacional", "confidence": "high"},
+      {"name": "Hoyalux WorkSmart Room", "category": "ocupacional", "confidence": "medium"},
+      {"name": "HOYA SYNC III", "category": "visao-simples", "confidence": "medium"},
+      {"name": "Hoyalux EnRoute", "category": "especialidade", "confidence": "medium"},
+      {"name": "Nulux EnRoute", "category": "especialidade", "confidence": "medium"},
+      {"name": "Hoyalux Sportive", "category": "especialidade", "confidence": "medium"},
+      {"name": "Nulux Sportive", "category": "especialidade", "confidence": "medium"},
+      {"name": "Sensity 2", "category": "fotocromatica", "confidence": "high"},
+      {"name": "MAXXEE", "category": "especialidade", "confidence": "medium"}
+    ],
+    "materials": [
+      {"name": "1.50", "refractive_index": "1.50", "confidence": "high"},
+      {"name": "1.53", "refractive_index": "1.53", "confidence": "medium"},
+      {"name": "1.59", "refractive_index": "1.59", "confidence": "medium"},
+      {"name": "1.60", "refractive_index": "1.60", "confidence": "high"},
+      {"name": "1.67", "refractive_index": "1.67", "confidence": "high"},
+      {"name": "1.74", "refractive_index": "1.74", "confidence": "high"},
+      {"name": "PNX / Trivex", "refractive_index": "trivex", "confidence": "medium"},
+      {"name": "Policarbonato", "refractive_index": "poly", "confidence": "medium"},
+      {"name": "EYAS", "refractive_index": null, "confidence": "low"},
+      {"name": "EYAS 2.0", "refractive_index": null, "confidence": "low"},
+      {"name": "EYNOA", "refractive_index": null, "confidence": "low"},
+      {"name": "EYVIA", "refractive_index": null, "confidence": "low"}
+    ],
+    "treatments": [
+      {"name": "Hi-Vision Meiryo", "type": "antirreflexo", "confidence": "high"},
+      {"name": "Hi-Vision Sun Pro", "type": "solar", "confidence": "high"},
+      {"name": "Hi-Vision LongLife BlueControl", "type": "blue-control", "confidence": "high"},
+      {"name": "Hi-Vision LongLife UVControl", "type": "uv-control", "confidence": "high"},
+      {"name": "No-Risk BlueControl", "type": "blue-control", "confidence": "medium"},
+      {"name": "No-Risk", "type": "standard", "confidence": "medium"},
+      {"name": "CleanExtra", "type": "cleaning", "confidence": "medium"},
+      {"name": "Hi-Vision Hard", "type": "hard-coat", "confidence": "medium"},
+      {"name": "Hi-Vision Aqua", "type": "antirreflexo", "confidence": "medium"}
+    ],
+    "technologies": [
+      {"name": "FreeForm", "confidence": "high"},
+      {"name": "iD FreeForm", "confidence": "high"},
+      {"name": "TrueForm", "confidence": "high"},
+      {"name": "Clarity Enhancer", "confidence": "medium"},
+      {"name": "Field Amplifier Technology", "confidence": "medium"},
+      {"name": "FrameMatch", "confidence": "medium"},
+      {"name": "Binocular Eye Model", "confidence": "medium"},
+      {"name": "Actual View", "confidence": "medium"},
+      {"name": "View Xpansion Technology", "confidence": "medium"},
+      {"name": "Stable View", "confidence": "medium"},
+      {"name": "DIMS", "confidence": "high"},
+      {"name": "HOYA IDENTIfiER 3D", "confidence": "medium"},
+      {"name": "VisuReal Master AI", "confidence": "medium"},
+      {"name": "HOYA Tracer GT7000", "confidence": "medium"}
+    ],
+    "benefit_claims": [
+      {"text": "precisao de prescricao pixel a pixel", "type": "performance", "confidence": "medium"},
+      {"text": "maior acuidade e conforto visual", "type": "conforto", "confidence": "medium"},
+      {"text": "ampliacao do campo de visao", "type": "performance", "confidence": "medium"},
+      {"text": "reducao de distorcoes", "type": "adaptacao", "confidence": "medium"},
+      {"text": "lentes mais finas e leves", "type": "estetica", "confidence": "medium"},
+      {"text": "protecao UV e blue control", "type": "protecao", "confidence": "high"},
+      {"text": "evidencia clinica para controle de miopia", "type": "clinico", "confidence": "medium"}
+    ],
+    "commercial_signals": [
+      {"family": "Hoyalux iD MySelf", "signal": "premium", "confidence": "high"},
+      {"family": "Hoyalux iD MyStyle V+", "signal": "premium", "confidence": "high"},
+      {"family": "Hoyalux iD LifeStyle 4i", "signal": "intermediario-premium", "confidence": "medium"},
+      {"family": "Hoyalux Balansis", "signal": "intermediario", "confidence": "medium"},
+      {"family": "Nulux TrueForm", "signal": "visao-simples-premium", "confidence": "medium"},
+      {"family": "Hilux", "signal": "entrada", "confidence": "medium"},
+      {"family": "Sensity 2", "signal": "upgrade-premium", "confidence": "high"},
+      {"family": "MiYOSMART", "signal": "clinico-especializado", "confidence": "high"}
+    ],
+    "warnings": [
+      "trade names proprietarios exigem mapa para indices canonicos",
+      "ha mistura de catalogo tecnico, processo produtivo, garantia e preco",
+      "tabela de preco deve ser tratada em camada separada",
+      "nomenclatura varia entre linhas e documentos",
+      "a equivalencia entre materiais proprietarios e indices ainda nao esta confiavel"
+    ]
+  }
+}

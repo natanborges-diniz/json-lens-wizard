@@ -1,0 +1,84 @@
+{
+  "supplier": "Essilor",
+  "source_document": "docs/suppliers/essilor-ago-2025.pdf",
+  "document_label": "Essilor Ago 2025",
+  "status": "initial-structured-extraction",
+  "entities": {
+    "product_families": [
+      {"name": "Varilux XR Pro", "category": "progressiva", "confidence": "high"},
+      {"name": "Varilux XR Track", "category": "progressiva", "confidence": "high"},
+      {"name": "Varilux XR Design", "category": "progressiva", "confidence": "high"},
+      {"name": "Varilux Physio Extensee", "category": "progressiva", "confidence": "medium"},
+      {"name": "Varilux Comfort", "category": "progressiva", "confidence": "high"},
+      {"name": "Varilux Liberty", "category": "progressiva", "confidence": "high"},
+      {"name": "Varilux Digitime", "category": "ocupacional", "confidence": "high"},
+      {"name": "Varilux Roadpilot", "category": "especialidade", "confidence": "medium"},
+      {"name": "Varilux Sport", "category": "especialidade", "confidence": "medium"},
+      {"name": "Varilux Activities", "category": "especialidade", "confidence": "medium"},
+      {"name": "Eyezen Boost", "category": "visao-simples", "confidence": "high"},
+      {"name": "Eyezen Start", "category": "visao-simples", "confidence": "high"},
+      {"name": "Eyezen Kids", "category": "visao-simples", "confidence": "medium"},
+      {"name": "Kodak Unique Infinite", "category": "progressiva", "confidence": "high"},
+      {"name": "Kodak Precise UHD", "category": "progressiva", "confidence": "medium"},
+      {"name": "Kodak Single", "category": "visao-simples", "confidence": "medium"},
+      {"name": "Kodak City", "category": "ocupacional", "confidence": "medium"},
+      {"name": "Stellest", "category": "controle-miopia", "confidence": "high"},
+      {"name": "Stellest Sun", "category": "controle-miopia", "confidence": "medium"},
+      {"name": "Transitions Gen S", "category": "fotocromatica", "confidence": "high"}
+    ],
+    "materials": [
+      {"name": "Orma 1.50", "refractive_index": "1.50", "confidence": "high"},
+      {"name": "Airwear Poly", "refractive_index": "poly", "confidence": "medium"},
+      {"name": "Stylis 1.67", "refractive_index": "1.67", "confidence": "high"},
+      {"name": "Stylis 1.74", "refractive_index": "1.74", "confidence": "high"}
+    ],
+    "treatments": [
+      {"name": "Crizal Sapphire HR", "type": "antirreflexo", "confidence": "high"},
+      {"name": "Crizal Rock", "type": "antirreflexo", "confidence": "high"},
+      {"name": "Crizal EasyPro", "type": "antirreflexo", "confidence": "high"},
+      {"name": "Crizal Prevencia", "type": "protecao", "confidence": "medium"}
+    ],
+    "filters": [
+      {"name": "Blue UV Filter", "type": "blue-uv", "confidence": "high"},
+      {"name": "Transitions Gen S", "type": "fotocromatico", "confidence": "high"}
+    ],
+    "technologies": [
+      {"name": "Nanoptix", "confidence": "medium"},
+      {"name": "Xtend", "confidence": "medium"},
+      {"name": "XR-motion", "confidence": "medium"},
+      {"name": "Dual Booster", "confidence": "medium"},
+      {"name": "Pupillizer", "confidence": "medium"},
+      {"name": "W.A.V.E 2.0", "confidence": "medium"},
+      {"name": "Path Optimizer", "confidence": "medium"},
+      {"name": "Essilor Fit Eyecode", "confidence": "high"},
+      {"name": "CVP", "confidence": "low"}
+    ],
+    "benefit_claims": [
+      {"text": "visao de alta definicao em qualquer condicao de luz", "type": "performance", "confidence": "medium"},
+      {"text": "maior nitidez e contraste visual", "type": "performance", "confidence": "medium"},
+      {"text": "adaptacao imediata", "type": "adaptacao", "confidence": "medium"},
+      {"text": "reducao de fadiga visual", "type": "conforto", "confidence": "medium"},
+      {"text": "mais facil de limpar", "type": "durabilidade", "confidence": "high"},
+      {"text": "resistencia a riscos", "type": "durabilidade", "confidence": "high"},
+      {"text": "bloqueio UV e filtro blue uv", "type": "protecao", "confidence": "medium"},
+      {"text": "desacelera a progressao da miopia", "type": "clinico", "confidence": "medium"}
+    ],
+    "commercial_signals": [
+      {"family": "Varilux XR Pro", "signal": "premium", "confidence": "high"},
+      {"family": "Varilux XR Track", "signal": "premium-intermediario", "confidence": "medium"},
+      {"family": "Varilux XR Design", "signal": "intermediario", "confidence": "medium"},
+      {"family": "Crizal Sapphire HR", "signal": "tratamento-premium", "confidence": "high"},
+      {"family": "Crizal Rock", "signal": "tratamento-premium", "confidence": "high"},
+      {"family": "Eyezen Start", "signal": "entrada", "confidence": "medium"},
+      {"family": "Eyezen Boost", "signal": "intermediario", "confidence": "medium"},
+      {"family": "Transitions Gen S", "signal": "upgrade-premium", "confidence": "high"}
+    ],
+    "warnings": [
+      "precos estao em matrizes complexas e ainda nao foram tabulados",
+      "disponibilidade depende de combinacoes produto x material x tratamento x cor",
+      "claims promocionais precisam ser separados de evidencias tecnicas",
+      "siglas e simbolos exigem glossario proprio",
+      "documento mistura portfolio, promocao, preco e notas operacionais"
+    ]
+  }
+}

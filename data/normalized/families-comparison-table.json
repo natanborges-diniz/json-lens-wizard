@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.2",
+  "status": "draft-families-comparison",
+  "families": [
+    {"supplier": "Essilor", "original_family_name": "Varilux XR Pro", "canonical_brand": "Varilux", "category_clinical": "progressiva", "category_commercial": "premium", "positioning_signal": "premium", "confidence": "high"},
+    {"supplier": "Essilor", "original_family_name": "Varilux XR Track", "canonical_brand": "Varilux", "category_clinical": "progressiva", "category_commercial": "premium-intermediario", "positioning_signal": "premium-intermediario", "confidence": "medium"},
+    {"supplier": "Essilor", "original_family_name": "Eyezen Start", "canonical_brand": "Eyezen", "category_clinical": "visao-simples", "category_commercial": "entrada", "positioning_signal": "entrada", "confidence": "medium"},
+    {"supplier": "Essilor", "original_family_name": "Stellest", "canonical_brand": "Stellest", "category_clinical": "controle-miopia", "category_commercial": "clinico-especializado", "positioning_signal": "clinico-especializado", "confidence": "high"},
+
+    {"supplier": "Hoya", "original_family_name": "Hoyalux iD MySelf", "canonical_brand": "Hoyalux", "category_clinical": "progressiva", "category_commercial": "premium", "positioning_signal": "premium", "confidence": "high"},
+    {"supplier": "Hoya", "original_family_name": "Hoyalux iD LifeStyle 4i", "canonical_brand": "Hoyalux", "category_clinical": "progressiva", "category_commercial": "intermediario-premium", "positioning_signal": "intermediario-premium", "confidence": "medium"},
+    {"supplier": "Hoya", "original_family_name": "Hilux", "canonical_brand": "Hilux", "category_clinical": "visao-simples", "category_commercial": "entrada", "positioning_signal": "entrada", "confidence": "medium"},
+    {"supplier": "Hoya", "original_family_name": "MiYOSMART", "canonical_brand": "MiYOSMART", "category_clinical": "controle-miopia", "category_commercial": "clinico-especializado", "positioning_signal": "clinico-especializado", "confidence": "high"},
+
+    {"supplier": "Zeiss", "original_family_name": "SmartLife Individual 3", "canonical_brand": "SmartLife", "category_clinical": "progressiva", "category_commercial": "premium", "positioning_signal": "premium", "confidence": "high"},
+    {"supplier": "Zeiss", "original_family_name": "Light 2", "canonical_brand": "Light", "category_clinical": "progressiva", "category_commercial": "intermediario", "positioning_signal": "intermediario", "confidence": "medium"},
+    {"supplier": "Zeiss", "original_family_name": "ClearView", "canonical_brand": "ClearView", "category_clinical": "visao-simples", "category_commercial": "entrada-intermediario", "positioning_signal": "entrada-intermediario", "confidence": "medium"},
+    {"supplier": "Zeiss", "original_family_name": "MyoCare", "canonical_brand": "MyoCare", "category_clinical": "controle-miopia", "category_commercial": "clinico-especializado", "positioning_signal": "clinico-especializado", "confidence": "high"},
+    {"supplier": "Zeiss", "original_family_name": "OfficeLens", "canonical_brand": "OfficeLens", "category_clinical": "ocupacional", "category_commercial": "ocupacional-especializado", "positioning_signal": "ocupacional-especializado", "confidence": "high"}
+  ]
+}

@@ -1,0 +1,150 @@
+{
+  "schema_version": "0.1",
+  "status": "draft-materials-canonical-map",
+  "materials": [
+    {
+      "supplier": "Essilor",
+      "original_material_name": "Orma 1.50",
+      "canonical_material_name": "organico 1.50",
+      "canonical_family": "standard-organic",
+      "canonical_index": "1.50",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Essilor",
+      "original_material_name": "Airwear Poly",
+      "canonical_material_name": "policarbonato",
+      "canonical_family": "polycarbonate",
+      "canonical_index": "poly",
+      "confidence": "medium",
+      "notes": ["confirmar nomenclatura final no documento"]
+    },
+    {
+      "supplier": "Essilor",
+      "original_material_name": "Stylis 1.67",
+      "canonical_material_name": "alto indice 1.67",
+      "canonical_family": "high-index",
+      "canonical_index": "1.67",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Essilor",
+      "original_material_name": "Stylis 1.74",
+      "canonical_material_name": "alto indice 1.74",
+      "canonical_family": "high-index",
+      "canonical_index": "1.74",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_material_name": "1.50",
+      "canonical_material_name": "organico 1.50",
+      "canonical_family": "standard-organic",
+      "canonical_index": "1.50",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_material_name": "1.53",
+      "canonical_material_name": "organico 1.53",
+      "canonical_family": "standard-organic",
+      "canonical_index": "1.53",
+      "confidence": "medium",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_material_name": "1.59",
+      "canonical_material_name": "policarbonato 1.59",
+      "canonical_family": "polycarbonate",
+      "canonical_index": "1.59",
+      "confidence": "low",
+      "notes": ["confirmar equivalencia exata no documento"]
+    },
+    {
+      "supplier": "Hoya",
+      "original_material_name": "1.60",
+      "canonical_material_name": "alto indice 1.60",
+      "canonical_family": "mid-high-index",
+      "canonical_index": "1.60",
+      "confidence": "medium",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_material_name": "1.67",
+      "canonical_material_name": "alto indice 1.67",
+      "canonical_family": "high-index",
+      "canonical_index": "1.67",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_material_name": "1.74",
+      "canonical_material_name": "alto indice 1.74",
+      "canonical_family": "high-index",
+      "canonical_index": "1.74",
+      "confidence": "high",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_material_name": "PNX / Trivex",
+      "canonical_material_name": "trivex",
+      "canonical_family": "trivex",
+      "canonical_index": "trivex",
+      "confidence": "medium",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_material_name": "Policarbonato",
+      "canonical_material_name": "policarbonato",
+      "canonical_family": "polycarbonate",
+      "canonical_index": "poly",
+      "confidence": "medium",
+      "notes": []
+    },
+    {
+      "supplier": "Hoya",
+      "original_material_name": "EYAS",
+      "canonical_material_name": null,
+      "canonical_family": null,
+      "canonical_index": null,
+      "confidence": "low",
+      "notes": ["trade name proprietario; mapear depois"]
+    },
+    {
+      "supplier": "Hoya",
+      "original_material_name": "EYAS 2.0",
+      "canonical_material_name": null,
+      "canonical_family": null,
+      "canonical_index": null,
+      "confidence": "low",
+      "notes": ["trade name proprietario; mapear depois"]
+    },
+    {
+      "supplier": "Hoya",
+      "original_material_name": "EYNOA",
+      "canonical_material_name": null,
+      "canonical_family": null,
+      "canonical_index": null,
+      "confidence": "low",
+      "notes": ["trade name proprietario; mapear depois"]
+    },
+    {
+      "supplier": "Hoya",
+      "original_material_name": "EYVIA",
+      "canonical_material_name": null,
+      "canonical_family": null,
+      "canonical_index": null,
+      "confidence": "low",
+      "notes": ["trade name proprietario; mapear depois"]
+    }
+  ]
+}

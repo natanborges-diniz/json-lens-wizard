@@ -1,0 +1,100 @@
+{
+  "schema_version": "0.2",
+  "status": "initial-multi-supplier-seed",
+  "suppliers": [
+    {
+      "supplier_name": "Essilor",
+      "families": [
+        {
+          "original_family_name": "Varilux XR Pro",
+          "canonical_brand": "Varilux",
+          "category_clinical": "progressiva",
+          "category_commercial": "premium",
+          "commercial_positioning": "premium",
+          "extraction_confidence": "high"
+        },
+        {
+          "original_family_name": "Eyezen Start",
+          "canonical_brand": "Eyezen",
+          "category_clinical": "visao-simples",
+          "category_commercial": "entrada",
+          "commercial_positioning": "entrada",
+          "extraction_confidence": "medium"
+        },
+        {
+          "original_family_name": "Stellest",
+          "canonical_brand": "Stellest",
+          "category_clinical": "controle-miopia",
+          "category_commercial": "clinico-especializado",
+          "commercial_positioning": "clinico-especializado",
+          "extraction_confidence": "high"
+        }
+      ]
+    },
+    {
+      "supplier_name": "Hoya",
+      "families": [
+        {
+          "original_family_name": "Hoyalux iD MySelf",
+          "canonical_brand": "Hoyalux",
+          "category_clinical": "progressiva",
+          "category_commercial": "premium",
+          "commercial_positioning": "premium",
+          "extraction_confidence": "high"
+        },
+        {
+          "original_family_name": "Hilux",
+          "canonical_brand": "Hilux",
+          "category_clinical": "visao-simples",
+          "category_commercial": "entrada",
+          "commercial_positioning": "entrada",
+          "extraction_confidence": "medium"
+        },
+        {
+          "original_family_name": "MiYOSMART",
+          "canonical_brand": "MiYOSMART",
+          "category_clinical": "controle-miopia",
+          "category_commercial": "clinico-especializado",
+          "commercial_positioning": "clinico-especializado",
+          "extraction_confidence": "high"
+        }
+      ]
+    },
+    {
+      "supplier_name": "Zeiss",
+      "families": [
+        {
+          "original_family_name": "SmartLife Individual 3",
+          "canonical_brand": "SmartLife",
+          "category_clinical": "progressiva",
+          "category_commercial": "premium",
+          "commercial_positioning": "premium",
+          "extraction_confidence": "high"
+        },
+        {
+          "original_family_name": "ClearView",
+          "canonical_brand": "ClearView",
+          "category_clinical": "visao-simples",
+          "category_commercial": "entrada-intermediario",
+          "commercial_positioning": "entrada-intermediario",
+          "extraction_confidence": "medium"
+        },
+        {
+          "original_family_name": "MyoCare",
+          "canonical_brand": "MyoCare",
+          "category_clinical": "controle-miopia",
+          "category_commercial": "clinico-especializado",
+          "commercial_positioning": "clinico-especializado",
+          "extraction_confidence": "high"
+        }
+      ]
+    }
+  ],
+  "governance": {
+    "notes": [
+      "seed inicial para comparação entre 3 fornecedores",
+      "nao usar como base final de recomendação",
+      "comparação ainda é de alto nível e não de equivalência fina"
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "schema_version": "0.1",
+  "status": "price-pipeline-seed",
+  "rows": [
+    {
+      "supplier": "Hoya",
+      "source_document": "docs/suppliers/hoyalux-d-2.pdf",
+      "family": null,
+      "material": null,
+      "treatment": null,
+      "filter": null,
+      "index": null,
+      "price_value": 2050.00,
+      "currency": "BRL",
+      "effective_date": "2025-04",
+      "confidence": "low",
+      "notes": ["valor isolado sem chave de combinacao confirmada"]
+    },
+    {
+      "supplier": "Hoya",
+      "source_document": "docs/suppliers/hoyalux-d-2.pdf",
+      "family": null,
+      "material": null,
+      "treatment": null,
+      "filter": null,
+      "index": null,
+      "price_value": 1840.00,
+      "currency": "BRL",
+      "effective_date": "2025-04",
+      "confidence": "low",
+      "notes": ["valor isolado sem chave de combinacao confirmada"]
+    },
+    {
+      "supplier": "Hoya",
+      "source_document": "docs/suppliers/hoyalux-d-2.pdf",
+      "family": null,
+      "material": null,
+      "treatment": null,
+      "filter": null,
+      "index": null,
+      "price_value": 3078.00,
+      "currency": "BRL",
+      "effective_date": "2025-04",
+      "confidence": "low",
+      "notes": ["valor isolado sem chave de combinacao confirmada"]
+    }
+  ]
+}
