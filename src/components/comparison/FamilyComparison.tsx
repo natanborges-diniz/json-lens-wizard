@@ -108,17 +108,39 @@ const FamilyComparison = ({ comparisonGroups, clinicalType, isLoading }: Props) 
 
         return (
           <div key={group.canonicalId}>
-            {/* Canonical tier header */}
+            {/* Canonical tier header with visual positioning */}
             <div className={`flex items-center gap-3 mb-4 px-4 py-2.5 rounded-lg ${tierBg[tier] || ''}`}>
-              <h2 className="text-lg font-bold">{group.canonicalName}</h2>
+              <CommercialPositioningScale activeTier={tier as any} compact showLabels={false} />
+              <div className="flex-1">
+                <h2 className="text-lg font-bold">{group.canonicalName}</h2>
+                {group.description && (
+                  <p className="text-xs text-muted-foreground mt-0.5">{group.description}</p>
+                )}
+              </div>
               <Badge variant="secondary" className="text-xs">{tierLabels[tier] || tier}</Badge>
-              <span className="text-xs text-muted-foreground ml-auto">
+              <span className="text-xs text-muted-foreground">
                 {Object.keys(group.suppliers).length} fornecedores
               </span>
             </div>
 
-            {group.description && (
-              <p className="text-sm text-muted-foreground mb-4 px-4">{group.description}</p>
+            {/* Field of vision comparison for progressive lenses */}
+            {clinicalType === 'PROGRESSIVA' && (
+              <div className="flex justify-center gap-6 mb-4 py-3 bg-muted/30 rounded-lg">
+                {SUPPORTED_SUPPLIERS.map(supplier => {
+                  const sd = group.suppliers[supplier.code];
+                  if (!sd) return null;
+                  const zones = ZONE_PRESETS[tier] || ZONE_PRESETS.comfort;
+                  return (
+                    <FieldOfVisionDiagram
+                      key={supplier.code}
+                      label={sd.displayName || sd.originalName}
+                      zones={zones}
+                      tier={tier as any}
+                      compact
+                    />
+                  );
+                })}
+              </div>
             )}
 
             {/* Supplier columns */}
