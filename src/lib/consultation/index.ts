@@ -76,15 +76,14 @@ import { buildCommercialDecisionModel, type CommercialDecisionModel } from './co
 import { generateRecommendations, type RecommendationResult, type RecommendationInput } from '@/lib/recommendationEngine';
 
 export interface ConsultationPipelineResult {
-  /** Validation result */
   validation: { valid: boolean; missing: string[]; warnings: string[] };
-  /** Availability report (FOT, Rx, constraints) */
   availability: AvailabilityReport | null;
-  /** Recommendation engine result */
+  /** Treatment compatibility reports per family */
+  treatmentReports: FamilyTreatmentReport[];
   recommendations: RecommendationResult | null;
-  /** Commercial decision model (upgrade paths, positioning) */
   commercialModel: CommercialDecisionModel | null;
-  /** Pipeline metadata */
+  /** Benefits loaded from DB for narrative use */
+  benefits: BenefitRecord[];
   meta: {
     pipelineStartMs: number;
     pipelineEndMs: number;
@@ -92,6 +91,7 @@ export interface ConsultationPipelineResult {
     suppliersLoaded: string[];
     familiesLoaded: number;
     pricesLoaded: number;
+    treatmentsLoaded: number;
   };
 }
 
