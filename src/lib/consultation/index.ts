@@ -63,6 +63,14 @@ export {
   type CommercialDecisionModel,
 } from './commercialDecisionPrep';
 
+// Governance Filter
+export {
+  applyGovernanceFilter,
+  isEligibleForRecommendation,
+  type GovernanceRecord,
+  type GovernanceFilterResult,
+} from './governanceFilter';
+
 // ============================================
 // ORCHESTRATOR
 // ============================================
