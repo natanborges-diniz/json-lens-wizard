@@ -110,8 +110,10 @@ export async function runConsultationPipeline(
     return {
       validation,
       availability: null,
+      treatmentReports: [],
       recommendations: null,
       commercialModel: null,
+      benefits: [],
       meta: {
         pipelineStartMs: startMs,
         pipelineEndMs: Date.now(),
@@ -119,6 +121,7 @@ export async function runConsultationPipeline(
         suppliersLoaded: [],
         familiesLoaded: 0,
         pricesLoaded: 0,
+        treatmentsLoaded: 0,
       },
     };
   }
@@ -128,10 +131,10 @@ export async function runConsultationPipeline(
     ? input.constraints.allowedSuppliers
     : undefined;
 
-  const bridgeData = await loadSupplierDataForEngine(
-    input.clinicalType,
-    supplierCodes
-  );
+  const [bridgeData, allTreatments] = await Promise.all([
+    loadSupplierDataForEngine(input.clinicalType, supplierCodes),
+    loadTreatments(supplierCodes),
+  ]);
 
   // Step 3: Resolve availability (FOT, Rx, constraints)
   const availability = resolveFullAvailability(
@@ -141,6 +144,22 @@ export async function runConsultationPipeline(
     input.frame || null,
     input.constraints
   );
+
+  // Step 3b: Resolve treatment compatibility per family
+  const treatmentReports: FamilyTreatmentReport[] = [];
+  const defaultMaterialIndex = input.constraints.preferredMaterialIndex || '1.50';
+
+  for (const family of bridgeData.families) {
+    const familyTreatmentIds = (family as any).treatment_ids || [];
+    const report = resolveFamilyTreatments(
+      family.id,
+      familyTreatmentIds,
+      defaultMaterialIndex,
+      family.supplier,
+      allTreatments
+    );
+    treatmentReports.push(report);
+  }
 
   // Step 4: Run recommendation engine
   const engineInput: RecommendationInput = {
@@ -164,8 +183,7 @@ export async function runConsultationPipeline(
 
   const recommendations = generateRecommendations(engineInput);
 
-  // Step 5: Build commercial decision model
-  // Collect all scored families from tiers
+  // Step 5: Build commercial decision model with benefits
   const allScored = Object.values(recommendations.tiers).flatMap(tier => {
     const families = [];
     if (tier.primary) families.push(tier.primary);
@@ -186,6 +204,7 @@ export async function runConsultationPipeline(
   console.log(
     `[ConsultationPipeline] Completed in ${endMs - startMs}ms | ` +
     `${bridgeData.meta.familiesLoaded} families, ${bridgeData.meta.pricesLoaded} prices, ` +
+    `${allTreatments.length} treatments, ` +
     `${availability.stats.totalAvailable} available, ` +
     `${recommendations.stats.totalEligible} eligible`
   );
@@ -193,8 +212,10 @@ export async function runConsultationPipeline(
   return {
     validation,
     availability,
+    treatmentReports,
     recommendations,
     commercialModel,
+    benefits: bridgeData.benefits,
     meta: {
       pipelineStartMs: startMs,
       pipelineEndMs: endMs,
@@ -202,6 +223,7 @@ export async function runConsultationPipeline(
       suppliersLoaded: bridgeData.meta.suppliers,
       familiesLoaded: bridgeData.meta.familiesLoaded,
       pricesLoaded: bridgeData.meta.pricesLoaded,
+      treatmentsLoaded: allTreatments.length,
     },
   };
 }
