@@ -194,11 +194,19 @@ const ComparisonHub = () => {
           </TabsList>
 
           <TabsContent value="families">
-            <FamilyComparison 
-              comparisonGroups={comparisonGroups || []}
-              clinicalType={clinicalFilter}
-              isLoading={isLoading}
-            />
+            {viewMode === 'counter' ? (
+              <CounterModeView
+                comparisonGroups={comparisonGroups || []}
+                clinicalType={clinicalFilter}
+                isLoading={isLoading}
+              />
+            ) : (
+              <FamilyComparison 
+                comparisonGroups={comparisonGroups || []}
+                clinicalType={clinicalFilter}
+                isLoading={isLoading}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="materials">
