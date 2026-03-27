@@ -11,6 +11,7 @@ import type { ComparisonGroup } from '@/pages/ComparisonHub';
 import { Cpu, Zap } from 'lucide-react';
 import { CommercialPositioningScale } from '@/components/visuals';
 import FieldOfVisionDiagram, { ZONE_PRESETS } from '@/components/visuals/FieldOfVisionDiagram';
+import { ConfidenceBadge } from '@/components/audit/ConfidenceBadge';
 
 interface Props {
   comparisonGroups: ComparisonGroup[];
@@ -179,7 +180,11 @@ const FamilyComparison = ({ comparisonGroups, clinicalType, isLoading }: Props) 
                         <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: supplier.color }}>
                           {supplier.name}
                         </span>
-                        <Badge variant="outline" className="text-[10px]">{supplierData.confidence}</Badge>
+                        <ConfidenceBadge
+                          confidence={supplierData.confidence as any}
+                          reviewStatus={supplierData.reviewStatus as any}
+                          compact
+                        />
                       </div>
                       <h3 className="font-bold text-base leading-tight">
                         {supplierData.displayName || supplierData.originalName}
