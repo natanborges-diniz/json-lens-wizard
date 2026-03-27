@@ -4,11 +4,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Layers, Droplets, Sparkles } from 'lucide-react';
+import { ArrowLeft, Layers, Droplets, Sparkles, Store, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import FamilyComparison from '@/components/comparison/FamilyComparison';
 import MaterialComparison from '@/components/comparison/MaterialComparison';
 import TreatmentComparison from '@/components/comparison/TreatmentComparison';
+import CounterModeView from '@/components/comparison/CounterModeView';
 
 export interface ComparisonGroup {
   canonicalId: string;
@@ -33,6 +34,7 @@ export interface ComparisonGroup {
 const ComparisonHub = () => {
   const navigate = useNavigate();
   const [clinicalFilter, setClinicalFilter] = useState<string>('PROGRESSIVA');
+  const [viewMode, setViewMode] = useState<'technical' | 'counter'>('counter');
 
   // Query canonical families with their equivalences
   const { data: comparisonGroups, isLoading } = useQuery({
