@@ -4,11 +4,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Layers, Droplets, Sparkles } from 'lucide-react';
+import { ArrowLeft, Layers, Droplets, Sparkles, Store, BarChart3 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import FamilyComparison from '@/components/comparison/FamilyComparison';
 import MaterialComparison from '@/components/comparison/MaterialComparison';
 import TreatmentComparison from '@/components/comparison/TreatmentComparison';
+import CounterModeView from '@/components/comparison/CounterModeView';
 
 export interface ComparisonGroup {
   canonicalId: string;
@@ -33,6 +34,7 @@ export interface ComparisonGroup {
 const ComparisonHub = () => {
   const navigate = useNavigate();
   const [clinicalFilter, setClinicalFilter] = useState<string>('PROGRESSIVA');
+  const [viewMode, setViewMode] = useState<'technical' | 'counter'>('counter');
 
   // Query canonical families with their equivalences
   const { data: comparisonGroups, isLoading } = useQuery({
@@ -142,6 +144,25 @@ const ComparisonHub = () => {
               Essilor × Hoya × ZEISS — Comparação canônica lado a lado
             </p>
           </div>
+          {/* View mode toggle */}
+          <div className="flex items-center border rounded-lg overflow-hidden">
+            <Button
+              variant={viewMode === 'counter' ? 'default' : 'ghost'}
+              size="sm"
+              className="rounded-none gap-1.5"
+              onClick={() => setViewMode('counter')}
+            >
+              <Store className="h-4 w-4" /> Balcão
+            </Button>
+            <Button
+              variant={viewMode === 'technical' ? 'default' : 'ghost'}
+              size="sm"
+              className="rounded-none gap-1.5"
+              onClick={() => setViewMode('technical')}
+            >
+              <BarChart3 className="h-4 w-4" /> Técnico
+            </Button>
+          </div>
           <Select value={clinicalFilter} onValueChange={setClinicalFilter}>
             <SelectTrigger className="w-48">
               <SelectValue />
@@ -173,11 +194,19 @@ const ComparisonHub = () => {
           </TabsList>
 
           <TabsContent value="families">
-            <FamilyComparison 
-              comparisonGroups={comparisonGroups || []}
-              clinicalType={clinicalFilter}
-              isLoading={isLoading}
-            />
+            {viewMode === 'counter' ? (
+              <CounterModeView
+                comparisonGroups={comparisonGroups || []}
+                clinicalType={clinicalFilter}
+                isLoading={isLoading}
+              />
+            ) : (
+              <FamilyComparison 
+                comparisonGroups={comparisonGroups || []}
+                clinicalType={clinicalFilter}
+                isLoading={isLoading}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="materials">
