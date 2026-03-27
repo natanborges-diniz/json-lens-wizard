@@ -69,8 +69,9 @@ export {
 
 import type { ConsultationInput } from './consultationSchema';
 import { validateConsultationInput, deriveUsageGoals, createDefaultBudgetContext, createDefaultConstraints } from './consultationSchema';
-import { loadSupplierDataForEngine } from './supplierBridge';
+import { loadSupplierDataForEngine, type BenefitRecord } from './supplierBridge';
 import { resolveFullAvailability, type AvailabilityReport } from './availabilityResolver';
+import { loadTreatments, filterTreatmentsByConstraints, resolveFamilyTreatments, type TreatmentRecord, type FamilyTreatmentReport } from './treatmentResolver';
 import { buildCommercialDecisionModel, type CommercialDecisionModel } from './commercialDecisionPrep';
 import { generateRecommendations, type RecommendationResult, type RecommendationInput } from '@/lib/recommendationEngine';
 
