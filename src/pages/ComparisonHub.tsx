@@ -26,6 +26,7 @@ export interface ComparisonGroup {
     targetAudience: string | null;
     valueAxes: Record<string, number>;
     confidence: string;
+    reviewStatus: string;
     technologyIds: string[];
     benefitIds: string[];
   }>;
@@ -83,6 +84,7 @@ const ComparisonHub = () => {
               targetAudience: sf.target_audience,
               valueAxes: (sf.value_axes as Record<string, number>) || {},
               confidence: sf.confidence,
+              reviewStatus: sf.review_status,
               technologyIds: sf.technology_ids || [],
               benefitIds: sf.benefit_ids || [],
             };
