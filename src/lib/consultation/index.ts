@@ -147,7 +147,7 @@ export async function runConsultationPipeline(
 
   // Step 3b: Resolve treatment compatibility per family
   const treatmentReports: FamilyTreatmentReport[] = [];
-  const defaultMaterialIndex = input.constraints.preferredMaterialIndex || '1.50';
+  const defaultMaterialIndex = input.constraints.requiredMaterialIndex || '1.50';
 
   for (const family of bridgeData.families) {
     const familyTreatmentIds = (family as any).treatment_ids || [];
