@@ -144,6 +144,25 @@ const ComparisonHub = () => {
               Essilor × Hoya × ZEISS — Comparação canônica lado a lado
             </p>
           </div>
+          {/* View mode toggle */}
+          <div className="flex items-center border rounded-lg overflow-hidden">
+            <Button
+              variant={viewMode === 'counter' ? 'default' : 'ghost'}
+              size="sm"
+              className="rounded-none gap-1.5"
+              onClick={() => setViewMode('counter')}
+            >
+              <Store className="h-4 w-4" /> Balcão
+            </Button>
+            <Button
+              variant={viewMode === 'technical' ? 'default' : 'ghost'}
+              size="sm"
+              className="rounded-none gap-1.5"
+              onClick={() => setViewMode('technical')}
+            >
+              <BarChart3 className="h-4 w-4" /> Técnico
+            </Button>
+          </div>
           <Select value={clinicalFilter} onValueChange={setClinicalFilter}>
             <SelectTrigger className="w-48">
               <SelectValue />
