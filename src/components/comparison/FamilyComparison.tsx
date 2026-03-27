@@ -9,6 +9,8 @@ import { SUPPORTED_SUPPLIERS, VALUE_AXES_LABELS } from '@/types/supplier';
 import type { ValueAxes } from '@/types/supplier';
 import type { ComparisonGroup } from '@/pages/ComparisonHub';
 import { Cpu, Zap } from 'lucide-react';
+import { CommercialPositioningScale } from '@/components/visuals';
+import FieldOfVisionDiagram, { ZONE_PRESETS } from '@/components/visuals/FieldOfVisionDiagram';
 
 interface Props {
   comparisonGroups: ComparisonGroup[];
