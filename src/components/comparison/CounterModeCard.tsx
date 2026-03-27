@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/tooltip';
 import { Zap, Target, MessageSquare, Sparkles } from 'lucide-react';
 import type { ValueAxes } from '@/types/supplier';
+import { ConfidenceBadge } from '@/components/audit/ConfidenceBadge';
 
 interface SupplierEntry {
   familyId: string;
@@ -24,6 +25,7 @@ interface SupplierEntry {
   targetAudience: string | null;
   valueAxes: Partial<ValueAxes>;
   confidence: string;
+  reviewStatus: string;
   technologyIds: string[];
   benefitIds: string[];
 }
@@ -105,9 +107,16 @@ const CounterModeCard = ({
       <CardContent className="pt-4 pb-3 px-4 space-y-2.5">
         {/* Header: supplier + name */}
         <div>
-          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: supplierColor }}>
-            {supplierName}
-          </span>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: supplierColor }}>
+              {supplierName}
+            </span>
+            <ConfidenceBadge
+              confidence={data.confidence as any}
+              reviewStatus={data.reviewStatus as any}
+              compact
+            />
+          </div>
           <h3 className="font-bold text-sm leading-tight mt-0.5">
             {data.displayName || data.originalName}
           </h3>
