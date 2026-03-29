@@ -46,61 +46,66 @@ export async function loadPricesForFamilies(
 ): Promise<Map<string, ResolvedPrice[]>> {
   if (!familyIds.length) return new Map();
 
-  // Primary: read from supplier_final_prices (L4 official)
+  // Helper to build map from generic rows
+  const buildMap = (rows: Array<{
+    id: string; supplier_code: string; family_id: string | null;
+    material_index: string; treatment_combo: string[] | null;
+    lens_state: string; price_value: number; confidence: string;
+    currency?: string;
+  }>) => {
+    const map = new Map<string, ResolvedPrice[]>();
+    for (const row of rows) {
+      const familyId = row.family_id;
+      if (!familyId) continue;
+      const resolved: ResolvedPrice = {
+        id: row.id,
+        supplierCode: row.supplier_code,
+        familyId,
+        materialIndex: row.material_index,
+        treatmentCombo: row.treatment_combo || [],
+        lensState: row.lens_state,
+        priceValue: row.price_value,
+        currency: row.currency || 'BRL',
+        confidence: row.confidence,
+      };
+      const existing = map.get(familyId) || [];
+      existing.push(resolved);
+      map.set(familyId, existing);
+    }
+    return map;
+  };
+
+  // Primary: supplier_final_prices (L4 official)
   const { data: finalData, error: finalError } = await supabase
     .from('supplier_final_prices')
-    .select('*')
+    .select('id, supplier_code, family_id, material_index, treatment_combo, lens_state, price_value, confidence')
     .eq('active', true)
     .in('family_id', familyIds);
 
-  // Fallback: if supplier_final_prices is empty, try legacy supplier_prices
-  let rows = finalData || [];
-  let source = 'supplier_final_prices';
-
-  if (!finalError && rows.length === 0) {
-    console.warn('[PriceResolver] No rows in supplier_final_prices, falling back to supplier_prices');
-    const { data: legacyData, error: legacyError } = await supabase
-      .from('supplier_prices')
-      .select('*')
-      .eq('active', true)
-      .in('family_id', familyIds);
-
-    if (!legacyError && legacyData?.length) {
-      rows = legacyData;
-      source = 'supplier_prices (fallback)';
-    }
+  if (!finalError && finalData && finalData.length > 0) {
+    console.log(`[PriceResolver] Loaded ${finalData.length} prices from supplier_final_prices`);
+    return buildMap(finalData.map(r => ({ ...r, price_value: r.price_value ?? 0, confidence: r.confidence as string })));
   }
 
   if (finalError) {
-    console.error('[PriceResolver] Failed to load final prices:', finalError);
+    console.error('[PriceResolver] supplier_final_prices error:', finalError);
+  }
+
+  // Fallback: legacy supplier_prices
+  console.warn('[PriceResolver] Falling back to supplier_prices');
+  const { data: legacyData, error: legacyError } = await supabase
+    .from('supplier_prices')
+    .select('id, supplier_code, family_id, material_index, treatment_combo, lens_state, price_value, confidence, currency')
+    .eq('active', true)
+    .in('family_id', familyIds);
+
+  if (legacyError) {
+    console.error('[PriceResolver] Failed to load legacy prices:', legacyError);
     return new Map();
   }
 
-  console.log(`[PriceResolver] Loaded ${rows.length} prices from ${source}`);
-
-  const map = new Map<string, ResolvedPrice[]>();
-  for (const row of rows) {
-    const familyId = row.family_id;
-    if (!familyId) continue;
-
-    const resolved: ResolvedPrice = {
-      id: row.id,
-      supplierCode: row.supplier_code,
-      familyId,
-      materialIndex: row.material_index,
-      treatmentCombo: row.treatment_combo || [],
-      lensState: row.lens_state,
-      priceValue: row.price_value,
-      currency: (row as any).currency || 'BRL',
-      confidence: row.confidence as string,
-    };
-
-    const existing = map.get(familyId) || [];
-    existing.push(resolved);
-    map.set(familyId, existing);
-  }
-
-  return map;
+  console.log(`[PriceResolver] Loaded ${legacyData?.length || 0} prices from supplier_prices (fallback)`);
+  return buildMap((legacyData || []).map(r => ({ ...r, family_id: r.family_id ?? '', confidence: r.confidence as string })));
 }
 
 /**
