@@ -1093,6 +1093,63 @@ export type Database = {
         }
         Relationships: []
       }
+      supplier_final_prices: {
+        Row: {
+          active: boolean
+          availability: Json | null
+          confidence: string
+          created_at: string
+          description: string | null
+          erp_code: string | null
+          family_id: string
+          id: string
+          lens_state: string
+          material_index: string
+          price_value: number | null
+          source: string
+          supplier_code: string
+          sync_run_id: string | null
+          treatment_combo: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          availability?: Json | null
+          confidence?: string
+          created_at?: string
+          description?: string | null
+          erp_code?: string | null
+          family_id: string
+          id?: string
+          lens_state?: string
+          material_index?: string
+          price_value?: number | null
+          source?: string
+          supplier_code: string
+          sync_run_id?: string | null
+          treatment_combo?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          availability?: Json | null
+          confidence?: string
+          created_at?: string
+          description?: string | null
+          erp_code?: string | null
+          family_id?: string
+          id?: string
+          lens_state?: string
+          material_index?: string
+          price_value?: number | null
+          source?: string
+          supplier_code?: string
+          sync_run_id?: string | null
+          treatment_combo?: string[] | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       supplier_materials: {
         Row: {
           abbe_number: number | null
