@@ -63,6 +63,16 @@ export {
   type CommercialDecisionModel,
 } from './commercialDecisionPrep';
 
+// Price Resolver
+export {
+  loadPricesForFamilies,
+  findBestPrice,
+  buildFamilyPriceSummaries,
+  type ResolvedPrice,
+  type PriceLookupParams,
+  type FamilyPriceSummary,
+} from './priceResolver';
+
 // Governance Filter
 export {
   applyGovernanceFilter,
