@@ -46,37 +46,66 @@ export async function loadPricesForFamilies(
 ): Promise<Map<string, ResolvedPrice[]>> {
   if (!familyIds.length) return new Map();
 
-  const { data, error } = await supabase
-    .from('supplier_prices')
-    .select('*')
+  // Helper to build map from generic rows
+  const buildMap = (rows: Array<{
+    id: string; supplier_code: string; family_id: string | null;
+    material_index: string; treatment_combo: string[] | null;
+    lens_state: string; price_value: number; confidence: string;
+    currency?: string;
+  }>) => {
+    const map = new Map<string, ResolvedPrice[]>();
+    for (const row of rows) {
+      const familyId = row.family_id;
+      if (!familyId) continue;
+      const resolved: ResolvedPrice = {
+        id: row.id,
+        supplierCode: row.supplier_code,
+        familyId,
+        materialIndex: row.material_index,
+        treatmentCombo: row.treatment_combo || [],
+        lensState: row.lens_state,
+        priceValue: row.price_value,
+        currency: row.currency || 'BRL',
+        confidence: row.confidence,
+      };
+      const existing = map.get(familyId) || [];
+      existing.push(resolved);
+      map.set(familyId, existing);
+    }
+    return map;
+  };
+
+  // Primary: supplier_final_prices (L4 official)
+  const { data: finalData, error: finalError } = await supabase
+    .from('supplier_final_prices')
+    .select('id, supplier_code, family_id, material_index, treatment_combo, lens_state, price_value, confidence')
     .eq('active', true)
     .in('family_id', familyIds);
 
-  if (error) {
-    console.error('[PriceResolver] Failed to load prices:', error);
+  if (!finalError && finalData && finalData.length > 0) {
+    console.log(`[PriceResolver] Loaded ${finalData.length} prices from supplier_final_prices`);
+    return buildMap(finalData.map(r => ({ ...r, price_value: r.price_value ?? 0, confidence: r.confidence as string })));
+  }
+
+  if (finalError) {
+    console.error('[PriceResolver] supplier_final_prices error:', finalError);
+  }
+
+  // Fallback: legacy supplier_prices
+  console.warn('[PriceResolver] Falling back to supplier_prices');
+  const { data: legacyData, error: legacyError } = await supabase
+    .from('supplier_prices')
+    .select('id, supplier_code, family_id, material_index, treatment_combo, lens_state, price_value, confidence, currency')
+    .eq('active', true)
+    .in('family_id', familyIds);
+
+  if (legacyError) {
+    console.error('[PriceResolver] Failed to load legacy prices:', legacyError);
     return new Map();
   }
 
-  const map = new Map<string, ResolvedPrice[]>();
-  for (const row of data || []) {
-    const resolved: ResolvedPrice = {
-      id: row.id,
-      supplierCode: row.supplier_code,
-      familyId: row.family_id!,
-      materialIndex: row.material_index,
-      treatmentCombo: row.treatment_combo || [],
-      lensState: row.lens_state,
-      priceValue: row.price_value,
-      currency: row.currency,
-      confidence: row.confidence,
-    };
-
-    const existing = map.get(row.family_id!) || [];
-    existing.push(resolved);
-    map.set(row.family_id!, existing);
-  }
-
-  return map;
+  console.log(`[PriceResolver] Loaded ${legacyData?.length || 0} prices from supplier_prices (fallback)`);
+  return buildMap((legacyData || []).map(r => ({ ...r, family_id: r.family_id ?? '', confidence: r.confidence as string })));
 }
 
 /**
