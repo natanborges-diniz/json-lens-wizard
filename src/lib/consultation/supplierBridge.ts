@@ -193,7 +193,8 @@ async function loadFamilies(
     .eq('active', true);
 
   if (clinicalType) {
-    query = query.eq('clinical_type', clinicalType.toLowerCase());
+    // DB stores uppercase (MONOFOCAL, PROGRESSIVA, etc.)
+    query = query.eq('clinical_type', clinicalType.toUpperCase());
   }
   if (supplierCodes?.length) {
     query = query.in('supplier_code', supplierCodes);
@@ -323,15 +324,22 @@ function convertFamilyToExtended(
 ): FamilyExtended {
   // Map clinical_type string to ClinicalType enum
   const clinicalTypeMap: Record<string, ClinicalType> = {
+    'PROGRESSIVA': 'PROGRESSIVA',
     'progressiva': 'PROGRESSIVA',
-    'visao-simples': 'MONOFOCAL',
+    'MONOFOCAL': 'MONOFOCAL',
     'monofocal': 'MONOFOCAL',
+    'visao-simples': 'MONOFOCAL',
+    'OCUPACIONAL': 'OCUPACIONAL',
     'ocupacional': 'OCUPACIONAL',
+    'BIFOCAL': 'BIFOCAL',
     'bifocal': 'BIFOCAL',
-    'controle-miopia': 'MONOFOCAL', // Myopia control is single vision
+    'CONTROLE_MIOPIA': 'MONOFOCAL',
+    'controle-miopia': 'MONOFOCAL',
+    'ESPECIALIDADE': 'MONOFOCAL',
+    'FOTOCROMATICA': 'MONOFOCAL',
   };
 
-  const resolvedClinicalType = clinicalTypeMap[row.clinical_type.toLowerCase()] || 'MONOFOCAL';
+  const resolvedClinicalType = clinicalTypeMap[row.clinical_type] || clinicalTypeMap[row.clinical_type.toLowerCase()] || 'MONOFOCAL';
 
   // Map tier_position to tier_target
   const tierMap: Record<string, FamilyExtended['tier_target']> = {
