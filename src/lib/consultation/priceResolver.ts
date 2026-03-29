@@ -46,34 +46,58 @@ export async function loadPricesForFamilies(
 ): Promise<Map<string, ResolvedPrice[]>> {
   if (!familyIds.length) return new Map();
 
-  const { data, error } = await supabase
-    .from('supplier_prices')
+  // Primary: read from supplier_final_prices (L4 official)
+  const { data: finalData, error: finalError } = await supabase
+    .from('supplier_final_prices')
     .select('*')
     .eq('active', true)
     .in('family_id', familyIds);
 
-  if (error) {
-    console.error('[PriceResolver] Failed to load prices:', error);
+  // Fallback: if supplier_final_prices is empty, try legacy supplier_prices
+  let rows = finalData || [];
+  let source = 'supplier_final_prices';
+
+  if (!finalError && rows.length === 0) {
+    console.warn('[PriceResolver] No rows in supplier_final_prices, falling back to supplier_prices');
+    const { data: legacyData, error: legacyError } = await supabase
+      .from('supplier_prices')
+      .select('*')
+      .eq('active', true)
+      .in('family_id', familyIds);
+
+    if (!legacyError && legacyData?.length) {
+      rows = legacyData;
+      source = 'supplier_prices (fallback)';
+    }
+  }
+
+  if (finalError) {
+    console.error('[PriceResolver] Failed to load final prices:', finalError);
     return new Map();
   }
 
+  console.log(`[PriceResolver] Loaded ${rows.length} prices from ${source}`);
+
   const map = new Map<string, ResolvedPrice[]>();
-  for (const row of data || []) {
+  for (const row of rows) {
+    const familyId = row.family_id;
+    if (!familyId) continue;
+
     const resolved: ResolvedPrice = {
       id: row.id,
       supplierCode: row.supplier_code,
-      familyId: row.family_id!,
+      familyId,
       materialIndex: row.material_index,
       treatmentCombo: row.treatment_combo || [],
       lensState: row.lens_state,
       priceValue: row.price_value,
-      currency: row.currency,
-      confidence: row.confidence,
+      currency: (row as any).currency || 'BRL',
+      confidence: row.confidence as string,
     };
 
-    const existing = map.get(row.family_id!) || [];
+    const existing = map.get(familyId) || [];
     existing.push(resolved);
-    map.set(row.family_id!, existing);
+    map.set(familyId, existing);
   }
 
   return map;

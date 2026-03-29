@@ -209,8 +209,9 @@ async function loadFamilies(
 }
 
 async function loadPrices(supplierCodes?: string[]): Promise<SupplierPriceRow[]> {
+  // Primary: supplier_final_prices (L4 official)
   let query = supabase
-    .from('supplier_prices')
+    .from('supplier_final_prices')
     .select('*')
     .eq('active', true);
 
@@ -218,7 +219,38 @@ async function loadPrices(supplierCodes?: string[]): Promise<SupplierPriceRow[]>
     query = query.in('supplier_code', supplierCodes);
   }
 
-  const { data, error } = await query;
+  const { data: finalData, error: finalError } = await query;
+
+  if (!finalError && finalData && finalData.length > 0) {
+    console.log(`[SupplierBridge] Loaded ${finalData.length} prices from supplier_final_prices`);
+    // Map supplier_final_prices shape to SupplierPriceRow
+    return finalData.map(row => ({
+      id: row.id,
+      supplier_code: row.supplier_code,
+      family_id: row.family_id,
+      material_index: row.material_index,
+      treatment_combo: row.treatment_combo || [],
+      lens_state: row.lens_state,
+      price_value: row.price_value ?? 0,
+      currency: 'BRL',
+      effective_date: row.created_at,
+      confidence: row.confidence,
+      active: row.active,
+    })) as SupplierPriceRow[];
+  }
+
+  // Fallback: legacy supplier_prices
+  console.warn('[SupplierBridge] Falling back to supplier_prices');
+  let legacyQuery = supabase
+    .from('supplier_prices')
+    .select('*')
+    .eq('active', true);
+
+  if (supplierCodes?.length) {
+    legacyQuery = legacyQuery.in('supplier_code', supplierCodes);
+  }
+
+  const { data, error } = await legacyQuery;
   if (error) {
     console.error('[SupplierBridge] Failed to load prices:', error);
     return [];
