@@ -259,6 +259,48 @@ async function erpSync(req: Request, params: URLSearchParams) {
     if (activeNoAv > 0) return jsonResponse({ ...report, gate_blocked: true, gate_reason: activeNoAv + " active SKUs lack availability" }, 409);
     if (mismatch.length > 0) return jsonResponse({ ...report, gate_blocked: true, gate_reason: mismatch.length + " supplier mismatch conflicts" }, 409);
 
+    // ── NEW: Upsert into supplier_final_prices (persistent DB layer) ──
+    const finalPriceRecords: any[] = [];
+    for (const p of newPrices) {
+      const fm = families.find((f: any) => f.id === p.family_id);
+      if (!fm || fm.supplier?.toUpperCase() !== supplier) continue;
+      const erpCode = p.erp_code || p.sku_erp || null;
+      if (!erpCode) continue;
+      const av = p.availability || {};
+      const idxMatch = (p.description || "").match(/\b1\.\d{2}\b/);
+      finalPriceRecords.push({
+        supplier_code: supplier,
+        family_id: p.family_id,
+        erp_code: erpCode,
+        description: p.description || null,
+        material_index: idxMatch ? idxMatch[0] : (av.index || "unknown"),
+        lens_state: p.lens_state || "clear",
+        treatment_combo: [],
+        price_value: p.price ?? null,
+        availability: av,
+        active: p.active !== false,
+        sync_run_id: rid || null,
+        source: "erp-sync",
+        confidence: "explicit",
+      });
+    }
+
+    let finalPriceUpserted = 0;
+    if (finalPriceRecords.length) {
+      const batchSize = 200;
+      for (let i = 0; i < finalPriceRecords.length; i += batchSize) {
+        const batch = finalPriceRecords.slice(i, i + batchSize);
+        const { error: fpErr, count: fpCount } = await sb
+          .from("supplier_final_prices")
+          .upsert(batch, { onConflict: "supplier_code,erp_code" })
+          .select("id", { count: "exact", head: true });
+        if (fpErr) console.error("[catalog-grade-matrix] final_prices upsert error:", fpErr.message);
+        else finalPriceUpserted += (fpCount || batch.length);
+      }
+    }
+    report.final_price_records = finalPriceUpserted;
+
+    // ── LEGACY: Keep JSON blob update as compatibility fallback ──
     catalog.prices = newPrices;
     const blob = new Blob([JSON.stringify(catalog, null, 2)], { type: "application/json" });
     const { error: ue } = await sb.storage.from(BUCKET).upload(CATALOG_FILE, blob, { upsert: true, contentType: "application/json" });
@@ -269,8 +311,8 @@ async function erpSync(req: Request, params: URLSearchParams) {
       schema_version: catalog.schema_version || "1.0", import_mode: "erp-sync",
       dataset_name: "ERP Sync " + supplier, families_count: families.length,
       prices_count: newPrices.length,
-      notes: ["ERP sync " + supplier + ": " + updated + " updated, " + created + " created"],
-      changes_summary: { updated, created, matched, supplier }
+      notes: ["ERP sync " + supplier + ": " + updated + " updated, " + created + " created, " + finalPriceUpserted + " final_prices upserted"],
+      changes_summary: { updated, created, matched, supplier, final_price_records: finalPriceUpserted }
     });
     if (rid) await sb.from("catalog_sync_runs").update({ status: "applied", report: { ...report, applied: true } }).eq("id", rid);
     report.applied = true;
