@@ -279,18 +279,27 @@ export function getEligibleSkusAndFamilies(
     }
   });
 
+  console.log(`[SKU-Eligibility] Input: ${prices.length} SKUs, ${families.length} families, ${relevantFamilyIds.size} relevant for ${clinicalType || 'ALL'}`);
+
   const eligibleSkus: Price[] = [];
   const eligibleFamiliesMap = new Map<string, Price[]>();
   const safeDefaultSkus = new Set<string>();
+  const gateFailCounts: Record<string, number> = {};
+  let skippedByFamilyFilter = 0;
 
   for (const sku of prices) {
-    if (!relevantFamilyIds.has(sku.family_id)) continue;
+    if (!relevantFamilyIds.has(sku.family_id)) {
+      skippedByFamilyFilter++;
+      continue;
+    }
 
     funnel.totalSkus++;
 
     const result = isSkuEligibleForRx(sku, rx, frame, familyMap, clinicalType);
 
     if (!result.eligible) {
+      const gate = result.failedGate || 'unknown';
+      gateFailCounts[gate] = (gateFailCounts[gate] || 0) + 1;
       if (result.failedGate === 'active' || result.failedGate === 'price') continue;
       if (result.failedGate === 'no_specs') continue;
       funnel.passedActive++;
@@ -336,6 +345,17 @@ export function getEligibleSkusAndFamilies(
     } else {
       eligibleFamiliesMap.set(sku.family_id, [sku]);
     }
+  }
+
+  console.log(`[SKU-Eligibility] Funnel: ${skippedByFamilyFilter} skipped (no family match), ${funnel.totalSkus} checked, ${funnel.finalEligible} eligible, ${funnel.safeDefaultsCount} safe-defaults`);
+  if (Object.keys(gateFailCounts).length > 0) {
+    console.log(`[SKU-Eligibility] Gate failures:`, gateFailCounts);
+  }
+  if (funnel.totalSkus === 0 && prices.length > 0) {
+    // Debug: show sample family IDs from both sides
+    const samplePriceFamilyIds = [...new Set(prices.slice(0, 5).map(p => p.family_id))];
+    const sampleFamilyIds = [...relevantFamilyIds].slice(0, 5);
+    console.warn(`[SKU-Eligibility] NO SKUs matched relevant families! Sample price family_ids:`, samplePriceFamilyIds, `Sample relevant family ids:`, sampleFamilyIds);
   }
 
   return {

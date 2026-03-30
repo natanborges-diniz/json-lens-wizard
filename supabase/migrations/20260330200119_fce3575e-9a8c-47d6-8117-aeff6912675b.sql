@@ -1,0 +1,1 @@
+UPDATE company_settings SET clinical_eligibility_mode = 'permissive' WHERE clinical_eligibility_mode = 'strict';

@@ -161,6 +161,13 @@ export async function loadSupplierDataForEngine(
     convertPriceToLegacy(row, gradesByFamilyIndex)
   );
 
+  // Debug: verify conversion integrity
+  const pricesWithValue = prices.filter(p => p.price_sale_half_pair > 0);
+  const familyIdsInPrices = new Set(prices.map(p => p.family_id));
+  const familyIdsInFamilies = new Set(families.map(f => f.id));
+  const matchingIds = [...familyIdsInPrices].filter(id => familyIdsInFamilies.has(id));
+  console.log(`[SupplierBridge] Converted: ${families.length} families, ${prices.length} prices (${pricesWithValue.length} with value > 0), ${matchingIds.length} family IDs overlap`);
+
   const suppliers = [...new Set(familiesResult.map(f => f.supplier_code))];
 
   return {
