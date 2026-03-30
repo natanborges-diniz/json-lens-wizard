@@ -279,6 +279,8 @@ export function getEligibleSkusAndFamilies(
     }
   });
 
+  console.log(`[SKU-Eligibility] Input: ${prices.length} SKUs, ${families.length} families, ${relevantFamilyIds.size} relevant for ${clinicalType || 'ALL'}`);
+
   const eligibleSkus: Price[] = [];
   const eligibleFamiliesMap = new Map<string, Price[]>();
   const safeDefaultSkus = new Set<string>();
