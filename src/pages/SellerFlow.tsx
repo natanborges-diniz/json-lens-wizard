@@ -302,7 +302,67 @@ const SellerFlow = () => {
     frameData,
   });
 
-  // Audit logger - persist when user reaches recommendations step
+  // Suggest clinical type based on prescription (but don't force)
+  useEffect(() => {
+    if (!isHydrated) return;
+    const suggested: ClinicalType = deriveClinicalTypeFromRx(prescriptionData);
+    setSuggestedClinicalType(suggested);
+  }, [prescriptionData.rightAddition, prescriptionData.leftAddition, isHydrated]);
+
+  // ────────────────────────────────────────────
+  // CONTINUOUS AUTO-SAVE: saves on every data change (debounced)
+  // Only runs after hydration to avoid saving neutral values
+  // ────────────────────────────────────────────
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (currentStep === 'budget') return;
+    
+    saveDraft(
+      customerName,
+      anamnesisData,
+      prescriptionData as Partial<Prescription>,
+      frameData as Partial<FrameMeasurements>,
+      lensCategory,
+      currentStep,
+    );
+  }, [
+    isHydrated,
+    currentStep,
+    customerName,
+    anamnesisData,
+    prescriptionData,
+    frameData,
+    lensCategory,
+    saveDraft,
+  ]);
+
+  const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
+    { id: 'profile', label: 'Perfil', icon: <User className="w-4 h-4" /> },
+    { id: 'complaints', label: 'Queixas', icon: <Info className="w-4 h-4" /> },
+    { id: 'lifestyle', label: 'Estilo', icon: <Sparkles className="w-4 h-4" /> },
+    { id: 'prescription', label: 'Receita', icon: <FileText className="w-4 h-4" /> },
+    { id: 'frame', label: 'Armação', icon: <Glasses className="w-4 h-4" /> },
+    { id: 'recommendations', label: 'Soluções', icon: <ThumbsUp className="w-4 h-4" /> },
+    { id: 'budget', label: 'Orçamento', icon: <Check className="w-4 h-4" /> },
+  ];
+
+  const stepIndex = steps.findIndex(s => s.id === currentStep);
+  const progress = ((stepIndex + 1) / steps.length) * 100;
+
+  const goNext = () => {
+    const idx = steps.findIndex(s => s.id === currentStep);
+    if (idx < steps.length - 1) {
+      setCurrentStep(steps[idx + 1].id);
+    }
+  };
+
+  const goBack = () => {
+    const idx = steps.findIndex(s => s.id === currentStep);
+    if (idx > 0) {
+      setCurrentStep(steps[idx - 1].id);
+    }
+  };
+
   const { persistLog } = useRecommendationAuditLogger();
   const hasLoggedRef = useRef(false);
   const prevStepForLogRef = useRef<Step | null>(null);
