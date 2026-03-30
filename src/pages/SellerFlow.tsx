@@ -673,7 +673,7 @@ const SellerFlow = () => {
               attributeDefs={attributeDefs}
               anamnesisData={anamnesisData}
               prescriptionData={prescriptionData}
-              lensData={lensDataForEngine}
+              lensData={activeLensData}
               engineResult={engineResult}
               pipelineDebug={pipelineDebug}
             />
