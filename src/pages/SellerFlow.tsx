@@ -25,6 +25,7 @@ import { useLensStore } from '@/store/lensStore';
 import { useCatalogLoader } from '@/hooks/useCatalogLoader';
 import { useCatalogResolver } from '@/hooks/useCatalogResolver';
 import { useRecommendationEngine } from '@/hooks/useRecommendationEngine';
+import { useConsultationAdapter } from '@/hooks/useConsultationAdapter';
 import { useStoreContext } from '@/hooks/useStoreContext';
 import { useDraftPersistence } from '@/hooks/useDraftPersistence';
 import { useRecommendationAuditLogger } from '@/hooks/useRecommendationAuditLogger';
