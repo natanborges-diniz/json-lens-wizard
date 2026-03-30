@@ -284,15 +284,22 @@ export function getEligibleSkusAndFamilies(
   const eligibleSkus: Price[] = [];
   const eligibleFamiliesMap = new Map<string, Price[]>();
   const safeDefaultSkus = new Set<string>();
+  const gateFailCounts: Record<string, number> = {};
+  let skippedByFamilyFilter = 0;
 
   for (const sku of prices) {
-    if (!relevantFamilyIds.has(sku.family_id)) continue;
+    if (!relevantFamilyIds.has(sku.family_id)) {
+      skippedByFamilyFilter++;
+      continue;
+    }
 
     funnel.totalSkus++;
 
     const result = isSkuEligibleForRx(sku, rx, frame, familyMap, clinicalType);
 
     if (!result.eligible) {
+      const gate = result.failedGate || 'unknown';
+      gateFailCounts[gate] = (gateFailCounts[gate] || 0) + 1;
       if (result.failedGate === 'active' || result.failedGate === 'price') continue;
       if (result.failedGate === 'no_specs') continue;
       funnel.passedActive++;
