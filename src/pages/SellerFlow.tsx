@@ -695,7 +695,7 @@ const SellerFlow = () => {
               additionalProducts={selectedProducts.filter(p => p.type !== 'primary')}
               onBack={() => setCurrentStep('recommendations')}
               engineResult={engineResult}
-              lensData={lensDataForEngine}
+              lensData={activeLensData}
               storeId={selectedStoreId}
               draftServiceId={draftServiceId}
               draftCustomerId={draftCustomerId}
