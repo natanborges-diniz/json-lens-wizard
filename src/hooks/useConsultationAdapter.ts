@@ -187,11 +187,7 @@ export function useConsultationAdapter({
       addons: [],
       products_avulsos: [],
       prices: allPrices,
-      technology_library: result.recommendations ? 
-        Object.fromEntries(
-          Object.entries(result.commercialModel || {})
-            .filter(([_, v]) => v && typeof v === 'object')
-        ) as Record<string, Technology> : {},
+      technology_library: undefined,
     };
 
     return {
