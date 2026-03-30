@@ -178,7 +178,23 @@ const SellerFlow = () => {
   // Use catalog resolver for dynamic tier mapping (no hardcode)
   const { getTierKey } = useCatalogResolver();
 
-  // Use centralized catalog loader - cloud is single source of truth
+  // ────────────────────────────────────────────
+  // DB PIPELINE (primary source via useConsultationAdapter)
+  // ────────────────────────────────────────────
+  const dbPipeline = useConsultationAdapter({
+    clinicalType: lensCategory,
+    anamnesisData,
+    prescriptionData,
+    frameData: frameData as any,
+    storeId: selectedStoreId,
+    serviceId: draftServiceId,
+    customerId: draftCustomerId,
+    filters: undefined,
+  });
+
+  // ────────────────────────────────────────────
+  // LEGACY FALLBACK (used only if DB pipeline returns 0 results)
+  // ────────────────────────────────────────────
   const { loadCatalog, isLoading: catalogLoading } = useCatalogLoader();
 
   const { 
@@ -195,10 +211,21 @@ const SellerFlow = () => {
     rawLensData,
   } = useLensStore();
 
-  // Load catalog on mount - only once per component lifecycle
+  // Determine if DB pipeline has real results
+  const dbHasResults = dbPipeline.isReady && !dbPipeline.error && 
+    Object.values(dbPipeline.recommendations).some(tier => tier.length > 0);
+  const useDbSource = dbHasResults;
+
+  // Load legacy catalog only as fallback (if DB has no results after loading)
   const hasLoadedRef = useRef(false);
   useEffect(() => {
     if (hasLoadedRef.current) return;
+    if (dbPipeline.isLoading) return; // Wait for DB first
+    if (dbHasResults) {
+      hasLoadedRef.current = true;
+      console.log('[SellerFlow] Using DB pipeline — legacy catalog skipped');
+      return;
+    }
     if (families.length > 0) {
       hasLoadedRef.current = true;
       return;
@@ -208,7 +235,7 @@ const SellerFlow = () => {
       setIsLoading(true);
       try {
         const success = await loadCatalog();
-        console.log('[SellerFlow] Catalog loaded:', success);
+        console.log('[SellerFlow] Legacy catalog loaded as fallback:', success);
         if (!success) {
           toast.error('Erro ao carregar dados das lentes');
         }
@@ -220,88 +247,9 @@ const SellerFlow = () => {
       }
     };
     loadData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dbPipeline.isLoading, dbHasResults]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Debug: verificar integridade dos dados carregados
-  useEffect(() => {
-    if (families.length > 0 && prices.length > 0) {
-      const familyIds = new Set(families.map(f => f.id));
-      const pricesWithoutFamily = prices.filter(p => !familyIds.has(p.family_id));
-      
-      if (pricesWithoutFamily.length > 0) {
-        console.warn(`[SellerFlow] ${pricesWithoutFamily.length} preços sem família correspondente`);
-      }
-      
-      const familiesWithPrices = families.filter(f => 
-        prices.some(p => p.family_id === f.id && p.active && !p.blocked)
-      );
-      console.log(`[SellerFlow] ${familiesWithPrices.length}/${families.length} famílias têm preços ativos`);
-    }
-  }, [families, prices]);
-
-  // Suggest clinical type based on prescription (but don't force)
-  useEffect(() => {
-    if (!isHydrated) return;
-    const suggested: ClinicalType = deriveClinicalTypeFromRx(prescriptionData);
-    setSuggestedClinicalType(suggested);
-  }, [prescriptionData.rightAddition, prescriptionData.leftAddition, isHydrated]);
-
-  // ────────────────────────────────────────────
-  // CONTINUOUS AUTO-SAVE: saves on every data change (debounced)
-  // Only runs after hydration to avoid saving neutral values
-  // ────────────────────────────────────────────
-  useEffect(() => {
-    if (!isHydrated) return;
-    // Don't save during budget step (budget has its own persistence)
-    if (currentStep === 'budget') return;
-    
-    saveDraft(
-      customerName,
-      anamnesisData,
-      prescriptionData as Partial<Prescription>,
-      frameData as Partial<FrameMeasurements>,
-      lensCategory,
-      currentStep,
-    );
-  }, [
-    isHydrated,
-    currentStep,
-    customerName,
-    anamnesisData,
-    prescriptionData,
-    frameData,
-    lensCategory,
-    saveDraft,
-  ]);
-
-  const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
-    { id: 'profile', label: 'Perfil', icon: <User className="w-4 h-4" /> },
-    { id: 'complaints', label: 'Queixas', icon: <Info className="w-4 h-4" /> },
-    { id: 'lifestyle', label: 'Estilo', icon: <Sparkles className="w-4 h-4" /> },
-    { id: 'prescription', label: 'Receita', icon: <FileText className="w-4 h-4" /> },
-    { id: 'frame', label: 'Armação', icon: <Glasses className="w-4 h-4" /> },
-    { id: 'recommendations', label: 'Soluções', icon: <ThumbsUp className="w-4 h-4" /> },
-    { id: 'budget', label: 'Orçamento', icon: <Check className="w-4 h-4" /> },
-  ];
-
-  const stepIndex = steps.findIndex(s => s.id === currentStep);
-  const progress = ((stepIndex + 1) / steps.length) * 100;
-
-  const goNext = () => {
-    const idx = steps.findIndex(s => s.id === currentStep);
-    if (idx < steps.length - 1) {
-      setCurrentStep(steps[idx + 1].id);
-    }
-  };
-
-  const goBack = () => {
-    const idx = steps.findIndex(s => s.id === currentStep);
-    if (idx > 0) {
-      setCurrentStep(steps[idx - 1].id);
-    }
-  };
-
-  // Build lensData for the recommendation engine
+  // Build legacy lensData for recommendation engine fallback
   const lensDataForEngine: LensData | null = isDataLoaded ? {
     meta: { schema_version: '', dataset_name: '', generated_at: '', counts: { families: 0, addons: 0, skus_prices: 0 }, notes: [] },
     scales: {},
@@ -314,26 +262,38 @@ const SellerFlow = () => {
     technology_library: rawLensData?.technology_library,
   } : null;
 
-  // Use the new recommendation engine
-  const { 
-    recommendations, 
-    topRecommendationId, 
-    stats: engineStats,
-    isReady: engineReady,
-    engineResult,
-    supplierPriorities: activeSupplierPriorities,
-    pipelineDebug,
-  } = useRecommendationEngine({
-    lensData: lensDataForEngine,
+  // Legacy recommendation engine (only used if DB pipeline has no results)
+  const legacyEngine = useRecommendationEngine({
+    lensData: useDbSource ? null : lensDataForEngine, // Skip if DB is active
     lensCategory,
     anamnesisData,
     prescriptionData,
     frameData,
   });
 
-  const activeAddons = addons.filter(a => a.active && a.rules?.categories?.includes(lensCategory));
+  // ────────────────────────────────────────────
+  // UNIFIED OUTPUT: prefer DB, fallback to legacy
+  // ────────────────────────────────────────────
+  const recommendations = useDbSource ? dbPipeline.recommendations : legacyEngine.recommendations;
+  const topRecommendationId = useDbSource ? dbPipeline.topRecommendationId : legacyEngine.topRecommendationId;
+  const engineStats = useDbSource ? dbPipeline.stats : legacyEngine.stats;
+  const engineReady = useDbSource ? dbPipeline.isReady : legacyEngine.isReady;
+  const engineResult = useDbSource ? dbPipeline.engineResult : legacyEngine.engineResult;
+  const activeSupplierPriorities = useDbSource ? dbPipeline.supplierPriorities : legacyEngine.supplierPriorities;
+  const pipelineDebug = useDbSource ? dbPipeline.pipelineDebug : legacyEngine.pipelineDebug;
+  const activeLensData = useDbSource ? dbPipeline.lensData : lensDataForEngine;
+  const activeAddons = useDbSource 
+    ? [] // DB pipeline doesn't load addons yet
+    : addons.filter(a => a.active && a.rules?.categories?.includes(lensCategory));
 
-  // Get occupational recommendations using the engine too
+  // Log source on step entry
+  useEffect(() => {
+    if (dbPipeline.isReady || legacyEngine.isReady) {
+      console.log(`[SellerFlow] Data source: ${useDbSource ? 'DB-PIPELINE (supplier_final_prices)' : 'LEGACY (JSON blob)'}`);
+    }
+  }, [useDbSource, dbPipeline.isReady, legacyEngine.isReady]);
+
+  // Get occupational recommendations (legacy only for now)
   const { recommendations: occupationalRecommendations } = useRecommendationEngine({
     lensData: lensDataForEngine,
     lensCategory: 'OCUPACIONAL',
