@@ -416,8 +416,10 @@ const SellerFlow = () => {
       // Create configuration from primary product for budget
       const primary = products.find(p => p.type === 'primary');
       if (primary) {
-        const family = families.find(f => f.id === primary.familyId);
-        const price = prices.find(p => p.erp_code === primary.selectedPriceErpCode);
+        const allFamilies = activeLensData?.families || families;
+        const allPrices = activeLensData?.prices || prices;
+        const family = allFamilies.find(f => f.id === primary.familyId);
+        const price = allPrices.find(p => p.erp_code === primary.selectedPriceErpCode);
         if (family && price) {
           setSelectedConfiguration({
             familyId: primary.familyId,
@@ -435,7 +437,8 @@ const SellerFlow = () => {
   // Get selected family details
   const getSelectedFamily = (): Family | null => {
     if (!selectedConfiguration) return null;
-    return families.find(f => f.id === selectedConfiguration.familyId) || null;
+    const allFamilies = activeLensData?.families || families;
+    return allFamilies.find(f => f.id === selectedConfiguration.familyId) || null;
   };
 
   // Update anamnesis data helper
