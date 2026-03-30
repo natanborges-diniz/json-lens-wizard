@@ -25,6 +25,7 @@ import { useLensStore } from '@/store/lensStore';
 import { useCatalogLoader } from '@/hooks/useCatalogLoader';
 import { useCatalogResolver } from '@/hooks/useCatalogResolver';
 import { useRecommendationEngine } from '@/hooks/useRecommendationEngine';
+import { useConsultationAdapter } from '@/hooks/useConsultationAdapter';
 import { useStoreContext } from '@/hooks/useStoreContext';
 import { useDraftPersistence } from '@/hooks/useDraftPersistence';
 import { useRecommendationAuditLogger } from '@/hooks/useRecommendationAuditLogger';
@@ -177,7 +178,23 @@ const SellerFlow = () => {
   // Use catalog resolver for dynamic tier mapping (no hardcode)
   const { getTierKey } = useCatalogResolver();
 
-  // Use centralized catalog loader - cloud is single source of truth
+  // ────────────────────────────────────────────
+  // DB PIPELINE (primary source via useConsultationAdapter)
+  // ────────────────────────────────────────────
+  const dbPipeline = useConsultationAdapter({
+    clinicalType: lensCategory,
+    anamnesisData,
+    prescriptionData,
+    frameData: frameData as any,
+    storeId: selectedStoreId,
+    serviceId: draftServiceId,
+    customerId: draftCustomerId,
+    filters: undefined,
+  });
+
+  // ────────────────────────────────────────────
+  // LEGACY FALLBACK (used only if DB pipeline returns 0 results)
+  // ────────────────────────────────────────────
   const { loadCatalog, isLoading: catalogLoading } = useCatalogLoader();
 
   const { 
@@ -194,10 +211,21 @@ const SellerFlow = () => {
     rawLensData,
   } = useLensStore();
 
-  // Load catalog on mount - only once per component lifecycle
+  // Determine if DB pipeline has real results
+  const dbHasResults = dbPipeline.isReady && !dbPipeline.error && 
+    Object.values(dbPipeline.recommendations).some(tier => tier.length > 0);
+  const useDbSource = dbHasResults;
+
+  // Load legacy catalog only as fallback (if DB has no results after loading)
   const hasLoadedRef = useRef(false);
   useEffect(() => {
     if (hasLoadedRef.current) return;
+    if (dbPipeline.isLoading) return; // Wait for DB first
+    if (dbHasResults) {
+      hasLoadedRef.current = true;
+      console.log('[SellerFlow] Using DB pipeline — legacy catalog skipped');
+      return;
+    }
     if (families.length > 0) {
       hasLoadedRef.current = true;
       return;
@@ -207,7 +235,7 @@ const SellerFlow = () => {
       setIsLoading(true);
       try {
         const success = await loadCatalog();
-        console.log('[SellerFlow] Catalog loaded:', success);
+        console.log('[SellerFlow] Legacy catalog loaded as fallback:', success);
         if (!success) {
           toast.error('Erro ao carregar dados das lentes');
         }
@@ -219,24 +247,60 @@ const SellerFlow = () => {
       }
     };
     loadData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dbPipeline.isLoading, dbHasResults]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Debug: verificar integridade dos dados carregados
+  // Build legacy lensData for recommendation engine fallback
+  const lensDataForEngine: LensData | null = isDataLoaded ? {
+    meta: { schema_version: '', dataset_name: '', generated_at: '', counts: { families: 0, addons: 0, skus_prices: 0 }, notes: [] },
+    scales: {},
+    attribute_defs: attributeDefs,
+    macros,
+    families,
+    addons,
+    products_avulsos: [],
+    prices,
+    technology_library: rawLensData?.technology_library,
+  } : null;
+
+  // Legacy recommendation engine (only used if DB pipeline has no results)
+  const legacyEngine = useRecommendationEngine({
+    lensData: useDbSource ? null : lensDataForEngine, // Skip if DB is active
+    lensCategory,
+    anamnesisData,
+    prescriptionData,
+    frameData,
+  });
+
+  // ────────────────────────────────────────────
+  // UNIFIED OUTPUT: prefer DB, fallback to legacy
+  // ────────────────────────────────────────────
+  const recommendations = useDbSource ? dbPipeline.recommendations : legacyEngine.recommendations;
+  const topRecommendationId = useDbSource ? dbPipeline.topRecommendationId : legacyEngine.topRecommendationId;
+  const engineStats = useDbSource ? dbPipeline.stats : legacyEngine.stats;
+  const engineReady = useDbSource ? dbPipeline.isReady : legacyEngine.isReady;
+  const engineResult = useDbSource ? dbPipeline.engineResult : legacyEngine.engineResult;
+  const activeSupplierPriorities = useDbSource ? dbPipeline.supplierPriorities : legacyEngine.supplierPriorities;
+  const pipelineDebug = useDbSource ? dbPipeline.pipelineDebug : legacyEngine.pipelineDebug;
+  const activeLensData = useDbSource ? dbPipeline.lensData : lensDataForEngine;
+  const activeAddons = useDbSource 
+    ? [] // DB pipeline doesn't load addons yet
+    : addons.filter(a => a.active && a.rules?.categories?.includes(lensCategory));
+
+  // Log source on step entry
   useEffect(() => {
-    if (families.length > 0 && prices.length > 0) {
-      const familyIds = new Set(families.map(f => f.id));
-      const pricesWithoutFamily = prices.filter(p => !familyIds.has(p.family_id));
-      
-      if (pricesWithoutFamily.length > 0) {
-        console.warn(`[SellerFlow] ${pricesWithoutFamily.length} preços sem família correspondente`);
-      }
-      
-      const familiesWithPrices = families.filter(f => 
-        prices.some(p => p.family_id === f.id && p.active && !p.blocked)
-      );
-      console.log(`[SellerFlow] ${familiesWithPrices.length}/${families.length} famílias têm preços ativos`);
+    if (dbPipeline.isReady || legacyEngine.isReady) {
+      console.log(`[SellerFlow] Data source: ${useDbSource ? 'DB-PIPELINE (supplier_final_prices)' : 'LEGACY (JSON blob)'}`);
     }
-  }, [families, prices]);
+  }, [useDbSource, dbPipeline.isReady, legacyEngine.isReady]);
+
+  // Get occupational recommendations (legacy only for now)
+  const { recommendations: occupationalRecommendations } = useRecommendationEngine({
+    lensData: lensDataForEngine,
+    lensCategory: 'OCUPACIONAL',
+    anamnesisData,
+    prescriptionData,
+    frameData,
+  });
 
   // Suggest clinical type based on prescription (but don't force)
   useEffect(() => {
@@ -251,7 +315,6 @@ const SellerFlow = () => {
   // ────────────────────────────────────────────
   useEffect(() => {
     if (!isHydrated) return;
-    // Don't save during budget step (budget has its own persistence)
     if (currentStep === 'budget') return;
     
     saveDraft(
@@ -300,48 +363,6 @@ const SellerFlow = () => {
     }
   };
 
-  // Build lensData for the recommendation engine
-  const lensDataForEngine: LensData | null = isDataLoaded ? {
-    meta: { schema_version: '', dataset_name: '', generated_at: '', counts: { families: 0, addons: 0, skus_prices: 0 }, notes: [] },
-    scales: {},
-    attribute_defs: attributeDefs,
-    macros,
-    families,
-    addons,
-    products_avulsos: [],
-    prices,
-    technology_library: rawLensData?.technology_library,
-  } : null;
-
-  // Use the new recommendation engine
-  const { 
-    recommendations, 
-    topRecommendationId, 
-    stats: engineStats,
-    isReady: engineReady,
-    engineResult,
-    supplierPriorities: activeSupplierPriorities,
-    pipelineDebug,
-  } = useRecommendationEngine({
-    lensData: lensDataForEngine,
-    lensCategory,
-    anamnesisData,
-    prescriptionData,
-    frameData,
-  });
-
-  const activeAddons = addons.filter(a => a.active && a.rules?.categories?.includes(lensCategory));
-
-  // Get occupational recommendations using the engine too
-  const { recommendations: occupationalRecommendations } = useRecommendationEngine({
-    lensData: lensDataForEngine,
-    lensCategory: 'OCUPACIONAL',
-    anamnesisData,
-    prescriptionData,
-    frameData,
-  });
-
-  // Audit logger - persist when user reaches recommendations step
   const { persistLog } = useRecommendationAuditLogger();
   const hasLoggedRef = useRef(false);
   const prevStepForLogRef = useRef<Step | null>(null);
@@ -395,8 +416,10 @@ const SellerFlow = () => {
       // Create configuration from primary product for budget
       const primary = products.find(p => p.type === 'primary');
       if (primary) {
-        const family = families.find(f => f.id === primary.familyId);
-        const price = prices.find(p => p.erp_code === primary.selectedPriceErpCode);
+        const allFamilies = activeLensData?.families || families;
+        const allPrices = activeLensData?.prices || prices;
+        const family = allFamilies.find(f => f.id === primary.familyId);
+        const price = allPrices.find(p => p.erp_code === primary.selectedPriceErpCode);
         if (family && price) {
           setSelectedConfiguration({
             familyId: primary.familyId,
@@ -414,7 +437,8 @@ const SellerFlow = () => {
   // Get selected family details
   const getSelectedFamily = (): Family | null => {
     if (!selectedConfiguration) return null;
-    return families.find(f => f.id === selectedConfiguration.familyId) || null;
+    const allFamilies = activeLensData?.families || families;
+    return allFamilies.find(f => f.id === selectedConfiguration.familyId) || null;
   };
 
   // Update anamnesis data helper
@@ -649,7 +673,7 @@ const SellerFlow = () => {
               attributeDefs={attributeDefs}
               anamnesisData={anamnesisData}
               prescriptionData={prescriptionData}
-              lensData={lensDataForEngine}
+              lensData={activeLensData}
               engineResult={engineResult}
               pipelineDebug={pipelineDebug}
             />
@@ -671,7 +695,7 @@ const SellerFlow = () => {
               additionalProducts={selectedProducts.filter(p => p.type !== 'primary')}
               onBack={() => setCurrentStep('recommendations')}
               engineResult={engineResult}
-              lensData={lensDataForEngine}
+              lensData={activeLensData}
               storeId={selectedStoreId}
               draftServiceId={draftServiceId}
               draftCustomerId={draftCustomerId}
